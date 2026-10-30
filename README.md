@@ -174,7 +174,7 @@ In most menus ✕ confirms and △ goes back.
 
 ## From the menu to the first arena
 
-Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, but the keyboard only has the D-pad keys here, and walking with them has not been tried.
+Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, but the keyboard only has the D-pad keys here, and walking with them is not confirmed: a scripted test with short D-pad presses showed no clear movement.
 
 ## How it works
 
