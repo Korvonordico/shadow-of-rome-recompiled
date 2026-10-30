@@ -18,13 +18,11 @@ You need your own legal copy of the game (PAL SLES-52950). No game files are inc
 
 This work was done with the help of AI: Claude (by Anthropic), guided by Francesco ([Korvonordico](https://github.com/Korvonordico)). Claude wrote most of the code, the scripts and the patches, and ran the tests.
 
-It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousResearch/hermes-agent), an agent platform I configured myself: a personal setup with my own skills, rules, notes and safety checks, built up over time. Some numbers about the setup, as of October 2026:
+It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousResearch/hermes-agent), an agent platform I configured myself: a personal setup with my own skills, rules, notes and safety checks, built up over time. What that setup did for this port:
 
-- 97 skills (procedures the agent follows), part of them written or adapted by me, including one for PS2 game porting;
-- a custom permission system: 108 allowed commands, 42 words that always ask me first, tested by 55 automatic checks;
-- a web guard that treats everything read online as information, never as orders;
-- [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: this port took 4 planned sessions, about 15 million weighted tokens to reach the menu;
-- long-term notes, so each session starts from where the last one stopped.
+- a skill for PS2 game porting, written from my earlier port attempts, so the agent follows tested steps instead of guessing;
+- [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: reaching the menu took 4 planned sessions, about 15 million weighted tokens;
+- written handoff notes after every session, so each one starts from where the last one stopped.
 
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
