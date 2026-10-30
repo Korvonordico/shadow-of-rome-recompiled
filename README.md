@@ -8,19 +8,17 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
 
 **Boots to the main menu on Windows. Gameplay does not work yet (stops after New Game).**
 
-This is an experiment. I can't promise I'll finish it, for personal reasons. If someone is already working on a port of this game, please let me know, so I don't do useless work.
+This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
-Please be patient: it will take a long time before the game is playable. I work on it with limited time and resources, for personal reasons, so there are no deadlines.
-
-If someone is already working on a port of this game, or is further ahead, please tell me as soon as possible. I'd rather spend my time on something that hasn't been done yet than duplicate work that already exists.
-
-To tell me, open an [issue](../../issues) on this repository.
+If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet.
 
 You need your own legal copy of the game (PAL SLES-52950). No game files are included.
 
 ## Made with AI
 
 This work was done with the help of AI: Claude (by Anthropic), guided by Francesco ([Korvonordico](https://github.com/Korvonordico)). Claude wrote most of the code, the scripts and the patches, and ran the tests.
+
+It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousResearch/hermes-agent), an agent platform I configured myself: a personal setup with my own skills, rules, notes and safety checks, built up over time. The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
 
