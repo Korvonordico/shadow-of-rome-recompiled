@@ -1,4 +1,8 @@
-# Shadow of Rome Recompiled
+<p align="center">
+  <img src="docs/logo.png" width="60%" alt="Shadow of Rome Recompiled">
+</p>
+
+<h1 align="center">Shadow of Rome Recompiled</h1>
 
 Native PC port of Shadow of Rome (PS2) through static recompilation.
 
@@ -137,7 +141,7 @@ Many names and comments in the code are in Italian. `pc/prova.sh` is the quick r
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
 
-Shadow of Rome belongs to Capcom. This project is not connected to Capcom or Sony.
+Shadow of Rome belongs to Capcom. The logo is fan-made artwork from SteamGridDB, with "Recompiled" added. This project is not connected to Capcom or Sony.
 
 ## License
 
