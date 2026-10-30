@@ -1,0 +1,187 @@
+diff --git a/ps2xRuntime/include/ps2_runtime.h b/ps2xRuntime/include/ps2_runtime.h
+index 4b9242c..7410817 100644
+--- a/ps2xRuntime/include/ps2_runtime.h
++++ b/ps2xRuntime/include/ps2_runtime.h
+@@ -384,6 +384,13 @@ public:
+     uint32_t guestHeapEnd() const;
+     uint32_t guestHeapLimit() const;
+     uint32_t reserveAsyncCallbackStack(uint32_t size, uint32_t alignment = 16u);
++    // sor: place the callback stacks in [floor, top) (call after loadELF, which resets them
++    // to the top of RAM, where many games keep their main thread stack).
++    void setAsyncCallbackStackRegion(uint32_t floor, uint32_t top);
++    // sor: heap del runtime in una zona fissa: SetupHeap del gioco non lo sposta piu' (il gioco
++    // gestisce da se' la sua memoria e il heap del runtime gliela sovrascriverebbe).
++    void pinGuestHeap(uint32_t base, uint32_t limit);
++    bool guestHeapPinned() const { return m_guestHeapPinned; }
+ 
+     void drainCompletedDmacHandlers(uint8_t *rdram);
+ 
+@@ -457,6 +464,7 @@ public:
+     inline const PS2Vfs &vfs() const { return m_vfs; }
+ 
+ private:
++    bool m_guestHeapPinned = false; // sor
+     struct GuestHeapBlock
+     {
+         uint32_t addr = 0;
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+index c5e31c4..3b27226 100644
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include <algorithm>
+ #include <cassert>
++#include <cstdio>
+ #include <cstring>
+ #include <limits>
+ #include <stdexcept>
+@@ -325,6 +326,9 @@ void EeScheduler::run()
+         }
+     }
+ 
++    std::printf("[sor] EeScheduler::run esce: stop=%d thread=%d\n",
++                m_stopRequested.load(std::memory_order_acquire) ? 1 : 0, m_currentThreadId); // sor
++    std::fflush(stdout);
+     m_guestExecuting.store(false, std::memory_order_release);
+     m_running.store(false, std::memory_order_release);
+     copyMainContextToRuntime();
+@@ -333,6 +337,11 @@ void EeScheduler::run()
+ 
+ void EeScheduler::requestStop()
+ {
++    if (!m_stopRequested.load(std::memory_order_acquire)) // sor: who stops the game
++    {
++        std::printf("[sor] EeScheduler::requestStop (thread corrente %d)\n", m_currentThreadId);
++        std::fflush(stdout);
++    }
+     m_stopRequested.store(true, std::memory_order_release);
+     m_checkpointPending.store(true, std::memory_order_release);
+     m_eventCv.notify_all();
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
+index 9614016..d2162b7 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
+@@ -571,7 +571,7 @@ namespace ps2_syscalls
+                           << std::dec << std::endl;
+             });
+ 
+-            setReturnU32(ctx, runtime->guestHeapBase());
++            setReturnU32(ctx, runtime->guestHeapPinned() ? heapBase : runtime->guestHeapBase());
+             return;
+         }
+ 
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index 45cb9d2..e654383 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -19,6 +19,8 @@
+ #include <fstream>
+ #include <algorithm>
+ #include <array>
++#include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <limits>
+ #include <chrono>
+@@ -450,6 +452,40 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+     s_lastWidth = width;
+     s_lastHeight = height;
+ 
++    // sor: SOR_FOTO=<prefisso> salva il fotogramma presentato come <prefisso>_NN.png ogni
++    // SOR_FOTO_OGNI secondi (predefinito 5), con l'alfa a 255.
++    {
++        static const char *s_fotoPrefisso = std::getenv("SOR_FOTO");
++        static const double s_fotoOgni = std::getenv("SOR_FOTO_OGNI") ? std::atof(std::getenv("SOR_FOTO_OGNI")) : 5.0;
++        static auto s_fotoProssima = std::chrono::steady_clock::now() + std::chrono::duration<double>(s_fotoOgni);
++        static int s_fotoNumero = 0;
++        const auto adesso = std::chrono::steady_clock::now();
++        if (s_fotoPrefisso && *s_fotoPrefisso && adesso >= s_fotoProssima && !s_scratch.empty() &&
++            width != 0u && height != 0u && s_scratch.size() >= static_cast<size_t>(width) * height * 4u)
++        {
++            s_fotoProssima = adesso + std::chrono::duration<double>(s_fotoOgni);
++            std::vector<uint8_t> copia(s_scratch.begin(), s_scratch.begin() + static_cast<size_t>(width) * height * 4u);
++            for (size_t i = 3; i < copia.size(); i += 4)
++                copia[i] = 255u;
++            Image foto{copia.data(), static_cast<int>(width), static_cast<int>(height), 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
++            char nome[512];
++            std::snprintf(nome, sizeof(nome), "%s_%02d.png", s_fotoPrefisso, ++s_fotoNumero);
++            const bool ok = ExportImage(foto, nome);
++            if (std::getenv("SOR_FOTO_VRAM"))
++            {
++                char nomeV[512];
++                std::snprintf(nomeV, sizeof(nomeV), "%s_%02d.vram", s_fotoPrefisso, s_fotoNumero);
++                if (FILE *fv = std::fopen(nomeV, "wb"))
++                {
++                    std::fwrite(rt->memory().getGSVRAM(), 1, PS2_GS_VRAM_SIZE, fv);
++                    std::fclose(fv);
++                }
++            }
++            std::printf("[sor] foto %s %dx%d fbp=0x%x: %s\n", nome, width, height, displayFbp, ok ? "salvata" : "ERRORE");
++            std::fflush(stdout);
++        }
++    }
++
+     std::fill(s_uploadBuffer.begin(), s_uploadBuffer.end(), 0u);
+     if (!s_scratch.empty() && width != 0u && height != 0u)
+     {
+@@ -1804,9 +1840,19 @@ void PS2Runtime::freeGuestBlockLocked(uint32_t guestAddr)
+     coalesceGuestHeapLocked();
+ }
+ 
++void PS2Runtime::pinGuestHeap(uint32_t base, uint32_t limit)
++{
++    std::lock_guard<std::mutex> lock(m_guestHeapMutex);
++    m_guestHeapSuggestedBase = base;
++    resetGuestHeapLocked(base, limit);
++    m_guestHeapPinned = true;
++}
++
+ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+ {
+     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
++    if (m_guestHeapPinned)
++        return;
+     uint32_t normalizedBase = alignGuestHeapValue(clampGuestHeapBase(guestBase), kGuestHeapDefaultAlignment);
+     if (normalizedBase == 0u)
+     {
+@@ -1975,6 +2021,13 @@ uint32_t PS2Runtime::guestHeapLimit() const
+     return m_guestHeapConfigured ? m_guestHeapLimit : m_guestHeapSuggestedBase;
+ }
+ 
++void PS2Runtime::setAsyncCallbackStackRegion(uint32_t floor, uint32_t top)
++{
++    std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
++    m_asyncCallbackStackFloor = std::min(floor, PS2_RAM_SIZE);
++    m_asyncCallbackStackTop = std::min(top, PS2_RAM_SIZE);
++}
++
+ uint32_t PS2Runtime::reserveAsyncCallbackStack(uint32_t size, uint32_t alignment)
+ {
+     if (size == 0u)
+@@ -2182,6 +2235,12 @@ void PS2Runtime::kickGifDmaChainFromMMIO(uint8_t *rdram,
+ 
+ void PS2Runtime::requestStop()
+ {
++    if (!m_stopRequested.load(std::memory_order_relaxed)) // sor: who stops the game
++    {
++        std::printf("[sor] PS2Runtime::requestStop pc=0x%x ra=0x%x\n",
++                    m_debugPc.load(std::memory_order_relaxed), m_debugRa.load(std::memory_order_relaxed));
++        std::fflush(stdout);
++    }
+     m_stopRequested.store(true, std::memory_order_relaxed);
+     if (m_eeScheduler)
+     {
+@@ -2430,9 +2489,9 @@ void PS2Runtime::run()
+         const float srcHeight = static_cast<float>(std::max<uint32_t>(1u, presentHeight));
+         const float screenWidth = static_cast<float>(GetScreenWidth());
+         const float screenHeight = static_cast<float>(GetScreenHeight());
+-        const float scale = std::min(screenWidth / srcWidth, screenHeight / srcHeight);
+-        const float dstWidth = srcWidth * scale;
+-        const float dstHeight = srcHeight * scale;
++        // sor: la PS2 mostra sempre l'immagine in 4:3, qualunque sia la larghezza del buffer.
++        const float dstHeight = std::min(screenHeight, screenWidth * 3.0f / 4.0f);
++        const float dstWidth = dstHeight * 4.0f / 3.0f;
+         const Rectangle srcRect{0.0f, 0.0f, srcWidth, srcHeight};
+         const Rectangle dstRect{
+             (screenWidth - dstWidth) * 0.5f,

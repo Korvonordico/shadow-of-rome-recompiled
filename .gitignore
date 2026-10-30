@@ -1,0 +1,35 @@
+# Game data: never commit anything read from the disc.
+/disco/
+*.iso
+*.ISO
+*.img
+*.IMG
+*.irx
+*.IRX
+*.vram
+SLES_*
+
+# Everything generated from the disc: function maps, translated C++, build trees.
+/mappa/
+/analisi/
+/gen/
+/_build/
+/_tools/
+*.exe
+*.map
+*.log
+
+# Local files
+/ANTEPRIMA.html
+_*
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

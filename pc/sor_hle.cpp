@@ -1,0 +1,371 @@
+// Sostituzioni di funzioni del gioco fatte a mano (Shadow of Rome con PS2Recomp).
+// Si installano dopo loadELF con sorInstallaSostituzioni(): la tabella delle
+// funzioni del runtime punta qui invece che al codice tradotto.
+//
+// 1. sceCdSearchFile (0x120190) e sceCdLayerSearchFile (0x11FE90): il gioco
+//    cerca IMAGE0/1/2.IMG e poi legge con sceCdRead a "settore del file +
+//    scostamento". Qui la ricerca legge l'indice ISO9660 dell'immagine vera
+//    (IoPaths::cdImage) e restituisce il settore vero: cosi' sceCdRead del
+//    runtime legge dall'immagine senza estrarre 4,6 GB di file.
+#include "ps2_runtime.h"
+#include "ps2_runtime_macros.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <string>
+#include <vector>
+
+namespace
+{
+    struct VoceIso
+    {
+        uint32_t lsn = 0;
+        uint32_t size = 0;
+        bool cartella = false;
+    };
+
+    std::mutex g_isoMutex;
+    bool g_isoLetta = false;
+    std::map<std::string, VoceIso> g_iso; // percorso in maiuscolo, "/IMAGE0.IMG"
+
+    uint32_t le32(const uint8_t *p)
+    {
+        return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24);
+    }
+
+    bool leggiSettori(std::ifstream &f, uint32_t lsn, uint32_t bytes, std::vector<uint8_t> &out)
+    {
+        out.assign(bytes, 0);
+        f.clear();
+        f.seekg(static_cast<std::streamoff>(lsn) * 2048, std::ios::beg);
+        f.read(reinterpret_cast<char *>(out.data()), bytes);
+        return f.gcount() == static_cast<std::streamsize>(bytes);
+    }
+
+    void leggiCartella(std::ifstream &f, uint32_t lsn, uint32_t size, const std::string &prefisso, int profondita)
+    {
+        if (profondita > 8)
+            return;
+        std::vector<uint8_t> d;
+        if (!leggiSettori(f, lsn, size, d))
+            return;
+        size_t i = 0;
+        while (i < d.size())
+        {
+            const uint8_t l = d[i];
+            if (l == 0)
+            {
+                i = (i / 2048 + 1) * 2048;
+                continue;
+            }
+            if (i + l > d.size() || l < 34)
+                break;
+            const uint8_t *r = &d[i];
+            VoceIso v;
+            v.lsn = le32(r + 2);
+            v.size = le32(r + 10);
+            v.cartella = (r[25] & 2) != 0;
+            const uint8_t nl = r[32];
+            std::string nome(reinterpret_cast<const char *>(r + 33), nl);
+            i += l;
+            if (nl == 1 && (nome[0] == 0 || nome[0] == 1))
+                continue;
+            const size_t pv = nome.find(';');
+            if (pv != std::string::npos)
+                nome.resize(pv);
+            for (char &c : nome)
+                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            const std::string percorso = prefisso + "/" + nome;
+            g_iso[percorso] = v;
+            if (v.cartella)
+                leggiCartella(f, v.lsn, v.size, percorso, profondita + 1);
+        }
+    }
+
+    void leggiIso()
+    {
+        if (g_isoLetta)
+            return;
+        g_isoLetta = true;
+        const std::filesystem::path img = PS2Runtime::getIoPaths().cdImage;
+        if (img.empty())
+        {
+            std::fprintf(stderr, "[sor] nessuna immagine del disco: sceCdSearchFile non trova niente\n");
+            return;
+        }
+        std::ifstream f(img, std::ios::binary);
+        std::vector<uint8_t> pvd;
+        if (!f || !leggiSettori(f, 16, 2048, pvd) || std::memcmp(&pvd[1], "CD001", 5) != 0)
+        {
+            std::fprintf(stderr, "[sor] immagine del disco non leggibile come ISO9660\n");
+            return;
+        }
+        leggiCartella(f, le32(&pvd[156 + 2]), le32(&pvd[156 + 10]), "", 0);
+        std::printf("[sor] indice del disco letto: %zu voci\n", g_iso.size());
+    }
+
+    std::string normalizza(std::string p)
+    {
+        const size_t dp = p.find(':');
+        if (dp != std::string::npos)
+            p = p.substr(dp + 1);
+        const size_t pv = p.find(';');
+        if (pv != std::string::npos)
+            p.resize(pv);
+        std::string out;
+        for (char c : p)
+        {
+            if (c == '\\')
+                c = '/';
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            if (c == '/' && !out.empty() && out.back() == '/')
+                continue;
+            out += c;
+        }
+        if (out.empty() || out[0] != '/')
+            out = "/" + out;
+        return out;
+    }
+
+    // int sceCdLayerSearchFile(sceCdlFILE *fp, const char *name, int layer)
+    // int sceCdSearchFile(sceCdlFILE *fp, const char *name)
+    // sceCdlFILE: lsn, size, name[16], date[8].
+    void cercaFile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        ctx->pc = GPR_U32(ctx, 31);
+        const uint32_t fp = GPR_U32(ctx, 4);
+        const uint32_t pn = GPR_U32(ctx, 5);
+        std::string nome;
+        for (uint32_t i = 0; i < 256; ++i)
+        {
+            const char c = static_cast<char>(rdram[(pn + i) & PS2_RAM_MASK]);
+            if (!c)
+                break;
+            nome += c;
+        }
+        VoceIso v;
+        bool trovato = false;
+        {
+            std::lock_guard<std::mutex> lock(g_isoMutex);
+            leggiIso();
+            const auto it = g_iso.find(normalizza(nome));
+            if (it != g_iso.end() && !it->second.cartella)
+            {
+                v = it->second;
+                trovato = true;
+            }
+        }
+        static int traccia = 0;
+        if (traccia < 64)
+        {
+            ++traccia;
+            std::printf("[sor] sceCdSearchFile \"%s\" -> %s lsn=%u size=%u\n", nome.c_str(),
+                        trovato ? "trovato" : "NON trovato", v.lsn, v.size);
+        }
+        if (!trovato || fp == 0)
+        {
+            SET_GPR_S32(ctx, 2, 0);
+            return;
+        }
+        uint8_t res[32] = {};
+        std::memcpy(res, &v.lsn, 4);
+        std::memcpy(res + 4, &v.size, 4);
+        std::string foglia = normalizza(nome);
+        foglia = foglia.substr(foglia.find_last_of('/') + 1) + ";1";
+        std::memcpy(res + 8, foglia.data(), std::min<size_t>(16, foglia.size()));
+        for (int i = 0; i < 32; ++i)
+            rdram[(fp + i) & PS2_RAM_MASK] = res[i];
+        SET_GPR_S32(ctx, 2, 1);
+    }
+}
+
+// 2. Traccia (solo per le prove): con SOR_TRACCIA=<mappa/funzioni.csv> ogni funzione
+//    del gioco passa da un involucro che annota le ultime chiamate (indirizzo, ra, a0)
+//    e quante volte e' stata chiamata. sorStampaTraccia() le stampa (all'uscita del
+//    gioco, alla fine del tempo, o quando si chiama exit).
+void sorStampaTraccia();
+
+namespace
+{
+    struct Chiamata
+    {
+        uint32_t fn, ra, a0, a1;
+    };
+    constexpr size_t kAnello = 400;
+    Chiamata g_anello[kAnello];
+    uint64_t g_numChiamate = 0;
+    std::vector<PS2Runtime::RecompiledFunction> g_originali;
+    std::vector<uint32_t> g_conteggi;
+
+    uint32_t slotDi(uint32_t pc)
+    {
+        return (pc - g_ps2RecompiledFunctionTableBase) / 4u;
+    }
+
+    // Sentinella: una parola di memoria del gioco che non deve cambiare (per trovare chi
+    // la sovrascrive). SOR_SENTINELLA=<indirizzo funzione>: sorveglia la cella dove quella
+    // funzione salva il suo ra (sp all'ingresso - SOR_SENTINELLA_OFF, esadecimale).
+    uint32_t g_sentFn = 0, g_sentOff = 0, g_sentAddr = 0, g_sentVal = 0;
+    bool g_sentArmata = false, g_sentScattata = false;
+
+    uint32_t leggi32(uint8_t *rdram, uint32_t a)
+    {
+        uint32_t v;
+        std::memcpy(&v, rdram + (a & PS2_RAM_MASK), 4);
+        return v;
+    }
+
+    void controllaSentinella(uint8_t *rdram, uint32_t pc, uint32_t ra)
+    {
+        if (!g_sentAddr || g_sentScattata)
+            return;
+        const uint32_t v = leggi32(rdram, g_sentAddr);
+        if (!g_sentArmata)
+        {
+            g_sentArmata = (v == g_sentVal);
+            return;
+        }
+        if (v != g_sentVal)
+        {
+            g_sentScattata = true;
+            std::printf("[sor] SENTINELLA: [0x%x] da 0x%x a 0x%x, prima della chiamata a 0x%x (ra 0x%x)\n",
+                        g_sentAddr, g_sentVal, v, pc, ra);
+            std::fflush(stdout);
+        }
+    }
+
+    void involucro(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        const uint32_t pc = ctx->pc;
+        const uint32_t s = slotDi(pc);
+        controllaSentinella(rdram, pc, GPR_U32(ctx, 31));
+        if (pc == g_sentFn && !g_sentAddr)
+        {
+            g_sentAddr = GPR_U32(ctx, 29) - g_sentOff;
+            g_sentVal = GPR_U32(ctx, 31);
+            std::printf("[sor] sentinella su [0x%x] = ra 0x%x di 0x%x\n", g_sentAddr, g_sentVal, pc);
+        }
+        g_anello[g_numChiamate % kAnello] = {pc, GPR_U32(ctx, 31), GPR_U32(ctx, 4), GPR_U32(ctx, 5)};
+        ++g_numChiamate;
+        if (s < g_conteggi.size())
+            ++g_conteggi[s];
+        const uint32_t ra = GPR_U32(ctx, 31);
+        const uint32_t sp = GPR_U32(ctx, 29);
+        g_originali[s](rdram, ctx, rt);
+        // Ritorno anomalo: la funzione e' finita (sp tornato com'era) ma il pc non e' il ra
+        // con cui era stata chiamata.
+        static int anomali = 0;
+        if (ctx->pc != ra && GPR_U32(ctx, 29) == sp && anomali < 40 && ctx->pc != pc)
+        {
+            ++anomali;
+            std::printf("[sor] ritorno anomalo: 0x%x chiamata con ra=0x%x sp=0x%x -> pc=0x%x\n", pc, ra, sp, ctx->pc);
+            std::fflush(stdout);
+        }
+    }
+
+    void exitTracciato(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        std::printf("[sor] exit(%d) chiamata da ra=0x%x\n", static_cast<int>(GPR_U32(ctx, 4)), GPR_U32(ctx, 31));
+        sorStampaTraccia();
+        involucro(rdram, ctx, rt);
+    }
+}
+
+void sorStampaTraccia()
+{
+    if (g_originali.empty())
+        return;
+    const uint64_t n = g_numChiamate;
+    const uint64_t da = n > kAnello ? n - kAnello : 0;
+    std::printf("[sor] traccia: %llu chiamate; ultime %llu:\n", (unsigned long long)n, (unsigned long long)(n - da));
+    for (uint64_t i = da; i < n; ++i)
+    {
+        const Chiamata &c = g_anello[i % kAnello];
+        std::printf("[sor]  T 0x%x da 0x%x a0=0x%x a1=0x%x\n", c.fn, c.ra, c.a0, c.a1);
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> top;
+    for (uint32_t s = 0; s < g_conteggi.size(); ++s)
+        if (g_conteggi[s])
+            top.push_back({g_conteggi[s], g_ps2RecompiledFunctionTableBase + s * 4u});
+    std::sort(top.rbegin(), top.rend());
+    std::printf("[sor] funzioni piu' chiamate (%zu diverse):\n", top.size());
+    for (size_t i = 0; i < top.size() && i < 4000; ++i)
+        std::printf("[sor]  C %u x 0x%x\n", top[i].first, top[i].second);
+    std::fflush(stdout);
+}
+
+// 3. Filmati: il runtime e' senza FFmpeg, quindi sceMpegGetPicture aspetterebbe per sempre.
+//    Cms_MovieGetPicture (0x30F9F0) dice subito "filmato finito" (bit 0x10 di [a0+0xA], come fa
+//    l'originale quando sceMpegIsEnd risponde si'): il gioco salta il filmato e va avanti.
+namespace
+{
+    void filmatoFinito(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t film = GPR_U32(ctx, 4);
+        const uint32_t a = (film + 0xAu) & PS2_RAM_MASK;
+        uint16_t flag;
+        std::memcpy(&flag, rdram + a, 2);
+        flag |= 0x10u;
+        std::memcpy(rdram + a, &flag, 2);
+        static int quante = 0;
+        if (quante < 4)
+        {
+            ++quante;
+            std::printf("[sor] filmato saltato (stream 0x%x)\n", film);
+            std::fflush(stdout);
+        }
+        SET_GPR_S32(ctx, 2, 1);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+}
+
+void sorInstallaSostituzioni(PS2Runtime &rt)
+{
+    rt.registerFunction(0x120190u, cercaFile); // sceCdSearchFile
+    rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
+    rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
+
+    const char *mappa = std::getenv("SOR_TRACCIA");
+    if (!mappa || !*mappa)
+        return;
+    std::ifstream f(mappa);
+    if (!f)
+    {
+        std::fprintf(stderr, "[sor] SOR_TRACCIA: mappa %s non trovata\n", mappa);
+        return;
+    }
+    if (const char *s = std::getenv("SOR_SENTINELLA"))
+        g_sentFn = static_cast<uint32_t>(std::strtoul(s, nullptr, 16));
+    if (const char *s = std::getenv("SOR_SENTINELLA_OFF"))
+        g_sentOff = static_cast<uint32_t>(std::strtoul(s, nullptr, 16));
+    g_originali.assign(g_ps2RecompiledFunctionTableSlotCount, nullptr);
+    g_conteggi.assign(g_ps2RecompiledFunctionTableSlotCount, 0u);
+    std::string riga;
+    std::getline(f, riga);
+    size_t avvolte = 0;
+    while (std::getline(f, riga))
+    {
+        const size_t v1 = riga.find(',');
+        if (v1 == std::string::npos)
+            continue;
+        const uint32_t a = static_cast<uint32_t>(std::strtoul(riga.c_str() + v1 + 1, nullptr, 16));
+        if (a < g_ps2RecompiledFunctionTableBase || a >= g_ps2RecompiledFunctionTableEnd)
+            continue;
+        const uint32_t s = slotDi(a);
+        PS2Runtime::RecompiledFunction fn = rt.lookupFunction(a);
+        if (!fn || fn == involucro)
+            continue;
+        g_originali[s] = fn;
+        rt.registerFunction(a, a == 0x124028u ? exitTracciato : involucro);
+        ++avvolte;
+    }
+    std::printf("[sor] traccia attiva su %zu funzioni\n", avvolte);
+}

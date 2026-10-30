@@ -1,0 +1,19 @@
+# ps2_recomp settings for Shadow of Rome PAL (SLES_529.50).
+# This is a template: scripts/setup.sh copies it to analisi/main.toml and fills in
+# the stubs from your own disc. Paths are relative to the repository's folder.
+[general]
+input = "disco/SLES_529.50"
+ghidra_output = "mappa/funzioni.csv"
+output = "gen/main"
+single_file_output = false
+low_memory_mode = false
+output_worker_threads = 0
+patch_syscalls = false
+patch_cop0 = true
+patch_cache = true
+
+# Funzioni della libreria Sony sostituite dal runtime (handler@indirizzo).
+# Riempito da strumenti/stubs_da_analyzer.py con i nomi trovati da ps2_analyzer.
+stubs = [
+]
+skip = []

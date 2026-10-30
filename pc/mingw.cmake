@@ -1,0 +1,18 @@
+# Windows 64-bit build from WSL with llvm-mingw: set the LLVM_MINGW environment
+# variable to its folder (default: ~/llvm-mingw).
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+if(DEFINED ENV{LLVM_MINGW})
+    set(LLVM_MINGW "$ENV{LLVM_MINGW}")
+else()
+    set(LLVM_MINGW "$ENV{HOME}/llvm-mingw")
+endif()
+set(CMAKE_C_COMPILER "${LLVM_MINGW}/bin/x86_64-w64-mingw32-clang")
+set(CMAKE_CXX_COMPILER "${LLVM_MINGW}/bin/x86_64-w64-mingw32-clang++")
+set(CMAKE_RC_COMPILER "${LLVM_MINGW}/bin/x86_64-w64-mingw32-windres")
+set(CMAKE_AR "${LLVM_MINGW}/bin/llvm-ar")
+set(CMAKE_RANLIB "${LLVM_MINGW}/bin/llvm-ranlib")
+set(CMAKE_FIND_ROOT_PATH "${LLVM_MINGW}/x86_64-w64-mingw32")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

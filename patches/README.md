@@ -1,0 +1,22 @@
+# Patches to PS2Recomp
+
+`thirdparty/PS2Recomp` is a submodule at upstream commit `e5636981` of
+[ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp). It stays at that commit;
+`scripts/apply_patches.sh` applies the files in `ps2recomp/` to the checkout, in
+name order, and skips a patch that is already applied. Lines added by this project
+are marked `sor`. Some comments are in Italian.
+
+To undo them: `git -C thirdparty/PS2Recomp checkout -- .`
+
+| Patch | What it changes |
+|---|---|
+| `0001-iop-module-args-rpc-and-pacing.patch` | IOP modules start with `start(argc, argv)` as on the console (Capcom's sound driver `SNDDRVHD.IRX` needs it). `sceSifBindRpc` from the IOP to a game server marks the client as bound, and `sceSifCallRpc` from the IOP to the game clears the reply and finishes at once, without running the game's server. The IOP runs in packets of at least 512 cycles, and one instruction counts as 4 cycles: this took the game from a quarter of its speed to about the console's speed. Thread, RPC server and module lists for the debug report. |
+| `0002-runtime-stacks-heap-display-and-reports.patch` | `PS2Runtime::setAsyncCallbackStackRegion`: the callback stacks started at the top of RAM, where this game keeps its main thread's stack, and overwrote it. `PS2Runtime::pinGuestHeap`: the runtime's heap stays in a fixed area, and the game's `SetupHeap` no longer moves it over the game's data. The image is always shown in 4:3. `SOR_FOTO`, `SOR_FOTO_OGNI` and `SOR_FOTO_VRAM` save frames during tests. Messages when the runtime stops. |
+| `0003-gs-image-upload-and-interlaced-display.patch` | `sceGsExecLoadImage` and `sceGsExecStoreImage` multiplied the VRAM address by 8, so textures landed in the wrong place and the screen stayed black. With INT=1 and FFMD=1 the buffer has half of the display's lines: half are read and each one is shown twice. `SOR_FOTO_FBP` shows another buffer during tests. Draw counts for the debug report (`sorGsRapporto`). |
+| `0004-pad-modes-and-scripted-keys.patch` | `scePadInfoMode` reports two modes, digital and analog: with only one the game says the analog controller is not connected. `SOR_TASTI` presses keys by itself during tests. |
+
+Outside the patches, in `pc/`: `sor_hle.cpp` finds files by reading the disc image's
+ISO9660 index, and skips the movies (the build has no FFmpeg); `main_sor.cpp` places the
+stacks and the heap; `sor_profilo.cpp` is a sampling profiler (`SOR_PROFILO`, read with
+`strumenti/profilo.py`). In `strumenti/stubs_da_analyzer.py`, `InitAlarm` is left to the
+runtime: translated, it made every `SetAlarm` fail.

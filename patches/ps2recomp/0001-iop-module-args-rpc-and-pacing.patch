@@ -1,0 +1,321 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_kernel.cpp b/ps2xIOP/src/emulator/core/iop_kernel.cpp
+index 4832d8f..f663b48 100644
+--- a/ps2xIOP/src/emulator/core/iop_kernel.cpp
++++ b/ps2xIOP/src/emulator/core/iop_kernel.cpp
+@@ -4,6 +4,7 @@
+ #include "../iop_emulator_const.h"
+ 
+ #include <algorithm>
++#include <cstdio>
+ 
+ namespace ps2x::iop::detail
+ {
+@@ -741,4 +742,21 @@ namespace ps2x::iop::detail
+                 thread.state = IopThreadState::Dead;
+         }
+     }
++
++    std::string IopKernel::describeThreads() const
++    {
++        static const char *const names[] = {"dormant", "ready", "running", "sleep", "delay",
++                                            "sema", "eventflag", "suspended", "dead"};
++        std::string out;
++        char line[160];
++        for (const auto &[id, thread] : m_threads)
++        {
++            const auto state = static_cast<size_t>(thread.state);
++            std::snprintf(line, sizeof(line), "thread %d %s pc=0x%x ra=0x%x entry=0x%x prio=%u wait=%d\n",
++                          id, state < 9 ? names[state] : "?", thread.cpu.pc, thread.cpu.gpr[31], thread.entry,
++                          thread.priority, thread.waitId);
++            out += line;
++        }
++        return out;
++    }
+ }
+diff --git a/ps2xIOP/src/emulator/core/iop_kernel.h b/ps2xIOP/src/emulator/core/iop_kernel.h
+index 4977102..64db879 100644
+--- a/ps2xIOP/src/emulator/core/iop_kernel.h
++++ b/ps2xIOP/src/emulator/core/iop_kernel.h
+@@ -5,6 +5,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <map>
++#include <string>
+ 
+ namespace ps2x::iop::detail
+ {
+@@ -67,6 +68,8 @@ namespace ps2x::iop::detail
+         void terminateThreadsInRange(uint32_t base, uint32_t size);
+ 
+         [[nodiscard]] size_t threadCount() const noexcept { return m_threads.size(); }
++        // sor: one line per thread (id, state, pc, ra, priority, wait id) for the debug report.
++        [[nodiscard]] std::string describeThreads() const;
+ 
+     private:
+         struct Semaphore
+diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
+index e5f63a9..4deb957 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.cpp
++++ b/ps2xIOP/src/emulator/iop_emulator.cpp
+@@ -19,6 +19,7 @@
+ 
+ #include <algorithm>
+ #include <cctype>
++#include <cstdio>
+ #include <map>
+ #include <optional>
+ #include <span>
+@@ -27,6 +28,8 @@
+ 
+ namespace ps2x::iop::detail
+ {
++    // sor: un'istruzione vale 4 cicli: i cicli che l'IOP passa a girare a vuoto costano un quarto.
++    static constexpr uint64_t kCyclesPerInstruction = 4u;
+     namespace
+     {
+         constexpr uint32_t kRamSize = IopMemory::RamSize;
+@@ -393,7 +396,7 @@ namespace ps2x::iop::detail
+             const bool running = cpuCore.executeInstruction(cpu);
+             schedulePendingDma();
+             ++totalInstructions;
+-            ++totalCycles;
++            totalCycles += kCyclesPerInstruction; // sor
+             return running;
+         }
+ 
+@@ -576,7 +579,7 @@ namespace ps2x::iop::detail
+                         continue;
+                     }
+                     const uint64_t before = totalCycles;
+-                    runCpu(next->cpu, static_cast<uint32_t>(std::min<uint64_t>(kDefaultSlice, target - totalCycles)));
++                    runCpu(next->cpu, static_cast<uint32_t>(std::min<uint64_t>(kDefaultSlice, (target - totalCycles + kCyclesPerInstruction - 1u) / kCyclesPerInstruction)));
+                     kernel.endTimeslice(*next, kThreadReturnSentinel);
+                     if (totalCycles == before)
+                         ++totalCycles;
+@@ -614,17 +617,36 @@ namespace ps2x::iop::detail
+             module.entry = loaded.entry;
+             module.gp = loaded.gp;
+ 
+-            uint32_t args = 0u;
++            // sor: like the real modload, start(argc, argv) with argv[0] = module path and
++            // one argv entry per NUL-terminated string of the argument buffer.
++            std::vector<uint8_t> strings(module.path.begin(), module.path.end());
++            strings.push_back(0u);
++            std::vector<uint32_t> offsets{0u};
+             if (arguments && argumentSize)
+             {
+-                args = allocate(argumentSize + 1u, 16u);
+-                if (args)
++                const auto *bytes = static_cast<const uint8_t *>(arguments);
++                for (uint32_t i = 0u; i < argumentSize;)
+                 {
+-                    writeRam(args, arguments, argumentSize);
+-                    write8(args + argumentSize, 0u);
++                    offsets.push_back(static_cast<uint32_t>(strings.size()));
++                    while (i < argumentSize && bytes[i] != 0u)
++                        strings.push_back(bytes[i++]);
++                    strings.push_back(0u);
++                    ++i;
+                 }
+             }
+-            const uint32_t startResult = callFunction(module.entry, argumentSize, args, 0u, 0u, module.gp);
++            const uint32_t argc = static_cast<uint32_t>(offsets.size());
++            const uint32_t stringsSize = (static_cast<uint32_t>(strings.size()) + 3u) & ~3u;
++            uint32_t args = allocate(stringsSize + (argc + 1u) * 4u, 16u);
++            uint32_t argv = 0u;
++            if (args)
++            {
++                writeRam(args, strings.data(), strings.size());
++                argv = args + stringsSize;
++                for (uint32_t i = 0u; i < argc; ++i)
++                    write32(argv + i * 4u, args + offsets[i]);
++                write32(argv + argc * 4u, 0u);
++            }
++            const uint32_t startResult = callFunction(module.entry, args ? argc : 0u, argv, 0u, 0u, module.gp);
+             if (args)
+                 freeAllocation(args);
+             module.resident = startResult == 0u || startResult == 2u;
+@@ -741,11 +763,17 @@ namespace ps2x::iop::detail
+ 
+     void IopEmulator::runEeCycles(uint64_t eeCycles) noexcept
+     {
++        // sor: l'IOP gira a pacchetti di almeno 512 cicli, non a ogni controllo dell'EE (32 cicli
++        // EE = 4 cicli IOP): il giro di servizio costava piu' delle istruzioni stesse.
+         const uint64_t total = m_impl->eeCycleCarry + eeCycles;
++        if (total < 8u * 512u)
++        {
++            m_impl->eeCycleCarry = total;
++            return;
++        }
+         const uint64_t iopCycles = total / 8u;
+         m_impl->eeCycleCarry = total % 8u;
+-        if (iopCycles)
+-            m_impl->runCycles(iopCycles);
++        m_impl->runCycles(iopCycles);
+     }
+ 
+     RpcResult IopEmulator::handleRpc(const RpcRequest &request)
+@@ -827,4 +855,16 @@ namespace ps2x::iop::detail
+         return static_cast<uint32_t>(m_impl->rpc.serverCount());
+     }
+ 
++    std::string IopEmulator::debugReport() const
++    {
++        std::string out = m_impl->kernel.describeThreads() + m_impl->rpc.describeServers() + "modules:";
++        char item[96];
++        for (const auto &[id, module] : m_impl->modules)
++        {
++            std::snprintf(item, sizeof(item), " %s@0x%x", module.name.c_str(), module.base);
++            out += item;
++        }
++        return out;
++    }
++
+ }
+diff --git a/ps2xIOP/src/emulator/iop_emulator.h b/ps2xIOP/src/emulator/iop_emulator.h
+index 01b48df..245443e 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.h
++++ b/ps2xIOP/src/emulator/iop_emulator.h
+@@ -41,6 +41,8 @@ namespace ps2x::iop::detail
+         [[nodiscard]] uint32_t loadedModuleCount() const noexcept;
+         [[nodiscard]] uint32_t threadCount() const noexcept;
+         [[nodiscard]] uint32_t rpcServerCount() const noexcept;
++        // sor: threads, RPC servers and modules, for the debug report.
++        [[nodiscard]] std::string debugReport() const;
+ 
+     private:
+         class Impl;
+diff --git a/ps2xIOP/src/emulator/services/iop_rpc.cpp b/ps2xIOP/src/emulator/services/iop_rpc.cpp
+index cf4fdc6..6d95cf8 100644
+--- a/ps2xIOP/src/emulator/services/iop_rpc.cpp
++++ b/ps2xIOP/src/emulator/services/iop_rpc.cpp
+@@ -7,12 +7,23 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <cstdio>
+ #include <cstring>
+ #include <limits>
+ #include <vector>
+ 
+ namespace ps2x::iop::detail
+ {
++    namespace
++    {
++        std::string toHex(uint32_t value) // sor
++        {
++            char text[12];
++            std::snprintf(text, sizeof(text), "%x", value);
++            return text;
++        }
++    }
++
+     IopRpcBridge::IopRpcBridge(IopHost &host, IopMemory &memory, IopKernel &kernel) noexcept
+         : m_host(host), m_memory(memory), m_kernel(kernel)
+     {
+@@ -148,10 +159,46 @@ namespace ps2x::iop::detail
+         case 10:
+         case 11:
+         case 14: // InitRpc
+-        case 15:
+-        case 16:
+             setV0(0);
+             return true;
++        case 15: // sceSifBindRpc(cd, sid, mode), IOP -> EE server
++        {
++            // sor: there is no EE-side bind round trip here. Mark the client as bound
++            // (cd->server != 0) so IOP drivers that poll for their EE server (Capcom
++            // SNDDRVHD binds 0x77777779) can go on.
++            const uint32_t client = cpu.gpr[4];
++            const uint32_t sid = cpu.gpr[5];
++            if (client != 0u && m_memory.ownsRamRange(client, 0x28u))
++            {
++                m_memory.write32(client + 0x24u, 0x80000000u | (sid & 0x0FFFFFFFu));
++                m_memory.write32(client + 0x10u, 0u);
++            }
++            m_host.log(LogLevel::Info, "[IOP] sceSifBindRpc to EE sid=0x" + toHex(sid) + " (marked bound)");
++            setV0(0);
++            return true;
++        }
++        case 16: // sceSifCallRpc(cd, fno, mode, send, ssize, receive, rsize, end, param), IOP -> EE
++        {
++            // sor: EE servers called from the IOP are not executed; the receive buffer is
++            // cleared and the call completes at once.
++            const uint32_t stackPointer = cpu.gpr[29];
++            const uint32_t receive = m_memory.read32(stackPointer + 20u);
++            const uint32_t receiveSize = m_memory.read32(stackPointer + 24u);
++            if (receive != 0u && receiveSize != 0u && receiveSize < 0x10000u &&
++                m_memory.ownsRamRange(receive, receiveSize))
++            {
++                const std::vector<uint8_t> zeros(receiveSize, 0u);
++                (void)m_memory.writeRam(receive, zeros.data(), zeros.size());
++            }
++            if (m_ioPCallLogs < 16u)
++            {
++                ++m_ioPCallLogs;
++                m_host.log(LogLevel::Info, "[IOP] sceSifCallRpc to EE fno=0x" + toHex(cpu.gpr[5]) +
++                                               " mode=0x" + toHex(cpu.gpr[6]) + " (not executed)");
++            }
++            setV0(0);
++            return true;
++        }
+         case 12: // sceSifSendCmd
+         case 13: // isceSifSendCmd
+         {
+@@ -346,4 +393,16 @@ namespace ps2x::iop::detail
+         const auto server = m_servers.find(sid);
+         return server != m_servers.end() && server->second.function != 0u;
+     }
++
++    std::string IopRpcBridge::describeServers() const
++    {
++        std::string out = "rpc servers:";
++        char item[48];
++        for (const auto &[sid, server] : m_servers)
++        {
++            std::snprintf(item, sizeof(item), " 0x%x(fn=0x%x)", sid, server.function);
++            out += item;
++        }
++        return out + "\n";
++    }
+ }
+diff --git a/ps2xIOP/src/emulator/services/iop_rpc.h b/ps2xIOP/src/emulator/services/iop_rpc.h
+index a4286ba..ff93049 100644
+--- a/ps2xIOP/src/emulator/services/iop_rpc.h
++++ b/ps2xIOP/src/emulator/services/iop_rpc.h
+@@ -4,6 +4,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <string>
+ #include <unordered_map>
+ 
+ namespace ps2x::iop
+@@ -54,6 +55,8 @@ namespace ps2x::iop::detail
+ 
+         [[nodiscard]] bool hasServer(uint32_t sid) const noexcept;
+         [[nodiscard]] size_t serverCount() const noexcept { return m_servers.size(); }
++        // sor: registered SIDs for the debug report.
++        [[nodiscard]] std::string describeServers() const;
+ 
+     private:
+         struct RpcServer
+@@ -74,5 +77,6 @@ namespace ps2x::iop::detail
+         std::unordered_map<uint32_t, RpcServer> m_servers;
+         uint32_t m_nextDmaId = 1u;
+         bool m_sifInitialized = false;
++        uint32_t m_ioPCallLogs = 0u; // sor
+     };
+ }
+diff --git a/ps2xIOP/src/iop_subsystem.cpp b/ps2xIOP/src/iop_subsystem.cpp
+index b498155..823b2d4 100644
+--- a/ps2xIOP/src/iop_subsystem.cpp
++++ b/ps2xIOP/src/iop_subsystem.cpp
+@@ -262,6 +262,7 @@ namespace ps2x::iop
+         {
+             snapshot.diagnostics.push_back(m_impl->lastError);
+         }
++        snapshot.diagnostics.push_back(m_impl->emulator.debugReport()); // sor
+ 
+         for (const auto &service : m_impl->coreServices)
+         {

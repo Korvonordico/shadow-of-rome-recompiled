@@ -1,0 +1,106 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+index b50a4cf..28681c7 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+@@ -1,6 +1,12 @@
+ #include "Common.h"
+ #include "Pad.h"
+ 
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <string>
++#include <vector>
++
+ namespace ps2_stubs
+ {
+     namespace
+@@ -315,6 +321,62 @@ namespace ps2_stubs
+                 }
+             }
+ 
++            // sor: SOR_TASTI="<secondi>:<tasto>,..." preme un tasto da solo per 0,4 s (per le prove).
++            {
++                struct TastoProva
++                {
++                    double t;
++                    uint16_t mask;
++                };
++                static const std::vector<TastoProva> s_tasti = []()
++                {
++                    std::vector<TastoProva> v;
++                    const char *e = std::getenv("SOR_TASTI");
++                    std::string testo = e ? e : "";
++                    size_t pos = 0;
++                    while (pos < testo.size())
++                    {
++                        size_t fine = testo.find(',', pos);
++                        if (fine == std::string::npos)
++                            fine = testo.size();
++                        const std::string voce = testo.substr(pos, fine - pos);
++                        pos = fine + 1;
++                        const size_t dp = voce.find(':');
++                        if (dp == std::string::npos)
++                            continue;
++                        const std::string nome = voce.substr(dp + 1);
++                        uint16_t m = 0;
++                        if (nome == "start") m = kPadBtnStart;
++                        else if (nome == "select") m = kPadBtnSelect;
++                        else if (nome == "x") m = kPadBtnCross;
++                        else if (nome == "o") m = kPadBtnCircle;
++                        else if (nome == "q") m = kPadBtnSquare;
++                        else if (nome == "t") m = kPadBtnTriangle;
++                        else if (nome == "su") m = kPadBtnUp;
++                        else if (nome == "giu") m = kPadBtnDown;
++                        else if (nome == "sx") m = kPadBtnLeft;
++                        else if (nome == "dx") m = kPadBtnRight;
++                        if (m)
++                            v.push_back({std::atof(voce.c_str()), m});
++                    }
++                    return v;
++                }();
++                static const auto s_inizio = std::chrono::steady_clock::now();
++                const double ora = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count();
++                for (const TastoProva &tp : s_tasti)
++                    if (ora >= tp.t && ora < tp.t + 0.4)
++                    {
++                        state.buttons = static_cast<uint16_t>(state.buttons & ~tp.mask);
++                        static double s_ultimo = -1.0;
++                        if (s_ultimo != tp.t)
++                        {
++                            s_ultimo = tp.t;
++                            std::printf("[sor] tasto di prova a %.1f s: 0x%04x\n", tp.t, tp.mask);
++                            std::fflush(stdout);
++                        }
++                    }
++            }
++
+             fillPadStatus(outData, state, portState);
+ 
+             {
+@@ -527,16 +589,22 @@ namespace ps2_stubs
+             setReturnS32(ctx, currentId);
+             return;
+         case 3: // PAD_MODECUROFFS
+-            setReturnS32(ctx, 0);
++            setReturnS32(ctx, portState->analogMode ? 1 : 0);
+             return;
+         case 4: // PAD_MODETABLE
++            // sor: una DualShock 2 ha due modi: digitale (4) e analogico (7). Con un modo solo
++            // il gioco non trova l'analogico e dice "controller analogico non collegato".
+             if (index == -1)
+             {
+-                setReturnS32(ctx, 1); // one available mode
++                setReturnS32(ctx, 2);
+             }
+             else if (index == 0)
+             {
+-                setReturnS32(ctx, currentId);
++                setReturnS32(ctx, kPadTypeDigital);
++            }
++            else if (index == 1)
++            {
++                setReturnS32(ctx, kPadTypeDualShock);
+             }
+             else
+             {

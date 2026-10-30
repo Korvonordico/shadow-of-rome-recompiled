@@ -1,0 +1,202 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index aed4cb5..90f23ea 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -1,5 +1,6 @@
+ #include "Common.h"
+ #include "GS.h"
++#include <vector>
+ #include "ps2_log.h"
+ #include "runtime/gs/ps2_gs_common.h"
+ #include "runtime/gs/ps2_gs_psmct16.h"
+@@ -615,23 +616,19 @@ namespace ps2_stubs
+         const uint32_t imageQwc = (totalImageBytes + 15u) / 16u;
+         const uint32_t totalQwc = headerQwc + imageQwc;
+ 
+-        uint32_t pktAddr = runtime->guestMalloc(totalQwc * 16u, 16u);
+-        if (pktAddr == 0)
+-        {
+-            setReturnS32(ctx, -1);
+-            return;
+-        }
+-
+-        uint8_t *pkt = getMemPtr(rdram, pktAddr);
++        // sor: il pacchetto sta nella memoria del PC (niente guestMalloc, che finirebbe nel
++        // heap del gioco e limiterebbe la dimensione delle texture).
++        std::vector<uint8_t> pktHost(static_cast<size_t>(totalQwc) * 16u, 0u);
++        uint8_t *pkt = pktHost.data();
+         const uint8_t *src = getConstMemPtr(rdram, srcAddr);
+-        if (!pkt || !src)
++        if (!src)
+         {
+-            runtime->guestFree(pktAddr);
+             setReturnS32(ctx, -1);
+             return;
+         }
+ 
+-        uint32_t dbp = (static_cast<uint32_t>(img.vram_addr) * 2048u) / 256u;
++        // sor: dbp arriva gia' in blocchi da 64 parole (come nel kit Sony), senza moltiplicare.
++        uint32_t dbp = static_cast<uint32_t>(img.vram_addr);
+         uint32_t dsax = static_cast<uint32_t>(img.x);
+         uint32_t dsay = static_cast<uint32_t>(img.y);
+ 
+@@ -655,14 +652,8 @@ namespace ps2_stubs
+ 
+         std::memcpy(pkt + headerQwc * 16u, src, totalImageBytes);
+ 
+-        constexpr uint32_t GIF_CHANNEL = 0x1000A000;
+-        constexpr uint32_t CHCR_STR_MODE0 = 0x101u;
+-        auto &mem = runtime->memory();
+-        mem.writeIORegister(GIF_CHANNEL + 0x10u, pktAddr);
+-        mem.writeIORegister(GIF_CHANNEL + 0x20u, totalQwc & 0xFFFFu);
+-        mem.writeIORegister(GIF_CHANNEL + 0x00u, CHCR_STR_MODE0);
+-        mem.processPendingTransfers();
+-        runtime->guestFree(pktAddr);
++        runtime->memory().processGIFPacket(pkt, totalQwc * 16u);
++        runtime->memory().processPendingTransfers();
+ 
+         setReturnS32(ctx, 0);
+     }
+@@ -696,7 +687,7 @@ namespace ps2_stubs
+             return;
+         }
+ 
+-        uint32_t sbp = (static_cast<uint32_t>(img.vram_addr) * 2048u) / 256u;
++        uint32_t sbp = static_cast<uint32_t>(img.vram_addr); // sor: gia' in blocchi
+         uint64_t bitbltbuf = (static_cast<uint64_t>(sbp & 0x3FFFu) << 0) |
+                              (static_cast<uint64_t>(fbw & 0x3Fu) << 16) |
+                              (static_cast<uint64_t>(img.psm & 0x3Fu) << 24) |
+diff --git a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+index f0ad507..096fe87 100644
+--- a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+@@ -1,4 +1,5 @@
+ #include "runtime/gs/gs_cpu_backend.h"
++#include <cstdlib>
+ #include "runtime/gs/ps2_gs_common.h"
+ #include "runtime/gs/ps2_gs_psmct16.h"
+ #include "runtime/gs/ps2_gs_psmct32.h"
+@@ -1864,7 +1865,10 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
+     const GSSmode2State smode2 = decodeSMode2(request.smode2);
+     const bool fieldMode = smode2.interlaced && !smode2.frameMode;
+     const bool oddField = (request.vsyncTick & 1ull) != 0ull;
+-    const GSFrameReg displayFrame1 = decodeDisplayFrame(request.dispfb1);
++    GSFrameReg displayFrame1 = decodeDisplayFrame(request.dispfb1);
++    // sor: SOR_FOTO_FBP=<hex> mostra un altro buffer (per le prove)
++    if (const char *sorFbp = std::getenv("SOR_FOTO_FBP"))
++        displayFrame1.fbp = static_cast<uint32_t>(std::strtoul(sorFbp, nullptr, 16));
+     const GSFrameReg displayFrame2 = decodeDisplayFrame(request.dispfb2);
+     const GSDisplayReadOrigin origin1 = decodeDisplayReadOrigin(request.dispfb1);
+     const GSDisplayReadOrigin origin2 = decodeDisplayReadOrigin(request.dispfb2);
+@@ -1969,10 +1973,25 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
+     result.width = valid1 ? width1 : width2;
+     result.height = valid1 ? height1 : height2;
+     GSFrameReg selected = displayFrame;
+-    if (!copySource(displayFrame, origin, result.width, result.height, true, false, selected, result.pixels, result.usedPreferred))
++    // sor: con INT=1 e FFMD=1 l'altezza di DISPLAY conta le righe dei due campi, ma il buffer
++    // ha solo le righe di un campo: se ne legge meta' e ogni riga si mostra due volte.
++    const bool sorDoppia = smode2.interlaced && smode2.frameMode;
++    const uint32_t righeBuffer = sorDoppia ? std::max<uint32_t>(1u, (result.height + 1u) / 2u) : result.height;
++    if (!copySource(displayFrame, origin, result.width, righeBuffer, true, false, selected, result.pixels, result.usedPreferred))
+         return {};
+-    if (fieldMode)
+-        applyFieldPresentation(result.pixels, result.width, result.height, oddField);
++    if (sorDoppia)
++    {
++        const size_t rigaBytes = static_cast<size_t>(kHostFrameWidth) * 4u;
++        if (result.pixels.size() < static_cast<size_t>(result.height) * rigaBytes)
++            result.pixels.resize(static_cast<size_t>(result.height) * rigaBytes, 0u);
++        for (uint32_t y = result.height; y-- > 0u;)
++        {
++            const size_t da = static_cast<size_t>(y / 2u) * rigaBytes;
++            const size_t a = static_cast<size_t>(y) * rigaBytes;
++            if (a + rigaBytes <= result.pixels.size() && da != a)
++                std::memcpy(result.pixels.data() + a, result.pixels.data() + da, result.width * 4u);
++        }
++    }
+     normalizePresentationAlpha(result.pixels, result.width, result.height);
+     result.displayFbp = displayFrame.fbp;
+     result.sourceFbp = selected.fbp;
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 9281d5f..01cea3e 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -9,6 +9,41 @@
+ #include <cstring>
+ #include <iostream>
+ #include <sstream>
++#include <map>
++#include <mutex>
++
++// sor: conteggi di quello che il gioco disegna, per il rapporto ogni 10 s.
++namespace
++{
++    struct SorDisegno
++    {
++        uint64_t batch = 0;
++        uint32_t ultimoPrim = 0;
++        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
++        uint32_t rgba = 0;
++        uint32_t tbp = 0, psm = 0, tbw = 0, tcc = 0, tfx = 0, u = 0, v = 0;
++        float s = 0, t = 0;
++        uint64_t alpha = 0, test = 0;
++        uint32_t fbmsk = 0, zbp = 0;
++        uint32_t scissor[4] = {};
++    };
++    std::mutex g_sorMutex;
++    std::map<uint32_t, SorDisegno> g_sorDisegni;
++    uint64_t g_sorTag = 0, g_sorImmagini = 0;
++}
++
++void sorGsRapporto()
++{
++    std::lock_guard<std::mutex> lock(g_sorMutex);
++    std::printf("[sor] GS: tag GIF %llu, trasferimenti immagine %llu\n", (unsigned long long)g_sorTag, (unsigned long long)g_sorImmagini);
++    for (const auto &kv : g_sorDisegni)
++    {
++        const SorDisegno &d = kv.second;
++        std::printf("[sor] GS disegni fbp=0x%x psm=0x%x: %llu, ultimo prim=0x%x (%d,%d)-(%d,%d) rgba=%08x tbp=0x%x tbw=%u tpsm=0x%x tcc=%u tfx=%u uv=%u,%u st=%g,%g alpha=0x%llx test=0x%llx fbmsk=0x%x zbp=0x%x sc=%u,%u,%u,%u\n",
++                    kv.first >> 8, kv.first & 0xFF, (unsigned long long)d.batch, d.ultimoPrim, d.x0, d.y0, d.x1, d.y1, d.rgba, d.tbp, d.tbw, d.psm, d.tcc, d.tfx, d.u, d.v, d.s, d.t,
++                    (unsigned long long)d.alpha, (unsigned long long)d.test, d.fbmsk, d.zbp, d.scissor[0], d.scissor[1], d.scissor[2], d.scissor[3]);
++    }
++}
+ 
+ namespace
+ {
+@@ -684,6 +719,9 @@ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+             nreg = 16;
+ 
+         recordGifTagDebugEventUnlocked(sizeBytes, nloop, flg, nreg);
++        ++g_sorTag;
++        if (flg == GIF_FMT_IMAGE)
++            ++g_sorImmagini;
+ 
+         bool pre = ((tagLo >> 46) & 1) != 0;
+         if (pre)
+@@ -1576,6 +1614,26 @@ void GS::vertexKick(bool drawing)
+     if (drawing && m_backend)
+     {
+         GSPrimitiveBatch batch = buildDrawBatch(needed);
++        {
++            std::lock_guard<std::mutex> sorLock(g_sorMutex);
++            const GSContext &c = batch.state.context;
++            SorDisegno &d = g_sorDisegni[(c.frame.fbp << 8) | c.frame.psm];
++            ++d.batch;
++            d.ultimoPrim = static_cast<uint32_t>(m_prim.type) | (m_prim.tme ? 0x10u : 0u) | (m_prim.abe ? 0x40u : 0u) | (m_prim.ctxt ? 0x200u : 0u);
++            d.x0 = (static_cast<int>(batch.vertices[0].x)) - (c.xyoffset.ofx >> 4);
++            d.y0 = (static_cast<int>(batch.vertices[0].y)) - (c.xyoffset.ofy >> 4);
++            d.x1 = (static_cast<int>(batch.vertices[needed - 1].x)) - (c.xyoffset.ofx >> 4);
++            d.y1 = (static_cast<int>(batch.vertices[needed - 1].y)) - (c.xyoffset.ofy >> 4);
++            d.rgba = batch.vertices[needed - 1].r | (batch.vertices[needed - 1].g << 8) | (batch.vertices[needed - 1].b << 16) | (uint32_t(batch.vertices[needed - 1].a) << 24);
++            d.tbp = c.tex0.tbp0;
++            d.psm = c.tex0.psm; d.tbw = c.tex0.tbw; d.tcc = c.tex0.tcc; d.tfx = c.tex0.tfx;
++            d.u = batch.vertices[needed - 1].u; d.v = batch.vertices[needed - 1].v; d.s = batch.vertices[needed - 1].s; d.t = batch.vertices[needed - 1].t;
++            d.alpha = c.alpha;
++            d.test = c.test;
++            d.fbmsk = c.frame.fbmsk;
++            d.zbp = c.zbuf.zbp;
++            d.scissor[0] = c.scissor.x0; d.scissor[1] = c.scissor.x1; d.scissor[2] = c.scissor.y0; d.scissor[3] = c.scissor.y1;
++        }
+         updatePreferredDisplaySourceForDraw(batch);
+         m_backend->Submit(batch);
+         recordDrawDebugEventUnlocked(needed);
