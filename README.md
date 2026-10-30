@@ -36,6 +36,14 @@ Added for the menu work, because that is what the problems needed:
 
 An example of this debugging: a volume of 10 was invisible in the Options menu. Claude followed it through the number printing and the game's software floating-point code, down to a translated branch that looked at only 32 bits of a 64-bit register. That happened in an unattended session; my part was the plan for this stage and the rule that a result counts only when it has been checked directly.
 
+Added for the first arena:
+
+- a copy of the game's whole memory taken at a chosen function call, and watches on single memory words that report which call changed them;
+- dumps of what the game sends to the PS2's vector unit, and a small disassembler for its microcode (`strumenti/vudis.py`);
+- the original machine code of a function, read from the game's executable and compared with what PS2Recomp's replacement does.
+
+Another example: the screen went black after the difficulty choice, and the first clue pointed at the game's timer code. That was only the victim. Following the memory watches back showed the movie's video data overflowing its buffer and overwriting the player's model, because PS2Recomp ran the movie callbacks later instead of during the call. Reading the broken model then corrupted the rest of the memory. After that fix, the 3D took four more separate fixes. One of them: in the character microcode, bone weights were 8 times too small, and that was found by reading the microcode itself.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -49,16 +57,18 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 | Menu | Works | Notes |
 |---|---|---|
-| New Game | Yes, up to the difficulty choice | What comes after does not work, see below |
-| Load Game | Yes, the screen and going back | Nothing has been loaded: there are no saves yet |
+| New Game | Yes, up to the first arena | See below |
+| Load Game | The screen and going back | It says "No data present" even with the save made at startup. That is probably right, because no game in progress has been saved yet, but it is not checked |
 | Secrets of Rome | Yes | Cheats and the Salvo Master List with its pages open and close. The other 6 entries are locked, as on a new game |
 | Options: Subtitles / Tutorial, Sound, Controller, Violence | Yes | Each value changed and put back |
 | Options: Screen | Yes | Brightness and Screen Position pages |
 | Options: Control Explanation | Yes | All 3 pages |
 | Options: Default, OK | Yes | Default puts the changed values back |
 
+- **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
+- The save file the game makes at startup is created and loaded again.
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V).
-- About 24 frames per second at the main menu (measured on one PC).
+- About 24 frames per second at the main menu and about 22 in the first arena (measured on one PC).
 - A launcher, `ShadowOfRome.exe`: **Play** starts the game, **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". It is built with the C# compiler that already ships with Windows, so nothing has to be installed (`launcher/build.bat`, source in `launcher/Launcher.cs`).
 
 <p align="center">
@@ -76,12 +86,18 @@ The work is planned in steps, every step is tested on the real game, and I decid
   <img src="docs/options-controls.png" width="23%" alt="Options, Control Explanation">
 </p>
 
+<p align="center">
+  <img src="docs/first-arena-lanista.png" width="30%" alt="The first arena: the trainer's briefing">
+  <img src="docs/first-arena.png" width="30%" alt="The first arena: Agrippa seen from behind, in front of the trainer and the gate">
+  <img src="docs/first-arena-walking.png" width="30%" alt="The first arena: Agrippa after walking, with the City Arena sign">
+</p>
+
 **What does not work, or is not checked**
 
-- **Gameplay:** after New Game and the difficulty choice the screen goes black and a thread of the game dies. The first 3D scene has never been seen.
+- **Gameplay past the first steps:** fighting and the rooms after the first one have not been tried. In the first arena, a scripted left stick walked the character. Other bugs are likely.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so the opening movie does not play.
 - **Sound is not checked:** the sound driver runs in the simulator, but nobody has checked whether you can hear anything.
-- **Saving probably fails:** "Create a save file" went back to "No data present". "Begin game anyway" works.
+- **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
 - **Nobody has played it by hand yet:** the tests used scripted key presses. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but its buttons have not been tried. The other keys in the table below come from the code and were not tried with real key presses.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
@@ -155,6 +171,10 @@ In most menus ✕ confirms and △ goes back.
 1. Press Enter, then X to choose the language, then X on Start Game.
 2. Press X until you see "Begin game anyway?", press the left arrow to choose Yes, then X. If the memory card check comes back, that is normal: do it again.
 3. After the CAPCOM logo, press Enter at the title screen.
+
+## From the menu to the first arena
+
+Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, but the keyboard only has the D-pad keys here, and walking with them has not been tried.
 
 ## How it works
 

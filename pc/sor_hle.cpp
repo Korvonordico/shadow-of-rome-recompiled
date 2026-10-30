@@ -281,25 +281,89 @@ namespace
             }
             return v;
         }();
+        // SOR_RAMDUMP=<fn hex>,<n>,<percorso>: copia tutta la RAM su file alla n-esima chiamata di fn.
+        static uint32_t s_dumpFn = 0, s_dumpN = 0, s_dumpVisti = 0;
+        static const char *s_dumpPath = []() -> const char *
+        {
+            const char *e = std::getenv("SOR_RAMDUMP");
+            if (!e)
+                return nullptr;
+            char *fine = nullptr;
+            s_dumpFn = static_cast<uint32_t>(std::strtoul(e, &fine, 16));
+            s_dumpN = static_cast<uint32_t>(std::strtoul(fine + 1, &fine, 10));
+            return fine + 1;
+        }();
+        if (s_dumpPath && pc == s_dumpFn && ++s_dumpVisti == s_dumpN)
+        {
+            std::ofstream d(s_dumpPath, std::ios::binary);
+            d.write(reinterpret_cast<const char *>(rdram), PS2_RAM_SIZE);
+            std::printf("[sor] RAM copiata in %s (0x%x, chiamata %u, a0=%llx ra=0x%x)\n", s_dumpPath, pc, s_dumpN, reg64(ctx, 4), GPR_U32(ctx, 31));
+            std::fflush(stdout);
+        }
         Spia *spia = nullptr;
         for (Spia &q : s_spie)
-            if (pc == q.fn && (!q.ra || GPR_U32(ctx, 31) == q.ra) && q.quante < 6)
+            if (pc == q.fn && (!q.ra || GPR_U32(ctx, 31) == q.ra) && q.quante < 12)
             {
                 ++q.quante;
                 spia = &q;
-                std::printf("[sor] spia 0x%x da 0x%x: a0=%llx a1=%llx a2=%llx a3=%llx\n", pc, GPR_U32(ctx, 31), reg64(ctx, 4),
-                            reg64(ctx, 5), reg64(ctx, 6), reg64(ctx, 7));
+                std::printf("[sor] spia 0x%x da 0x%x (n.%d): a0=%llx a1=%llx a2=%llx a3=%llx sp=%x\n", pc, GPR_U32(ctx, 31), q.quante, reg64(ctx, 4),
+                            reg64(ctx, 5), reg64(ctx, 6), reg64(ctx, 7), GPR_U32(ctx, 29));
             }
-        g_anello[g_numChiamate % kAnello] = {pc, GPR_U32(ctx, 31), GPR_U32(ctx, 4), GPR_U32(ctx, 5)};
-        ++g_numChiamate;
+        // SOR_GUARDIA=<ind hex>[,<ind hex>...]: dice chi cambia quelle parole di RAM (controllate a
+        // ogni chiamata di funzione; indirizzi allineati a 4). Al massimo 16 righe per parola.
+        struct Guardia { uint32_t a, v; int n; };
+        static std::vector<Guardia> s_guardie = []()
+        {
+            std::vector<Guardia> v;
+            const char *e = std::getenv("SOR_GUARDIA");
+            while (e && *e)
+            {
+                char *fine = nullptr;
+                v.push_back({static_cast<uint32_t>(std::strtoul(e, &fine, 16)), 0, 0});
+                e = (*fine == ',') ? fine + 1 : nullptr;
+            }
+            return v;
+        }();
+        for (Guardia &q : s_guardie)
+        {
+            const uint32_t v = leggi32(rdram, q.a);
+            if (v != q.v)
+            {
+                if (q.n < 16)
+                {
+                    ++q.n;
+                    std::printf("[sor] guardia [0x%x]: 0x%x -> 0x%x, prima di 0x%x (ra 0x%x, sp=%x, a0=%x a1=%x)\n", q.a, q.v, v, pc, GPR_U32(ctx, 31),
+                                GPR_U32(ctx, 29), GPR_U32(ctx, 4), GPR_U32(ctx, 5));
+                    std::fflush(stdout);
+                }
+                q.v = v;
+            }
+        }
+        // Le interruzioni non entrano nell'anello: quando il gioco si blocca coprirebbero tutto.
+        const bool diInterruzione = pc == 0x1e8f50u || pc == 0x281e30u || pc == 0x10fba8u || pc == 0x10ec20u || pc == 0x119c50u || pc == 0x119a00u || pc == 0x119690u;
+        if (!diInterruzione)
+        {
+            g_anello[g_numChiamate % kAnello] = {pc, GPR_U32(ctx, 31), GPR_U32(ctx, 4), GPR_U32(ctx, 5)};
+            ++g_numChiamate;
+        }
         if (s < g_conteggi.size())
             ++g_conteggi[s];
         const uint32_t ra = GPR_U32(ctx, 31);
         const uint32_t sp = GPR_U32(ctx, 29);
+        const uint32_t a0Entrata = GPR_U32(ctx, 4);
         g_originali[s](rdram, ctx, rt);
         if (spia)
         {
             std::printf("[sor] spia 0x%x -> v0=%llx\n", pc, reg64(ctx, 2));
+            // SOR_SPIA_MAT=1: anche la matrice 4x4 scritta all'indirizzo a0 (per le funzioni sceVu0*).
+            static const bool s_mat = std::getenv("SOR_SPIA_MAT") != nullptr;
+            if (s_mat)
+                for (uint32_t r = 0; r < 4; ++r)
+                {
+                    float f[4];
+                    std::memcpy(f, rdram + ((a0Entrata + r * 16u) & PS2_RAM_MASK), 16);
+                    std::printf("[sor] spia    %g %g %g %g\n", f[0], f[1], f[2], f[3]);
+                }
             std::fflush(stdout);
         }
         // Ritorno anomalo: la funzione e' finita (sp tornato com'era) ma il pc non e' il ra

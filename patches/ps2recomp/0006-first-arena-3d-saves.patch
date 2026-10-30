@@ -1,0 +1,321 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -499,6 +499,7 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+     }
+ 
+     target->context = R5900Context{};
++    target->context.vu0_vf[0] = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f); // sor: vf0 vale sempre (0,0,0,1), anche nei thread nuovi: con vf0 a zero sceVu0UnitMatrix dava matrici nulle
+     target->context.pc = target->entry;
+     target->arg = arg;
+     target->suspendCount = 0;
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -1579,11 +1579,16 @@ namespace ps2_stubs
+             return true;
+         }
+ 
++        // sor: sulla console i callback di sceMpegDemuxPss/Ring girano DENTRO la chiamata. Messi in coda
++        // partivano dopo che il gioco aveva gia' cambiato buffer: il flusso video sforava e scriveva sopra
++        // i dati del livello (modello del giocatore a 0xD40200). Ora girano sul thread che chiama, prima
++        // di tornare al gioco.
+         void dispatchGuestStreamCallback(uint8_t *rdram,
+                                          R5900Context *callerCtx,
+                                          PS2Runtime *runtime,
+                                          const MpegStreamCallbackEvent &event,
+-                                         const MpegRegisteredCallback &callback)
++                                         const MpegRegisteredCallback &callback,
++                                         std::vector<GuestInvocation> &sequence)
+         {
+             if (!rdram || !callerCtx || !runtime || callback.func == 0u || !runtime->hasFunction(callback.func))
+             {
+@@ -1617,7 +1622,7 @@ namespace ps2_stubs
+             {
+                 runtime->guestFree(cbDataAddr);
+             };
+-            runtime->eeScheduler().queueInvocation(std::move(invocation));
++            sequence.push_back(std::move(invocation));
+         }
+ 
+         void dispatchStreamCallbacks(uint8_t *rdram,
+@@ -1630,13 +1635,44 @@ namespace ps2_stubs
+                 return;
+             }
+ 
++            std::vector<GuestInvocation> sequence;
+             for (const MpegStreamCallbackEvent &event : events)
+             {
+                 for (const MpegRegisteredCallback &callback : event.callbacks)
+                 {
+-                    dispatchGuestStreamCallback(rdram, ctx, runtime, event, callback);
++                    dispatchGuestStreamCallback(rdram, ctx, runtime, event, callback, sequence);
+                 }
+             }
++            if (sequence.empty())
++            {
++                return;
++            }
++            // Uno alla volta, ciascuno lancia il successivo: invokeCurrentSequence li impila tutti e ogni
++            // livello riserva uno stack (centinaia di pacchetti esaurivano lo spazio).
++            auto coda = std::make_shared<std::vector<GuestInvocation>>(std::move(sequence));
++            auto lancia = std::make_shared<std::function<void(size_t)>>();
++            *lancia = [coda, lancia, runtime](size_t i)
++            {
++                GuestInvocation invocation = std::move((*coda)[i]);
++                auto fine = std::move(invocation.onComplete);
++                invocation.onComplete = [coda, lancia, fine, i](const R5900Context &done, R5900Context &parent)
++                {
++                    if (fine)
++                    {
++                        fine(done, parent);
++                    }
++                    if (i + 1u < coda->size())
++                    {
++                        (*lancia)(i + 1u);
++                    }
++                    else
++                    {
++                        *lancia = nullptr; // spezza il riferimento circolare
++                    }
++                };
++                runtime->eeScheduler().invokeCurrent(std::move(invocation));
++            };
++            (*lancia)(0u);
+         }
+ 
+         void dispatchStreamCallbacksUnlocked(uint8_t *rdram,
+@@ -2141,8 +2177,8 @@ namespace ps2_stubs
+             });
+         }
+ 
++        setReturnS32(ctx, static_cast<int32_t>(consumed)); // sor: prima, i callback non tornano qui
+         dispatchStreamCallbacksUnlocked(rdram, ctx, runtime, callbackEvents);
+-        setReturnS32(ctx, static_cast<int32_t>(consumed));
+     }
+ 
+     void sceMpegDemuxPssRing(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+@@ -2235,8 +2271,8 @@ namespace ps2_stubs
+             });
+         }
+ 
++        setReturnS32(ctx, static_cast<int32_t>(consumed)); // sor: prima, i callback non tornano qui
+         dispatchStreamCallbacksUnlocked(rdram, ctx, runtime, callbackEvents);
+-        setReturnS32(ctx, static_cast<int32_t>(consumed));
+     }
+ 
+     void sceMpegDispCenterOffX(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp
+@@ -474,6 +474,13 @@ namespace ps2_stubs
+                 }
+             }
+ 
++            // sor: Shadow of Rome crea i file con il solo SCE_CREAT (0x200), senza lettura ne' scrittura:
++            // con "rb" il file nuovo non nasceva e il salvataggio tornava a "No data present".
++            if (create && !exists && !read && !write)
++            {
++                mode = "w+b";
++            }
++
+             return std::fopen(hostPath.string().c_str(), mode);
+         }
+     }
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+@@ -333,6 +333,8 @@ namespace ps2_stubs
+                     double t;
+                     uint16_t mask;
+                     bool ancorato;
++                    bool letture; // "p<n>:<tasto>": alla n-esima lettura del pad (non dipende dai tempi del PC)
++                    int8_t lx = 0, ly = 0; // levetta sinistra: tasti "ssu", "sgiu", "ssx", "sdx" (premuti 2 s)
+                 };
+                 static const std::vector<TastoProva> s_tasti = []()
+                 {
+@@ -365,19 +367,45 @@ namespace ps2_stubs
+                         else if (nome == "l1") m = kPadBtnL1;
+                         else if (nome == "r1") m = kPadBtnR1;
+                         const bool anc = voce[0] == 'm';
+-                        if (m)
+-                            v.push_back({std::atof(voce.c_str() + (anc ? 1 : 0)), m, anc});
++                        const bool let = voce[0] == 'p';
++                        int8_t lx = 0, ly = 0;
++                        if (nome == "ssu") ly = -1;
++                        else if (nome == "sgiu") ly = 1;
++                        else if (nome == "ssx") lx = -1;
++                        else if (nome == "sdx") lx = 1;
++                        if (m || lx || ly)
++                            v.push_back({std::atof(voce.c_str() + ((anc || let) ? 1 : 0)), m, anc, let, lx, ly});
+                     }
+                     return v;
+                 }();
++                // Nelle prove conta solo il copione: un controller vero collegato (o usato da
++                // qualcuno per un altro gioco) non deve muovere i menu.
++                if (!s_tasti.empty())
++                {
++                    state = PadInputState{};
++                }
++                static long s_letture = 0;
++                if (port == 0)
++                {
++                    ++s_letture;
++                    if (!s_tasti.empty() && s_letture % 100 == 0)
++                    {
++                        std::puts(("[sor] letture pad: " + std::to_string(s_letture)).c_str());
++                    }
++                }
+                 static const auto s_inizio = std::chrono::steady_clock::now();
+                 const double ora = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count();
+                 const long long ancoraMs = g_sorAncoraMs.load();
+                 const double oraMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                 for (const TastoProva &tp : s_tasti)
+                 {
+-                    const double t = tp.ancorato ? (ancoraMs ? (oraMs - ancoraMs) / 1000.0 : -1.0) : ora;
+-                    if (t >= tp.t && t < tp.t + 0.4)
++                    const double t = tp.letture ? static_cast<double>(s_letture) : (tp.ancorato ? (ancoraMs ? (oraMs - ancoraMs) / 1000.0 : -1.0) : ora);
++                    if ((tp.lx || tp.ly) && t >= tp.t && t < tp.t + 2.0)
++                    {
++                        state.lx = tp.lx < 0 ? 0 : (tp.lx > 0 ? 255 : kPadAnalogCenter);
++                        state.ly = tp.ly < 0 ? 0 : (tp.ly > 0 ? 255 : kPadAnalogCenter);
++                    }
++                    else if (t >= tp.t && t < tp.t + (tp.letture ? 12.0 : 0.4))
+                     {
+                         state.buttons = static_cast<uint16_t>(state.buttons & ~tp.mask);
+                         static double s_ultimo = -1.0;
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1347,7 +1347,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                     uint32_t asr1 = m_ioRegisters[channelBase + 0x50];
+                     uint32_t asp = (chcr >> 4) & 0x3u;
+                     const bool tieEnabled = (chcr & (1u << 7)) != 0u;
+-                    const int kMaxChainTags = 4096;
++                    const int kMaxChainTags = 1 << 20; // sor: erano 4096, ma un fotogramma 3D ne usa di piu': la catena veniva tagliata a meta' e il CYCLE del VIF restava sbagliato per il fotogramma dopo
+                     std::vector<uint8_t> chainBuf;
+ 
+                     auto appendData = [&](uint32_t srcAddr, uint32_t qwCount)
+diff --git a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+--- a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
++++ b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+@@ -1,4 +1,9 @@
+ // Based on Blackline Interactive implementation
++#include <string>
++#include <vector>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
+ #include "runtime/ps2_memory.h"
+ #include <cstring>
+ 
+@@ -384,6 +389,26 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+         if (irq)
+             vif1_regs.stat |= (1u << 11); // INT
+ 
++        // sor: SOR_VIFDUMP=<n> stampa <n> codici VIF1 dopo SOR_VIFDUMP_DA secondi dal primo pacchetto.
++        {
++            static const long s_n = std::getenv("SOR_VIFDUMP") ? std::atol(std::getenv("SOR_VIFDUMP")) : 0;
++            static const double s_t = std::getenv("SOR_VIFDUMP_DA") ? std::atof(std::getenv("SOR_VIFDUMP_DA")) : 0;
++            static const auto s_inizio = std::chrono::steady_clock::now();
++            static long s_fatti = 0;
++            if (s_n && s_fatti < s_n && opcode != VIF_NOP && std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count() >= s_t)
++            {
++                ++s_fatti;
++                std::printf("[vif] %08x pos=%u/%u cycle=%x mode=%x mask=%x tops=%x", cmd, pos - 4u, sizeBytes, vif1_regs.cycle, vif1_regs.mode, vif1_regs.mask, vif1_regs.tops);
++                if ((opcode & 0x60) == 0x60 && pos + 16u <= sizeBytes)
++                {
++                    uint32_t w[4];
++                    std::memcpy(w, data + pos, 16);
++                    std::printf(" dati %08x %08x %08x %08x", w[0], w[1], w[2], w[3]);
++                }
++                std::printf("\n");
++            }
++        }
++
+         if (opcode == VIF_NOP)
+         {
+             continue;
+@@ -516,6 +541,21 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+                 {
+                     std::memcpy(m_vu1Code + destAddr, data + pos, copyBytes);
+                     markVU1CodeModified();
++                    // sor: SOR_MPGDUMP=<prefisso>: salva il primo microprogramma di ogni dimensione (lo legge strumenti/vudis.py).
++                    static const char *s_mpg = std::getenv("SOR_MPGDUMP");
++                    static bool s_mpgVisti[256] = {};
++                    if (s_mpg && !s_mpgVisti[num])
++                    {
++                        s_mpgVisti[num] = true;
++                        const std::string nome = std::string(s_mpg) + "_" + std::to_string(static_cast<unsigned>(num)) + ".bin";
++                        if (FILE *f = std::fopen(nome.c_str(), "wb"))
++                        {
++                            const std::vector<uint8_t> vuoto(0x4000u + 584u, 0u);
++                            std::fwrite(vuoto.data(), 1, vuoto.size(), f);
++                            std::fwrite(m_vu1Code, 1, PS2_VU1_CODE_SIZE, f);
++                            std::fclose(f);
++                        }
++                    }
+                 }
+             }
+             pos += mpgBytes;
+@@ -738,10 +778,12 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+                         // V4-5: packed color-like format in a single 16-bit value.
+                         uint16_t packed = 0;
+                         std::memcpy(&packed, srcVec, sizeof(packed));
+-                        decompressed[0] = packed & 0x1Fu;
+-                        decompressed[1] = (packed >> 5) & 0x1Fu;
+-                        decompressed[2] = (packed >> 10) & 0x1Fu;
+-                        decompressed[3] = (packed >> 15) & 0x01u;
++                        // sor: sulla console 5 bit diventano 8 (<<3) e il bit alto vale 0x80. Il microcodice dei
++                        // personaggi usa questi valori come pesi delle ossa (x 1/248): piu' piccoli li deformava.
++                        decompressed[0] = (packed & 0x1Fu) << 3;
++                        decompressed[1] = ((packed >> 5) & 0x1Fu) << 3;
++                        decompressed[2] = ((packed >> 10) & 0x1Fu) << 3;
++                        decompressed[3] = ((packed >> 15) & 0x01u) << 7;
+                     }
+                     else
+                     {
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+@@ -6,6 +6,7 @@
+ 
+ #include <algorithm>
+ #include <cfenv>
++#include <chrono>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstdlib>
+@@ -919,6 +920,32 @@ void VU1Interpreter::finishXgkick()
+     if (!m_xgkick.active)
+         return;
+ 
++    // sor: SOR_VU1DUMP=<percorso> salva dati, registri e pacchetto del primo XGKICK dopo
++    // SOR_GIFDUMP_DA secondi, con il suo PC (per leggere il microcodice fuori dal gioco).
++    {
++        static const char *s_vuDump = std::getenv("SOR_VU1DUMP");
++        static const double s_vuDa = std::getenv("SOR_VU1DUMP_DA") ? std::atof(std::getenv("SOR_VU1DUMP_DA")) : 0;
++        static const auto s_vuInizio = std::chrono::steady_clock::now();
++        static bool s_vuFatto = false;
++        if (s_vuDump && !s_vuFatto && std::chrono::duration<double>(std::chrono::steady_clock::now() - s_vuInizio).count() >= s_vuDa)
++        {
++            s_vuFatto = true;
++            if (FILE *f = std::fopen(s_vuDump, "wb"))
++            {
++                std::fwrite(m_activeVuData, 1, m_activeVuDataSize, f);
++                std::fwrite(m_state.vf, 1, sizeof(m_state.vf), f);
++                std::fwrite(m_state.vi, 1, sizeof(m_state.vi), f);
++                std::fwrite(&m_state.pc, 1, 4, f);
++                std::fwrite(&m_xgkick.sourceAddress, 1, 4, f);
++                if (m_activeMemory)
++                    std::fwrite(m_activeMemory->getVU1Code(), 1, PS2_VU1_CODE_SIZE, f);
++                std::fclose(f);
++                std::printf("[sor] VU1 copiata: pc=0x%x kick=0x%x\n", m_state.pc, m_xgkick.sourceAddress);
++                std::fflush(stdout);
++            }
++        }
++    }
++
+     if (m_activeMemory)
+         m_activeMemory->submitGifPacket(GifPathId::Path1, m_xgkick.packet.data(), m_xgkick.totalBytes);
+     else if (m_activeGs)
