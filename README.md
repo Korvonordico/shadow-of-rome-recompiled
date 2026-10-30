@@ -70,8 +70,8 @@ Run these in the Ubuntu terminal.
 
    ```bash
    cd /mnt/c/Users/YOUR_NAME
-   git clone --recurse-submodules https://github.com/Korvonordico/shadow-of-rome-pc-recomp.git
-   cd shadow-of-rome-pc-recomp
+   git clone --recurse-submodules https://github.com/Korvonordico/shadow-of-rome-recompiled.git
+   cd shadow-of-rome-recompiled
    ```
 
 2. Build everything from your disc image. In WSL, `C:\Games\game.iso` is written `/mnt/c/Games/game.iso`:
