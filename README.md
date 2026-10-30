@@ -1,4 +1,4 @@
-# Shadow of Rome PC Recomp
+# Shadow of Rome Recompiled
 
 Native PC port of Shadow of Rome (PS2) through static recompilation.
 
