@@ -59,6 +59,11 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V).
 - About 24 frames per second at the main menu (measured on one PC).
+- A launcher, `ShadowOfRome.exe`: **Play** starts the game, **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". It is built with the C# compiler that already ships with Windows, so nothing has to be installed (`launcher/build.bat`, source in `launcher/Launcher.cs`).
+
+<p align="center">
+  <img src="docs/launcher.png" width="70%" alt="The launcher: Play and Quit, the other entries greyed out as coming soon, and the project's logo">
+</p>
 
 <p align="center">
   <img src="docs/titolo-press-start.png" width="45%" alt="The title screen">
@@ -117,7 +122,8 @@ Nothing it creates is committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, 
 
 ## How to start it
 
-- **From Windows:** drag your `.iso` file onto `run.bat`.
+- **With the launcher (Windows):** double-click `launcheruild.bat` once, then start `_build\ShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is and remembers it in `_build\launcher.ini`. Arrows and Enter, or the mouse.
+- **Or drag your `.iso` file onto `run.bat`.**
 - **Or from the Ubuntu terminal:**
 
   ```bash
