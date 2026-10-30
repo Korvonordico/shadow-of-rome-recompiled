@@ -1,0 +1,404 @@
+diff --git a/ps2xRecomp/src/lib/control_flow_emitter.cpp b/ps2xRecomp/src/lib/control_flow_emitter.cpp
+index 4bf8dc5..95f69d7 100644
+--- a/ps2xRecomp/src/lib/control_flow_emitter.cpp
++++ b/ps2xRecomp/src/lib/control_flow_emitter.cpp
+@@ -406,10 +406,10 @@ namespace ps2recomp
+             return fmt::format("GPR_U64(ctx, {}) != GPR_U64(ctx, {})", rsReg, rtReg);
+         case OPCODE_BLEZ:
+         case OPCODE_BLEZL:
+-            return fmt::format("GPR_S32(ctx, {}) <= 0", rsReg);
++            return fmt::format("GPR_S64(ctx, {}) <= 0", rsReg);
+         case OPCODE_BGTZ:
+         case OPCODE_BGTZL:
+-            return fmt::format("GPR_S32(ctx, {}) > 0", rsReg);
++            return fmt::format("GPR_S64(ctx, {}) > 0", rsReg);
+         case OPCODE_REGIMM:
+             switch (m_branchInst.rt)
+             {
+@@ -417,12 +417,12 @@ namespace ps2recomp
+             case REGIMM_BLTZL:
+             case REGIMM_BLTZAL:
+             case REGIMM_BLTZALL:
+-                return fmt::format("GPR_S32(ctx, {}) < 0", rsReg);
++                return fmt::format("GPR_S64(ctx, {}) < 0", rsReg);
+             case REGIMM_BGEZ:
+             case REGIMM_BGEZL:
+             case REGIMM_BGEZAL:
+             case REGIMM_BGEZALL:
+-                return fmt::format("GPR_S32(ctx, {}) >= 0", rsReg);
++                return fmt::format("GPR_S64(ctx, {}) >= 0", rsReg);
+             default:
+                 return "false";
+             }
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index 90f23ea..f400262 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -596,13 +596,28 @@ namespace ps2_stubs
+         uint32_t imgAddr = getRegU32(ctx, 4);
+         uint32_t srcAddr = getRegU32(ctx, 5);
+ 
++        // sor: imgAddr e' il sceGsLoadImage vero di Sony (lo riempie sceGsSetDefLoadImage
++        // tradotta): giftag0, BITBLTBUF, TRXPOS, TRXREG, TRXDIR, giftag1, 16 byte ciascuno.
+         GsImageMem img{};
+-        if (!runtime || !runtime->syncCoreSubsystems() || !readGsImage(rdram, imgAddr, img))
++        const uint8_t *loadImage = getConstMemPtr(rdram, imgAddr);
++        if (!runtime || !runtime->syncCoreSubsystems() || !loadImage)
+         {
+             setReturnS32(ctx, -1);
+             return;
+         }
+-
++        {
++            uint64_t bitbltbuf, trxpos, trxreg;
++            std::memcpy(&bitbltbuf, loadImage + 0x10, 8);
++            std::memcpy(&trxpos, loadImage + 0x20, 8);
++            std::memcpy(&trxreg, loadImage + 0x30, 8);
++            img.vram_addr = static_cast<uint16_t>((bitbltbuf >> 32) & 0x3FFFu);
++            img.vram_width = static_cast<uint8_t>((bitbltbuf >> 48) & 0x3Fu);
++            img.psm = static_cast<uint8_t>((bitbltbuf >> 56) & 0x3Fu);
++            img.x = static_cast<uint16_t>((trxpos >> 32) & 0x7FFu);
++            img.y = static_cast<uint16_t>((trxpos >> 48) & 0x7FFu);
++            img.width = static_cast<uint16_t>(trxreg & 0xFFFu);
++            img.height = static_cast<uint16_t>((trxreg >> 32) & 0xFFFu);
++        }
+         const uint32_t rowBytes = bytesForPixels(img.psm, static_cast<uint32_t>(img.width));
+         if (rowBytes == 0)
+         {
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+index 28681c7..9410b09 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp
+@@ -1,12 +1,16 @@
+ #include "Common.h"
+ #include "Pad.h"
+ 
++#include <atomic>
+ #include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <string>
+ #include <vector>
+ 
++// sor: momento del primo filmato saltato (ms); ancora delle voci "m<secondi>:<tasto>" di SOR_TASTI.
++std::atomic<long long> g_sorAncoraMs{0};
++
+ namespace ps2_stubs
+ {
+     namespace
+@@ -322,11 +326,13 @@ namespace ps2_stubs
+             }
+ 
+             // sor: SOR_TASTI="<secondi>:<tasto>,..." preme un tasto da solo per 0,4 s (per le prove).
++            // Con "m<secondi>:<tasto>" i secondi contano dal primo filmato saltato (poco prima del titolo).
+             {
+                 struct TastoProva
+                 {
+                     double t;
+                     uint16_t mask;
++                    bool ancorato;
+                 };
+                 static const std::vector<TastoProva> s_tasti = []()
+                 {
+@@ -356,15 +362,22 @@ namespace ps2_stubs
+                         else if (nome == "giu") m = kPadBtnDown;
+                         else if (nome == "sx") m = kPadBtnLeft;
+                         else if (nome == "dx") m = kPadBtnRight;
++                        else if (nome == "l1") m = kPadBtnL1;
++                        else if (nome == "r1") m = kPadBtnR1;
++                        const bool anc = voce[0] == 'm';
+                         if (m)
+-                            v.push_back({std::atof(voce.c_str()), m});
++                            v.push_back({std::atof(voce.c_str() + (anc ? 1 : 0)), m, anc});
+                     }
+                     return v;
+                 }();
+                 static const auto s_inizio = std::chrono::steady_clock::now();
+                 const double ora = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count();
++                const long long ancoraMs = g_sorAncoraMs.load();
++                const double oraMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+                 for (const TastoProva &tp : s_tasti)
+-                    if (ora >= tp.t && ora < tp.t + 0.4)
++                {
++                    const double t = tp.ancorato ? (ancoraMs ? (oraMs - ancoraMs) / 1000.0 : -1.0) : ora;
++                    if (t >= tp.t && t < tp.t + 0.4)
+                     {
+                         state.buttons = static_cast<uint16_t>(state.buttons & ~tp.mask);
+                         static double s_ultimo = -1.0;
+@@ -375,6 +388,7 @@ namespace ps2_stubs
+                             std::fflush(stdout);
+                         }
+                     }
++                }
+             }
+ 
+             fillPadStatus(outData, state, portState);
+diff --git a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+index 096fe87..f59ab41 100644
+--- a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+@@ -15,6 +15,7 @@
+ #include <fstream>
+ #include <iostream>
+ #include <stdexcept>
++#include <vector>
+ 
+ using namespace GSInternal;
+ 
+@@ -1326,7 +1327,10 @@ void GSCpuBackend::DrawTriangle(const GSPrimitiveBatch &batch)
+             if (w0 < -kEdgeEpsilon || w1 < -kEdgeEpsilon || w2 < -kEdgeEpsilon)
+                 continue;
+ 
+-            double z = v0.z * w0 + v1.z * w1 + v2.z * w2;
++            // sor: forma che resta esatta quando i tre vertici hanno la stessa Z (2D a strati):
++            // con v0.z*w0 + v1.z*w1 + v2.z*w2 l'arrotondamento dei float faceva fallire il test
++            // di profondita' su alcuni pixel e lo strato sotto si vedeva a puntini.
++            double z = static_cast<double>(v2.z) + (static_cast<double>(v0.z) - v2.z) * w0 + (static_cast<double>(v1.z) - v2.z) * w1;
+ 
+             uint8_t r, g, b, a;
+             if (state.prim.iip)
+@@ -1975,14 +1979,14 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
+     GSFrameReg selected = displayFrame;
+     // sor: con INT=1 e FFMD=1 l'altezza di DISPLAY conta le righe dei due campi, ma il buffer
+     // ha solo le righe di un campo: se ne legge meta' e ogni riga si mostra due volte.
+-    const bool sorDoppia = smode2.interlaced && smode2.frameMode;
++    const bool sorDoppia = smode2.interlaced && smode2.frameMode;
+     const uint32_t righeBuffer = sorDoppia ? std::max<uint32_t>(1u, (result.height + 1u) / 2u) : result.height;
+     if (!copySource(displayFrame, origin, result.width, righeBuffer, true, false, selected, result.pixels, result.usedPreferred))
+         return {};
+     if (sorDoppia)
+     {
+-        const size_t rigaBytes = static_cast<size_t>(kHostFrameWidth) * 4u;
+-        if (result.pixels.size() < static_cast<size_t>(result.height) * rigaBytes)
++        const size_t rigaBytes = static_cast<size_t>(kHostFrameWidth) * 4u;
++        if (result.pixels.size() < static_cast<size_t>(result.height) * rigaBytes)
+             result.pixels.resize(static_cast<size_t>(result.height) * rigaBytes, 0u);
+         for (uint32_t y = result.height; y-- > 0u;)
+         {
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 01cea3e..8c65c62 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -4,6 +4,7 @@
+ #include "runtime/ps2_memory.h"
+ #include <atomic>
+ #include <algorithm>
++#include <chrono>
+ #include <cmath>
+ #include <cstdio>
+ #include <cstring>
+@@ -21,7 +22,7 @@ namespace
+         uint32_t ultimoPrim = 0;
+         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+         uint32_t rgba = 0;
+-        uint32_t tbp = 0, psm = 0, tbw = 0, tcc = 0, tfx = 0, u = 0, v = 0;
++        uint32_t tbp = 0, psm = 0, tbw = 0, tcc = 0, tfx = 0, u = 0, v = 0;
+         float s = 0, t = 0;
+         uint64_t alpha = 0, test = 0;
+         uint32_t fbmsk = 0, zbp = 0;
+@@ -30,6 +31,7 @@ namespace
+     std::mutex g_sorMutex;
+     std::map<uint32_t, SorDisegno> g_sorDisegni;
+     uint64_t g_sorTag = 0, g_sorImmagini = 0;
++    uint32_t regs_sor(uint64_t tagHi, uint32_t i) { return static_cast<uint32_t>((tagHi >> (i * 4)) & 0xF); }
+ }
+ 
+ void sorGsRapporto()
+@@ -722,6 +724,27 @@ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+         ++g_sorTag;
+         if (flg == GIF_FMT_IMAGE)
+             ++g_sorImmagini;
++        // sor: SOR_GIFDUMP=<n> stampa <n> tag GIF a partire da SOR_GIFDUMP_DA (secondi dall'avvio).
++        {
++            static const long s_dumpN = std::getenv("SOR_GIFDUMP") ? std::atol(std::getenv("SOR_GIFDUMP")) : 0;
++            static const double s_dumpT = std::getenv("SOR_GIFDUMP_DA") ? std::atof(std::getenv("SOR_GIFDUMP_DA")) : 0;
++            static const auto s_dumpInizio = std::chrono::steady_clock::now();
++            static unsigned long long s_dumpDa = 0;
++            if (s_dumpN && !s_dumpDa && std::chrono::duration<double>(std::chrono::steady_clock::now() - s_dumpInizio).count() >= s_dumpT)
++                s_dumpDa = g_sorTag;
++            if (s_dumpDa && g_sorTag < s_dumpDa + (unsigned long long)s_dumpN)
++                std::printf("[gif] #%llu pos=%u/%u nloop=%u flg=%u nreg=%u eop=%u pre=%u prim=0x%llx regs=%016llx fbp=0x%x\n",
++                            (unsigned long long)g_sorTag, offset - 16u, sizeBytes, nloop, (unsigned)flg, nreg,
++                            (unsigned)((tagLo >> 15) & 1), (unsigned)((tagLo >> 46) & 1),
++                            (unsigned long long)((tagLo >> 47) & 0x7FF), (unsigned long long)tagHi, activeContext().frame.fbp);
++            if (s_dumpDa && g_sorTag < s_dumpDa + (unsigned long long)s_dumpN && flg == GIF_FMT_PACKED)
++                for (uint32_t i = 0; i < nloop * nreg && i < 24u && offset + (i + 1u) * 16u <= sizeBytes; ++i)
++                    std::printf("[gif]    %016llx %016llx\n", (unsigned long long)loadLE64(data + offset + i * 16u),
++                                (unsigned long long)loadLE64(data + offset + i * 16u + 8u));
++            if (s_dumpDa && g_sorTag < s_dumpDa + (unsigned long long)s_dumpN && flg == GIF_FMT_REGLIST)
++                for (uint32_t i = 0; i < nloop * nreg && i < 24u && offset + (i + 1u) * 8u <= sizeBytes; ++i)
++                    std::printf("[gif]    r%x=%016llx\n", (unsigned)regs_sor(tagHi, i % nreg), (unsigned long long)loadLE64(data + offset + i * 8u));
++        }
+ 
+         bool pre = ((tagLo >> 46) & 1) != 0;
+         if (pre)
+@@ -769,6 +792,24 @@ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+             uint32_t imageBytes = nloop * 16;
+             if (offset + imageBytes > sizeBytes)
+                 imageBytes = sizeBytes - offset;
++            // sor: SOR_IMGDUMP=<prefisso> salva le prime 8 immagini grandi dopo SOR_GIFDUMP_DA secondi.
++            {
++                static const char *s_prefisso = std::getenv("SOR_IMGDUMP");
++                static const double s_t = std::getenv("SOR_GIFDUMP_DA") ? std::atof(std::getenv("SOR_GIFDUMP_DA")) : 0;
++                static const auto s_inizio = std::chrono::steady_clock::now();
++                static int s_quante = 0;
++                if (s_prefisso && s_quante < 8 && imageBytes >= 1024u &&
++                    std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count() >= s_t)
++                {
++                    char nome[512];
++                    std::snprintf(nome, sizeof(nome), "%s_%d.bin", s_prefisso, s_quante++);
++                    if (FILE *f = std::fopen(nome, "wb"))
++                    {
++                        std::fwrite(data + offset, 1, imageBytes, f);
++                        std::fclose(f);
++                    }
++                }
++            }
+             processImageData(data + offset, imageBytes);
+             offset += imageBytes;
+         }
+@@ -1626,7 +1667,7 @@ void GS::vertexKick(bool drawing)
+             d.y1 = (static_cast<int>(batch.vertices[needed - 1].y)) - (c.xyoffset.ofy >> 4);
+             d.rgba = batch.vertices[needed - 1].r | (batch.vertices[needed - 1].g << 8) | (batch.vertices[needed - 1].b << 16) | (uint32_t(batch.vertices[needed - 1].a) << 24);
+             d.tbp = c.tex0.tbp0;
+-            d.psm = c.tex0.psm; d.tbw = c.tex0.tbw; d.tcc = c.tex0.tcc; d.tfx = c.tex0.tfx;
++            d.psm = c.tex0.psm; d.tbw = c.tex0.tbw; d.tcc = c.tex0.tcc; d.tfx = c.tex0.tfx;
+             d.u = batch.vertices[needed - 1].u; d.v = batch.vertices[needed - 1].v; d.s = batch.vertices[needed - 1].s; d.t = batch.vertices[needed - 1].t;
+             d.alpha = c.alpha;
+             d.test = c.test;
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index 37b6a4d..36d6a57 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -3,6 +3,9 @@
+ #include "runtime/gs/gs_frontend.h"
+ #include "ps2_log.h"
+ #include <atomic>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <limits>
+ #include <stdexcept>
+@@ -1441,6 +1444,21 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                         uint32_t addr = static_cast<uint32_t>((tag >> 32) & 0x7FFFFFFF);
+                         lastTagUpper = static_cast<uint32_t>((tag >> 16) & 0xFFFFu);
+                         ++tagsProcessed;
++                        // sor: SOR_DMADUMP=<n> stampa <n> tag DMA dopo SOR_GIFDUMP_DA secondi dall'avvio.
++                        {
++                            static const long s_n = std::getenv("SOR_DMADUMP") ? std::atol(std::getenv("SOR_DMADUMP")) : 0;
++                            static const double s_t = std::getenv("SOR_GIFDUMP_DA") ? std::atof(std::getenv("SOR_GIFDUMP_DA")) : 0;
++                            static const auto s_inizio = std::chrono::steady_clock::now();
++                            static long s_fatti = 0;
++                            if (s_n && s_fatti < s_n && (id != 2u || tagQwc != 0u || tagsProcessed >= kMaxChainTags) &&
++                                std::chrono::duration<double>(std::chrono::steady_clock::now() - s_inizio).count() >= s_t)
++                            {
++                                ++s_fatti;
++                                std::printf("[dma] ch=%x n=%d chcr=%x tag@%x id=%u qwc=%u addr=%x irq=%d hi=%016llx\n", channelBase, tagsProcessed,
++                                            value, tagAddr, id, (unsigned)tagQwc, addr, irq ? 1 : 0,
++                                            (unsigned long long)loadScalar<uint64_t>(tp, 8, 16, "dma chain tag", tagAddr));
++                            }
++                        }
+ 
+                         uint32_t dataAddr = 0;
+                         bool hasPayload = (tagQwc > 0);
+diff --git a/ps2xRuntime/src/lib/ps2_pad.cpp b/ps2xRuntime/src/lib/ps2_pad.cpp
+index 8590f14..b48b3d9 100644
+--- a/ps2xRuntime/src/lib/ps2_pad.cpp
++++ b/ps2xRuntime/src/lib/ps2_pad.cpp
+@@ -1,5 +1,6 @@
+ #include "runtime/ps2_pad.h"
+ #include "ps2_host_backend.h"
++#include <cstdio>
+ #include <cstring>
+ 
+ namespace
+@@ -40,6 +41,14 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+     uint16_t btns = 0xFFFFu;
+     constexpr int kGamepad = 0;
+     const bool useGamepad = IsGamepadAvailable(kGamepad);
++    // sor: scrive nel registro quando il controller compare o sparisce.
++    static int s_visto = -1;
++    if (static_cast<int>(useGamepad) != s_visto)
++    {
++        s_visto = static_cast<int>(useGamepad);
++        std::printf("[sor] controller: %s\n", useGamepad ? GetGamepadName(kGamepad) : "nessuno");
++        std::fflush(stdout);
++    }
+     auto clearBit = [&btns](uint16_t mask)
+     { btns &= ~mask; };
+ 
+@@ -87,7 +96,8 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+         data[4] = static_cast<uint8_t>(128 + rx * 127);
+         data[5] = static_cast<uint8_t>(128 + ry * 127);
+     }
+-    else
++
++    // sor: la tastiera vale sempre, anche con un controller collegato.
+     {
+         if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
+             clearBit(PAD_UP);
+diff --git a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+index f872edd..24c6338 100644
+--- a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
++++ b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+@@ -306,13 +306,40 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+     {
+         if (m_vif1PendingPath2ImageQwc != 0u)
+         {
++            // sor: se i dati dell'immagine arrivano con un loro DIRECT (catene DMA con TTE: il
++            // gioco manda 6 qword di intestazione e poi "NOP, DIRECT n" + i dati), quei codici
++            // VIF non sono dati: vanno saltati, altrimenti l'immagine si sposta di 8 byte e
++            // tutto quello che segue nel fotogramma viene letto come codici VIF sbagliati.
++            uint32_t directQw = 0u;
++            {
++                uint32_t p = pos;
++                uint32_t w = 0u;
++                while (p + 4u <= sizeBytes && p - pos <= 12u)
++                {
++                    memcpy(&w, data + p, 4);
++                    if (w != 0u)
++                        break;
++                    p += 4u;
++                }
++                const uint8_t op = static_cast<uint8_t>((w >> 24) & 0x7Fu);
++                if (p + 4u <= sizeBytes && p - pos <= 12u && (op == VIF_DIRECT || op == VIF_DIRECTHL))
++                {
++                    directQw = w & 0xFFFFu;
++                    if (directQw == 0u)
++                        directQw = 65536u;
++                    pos = p + 4u;
++                }
++            }
++
+             const uint32_t availableQw = (sizeBytes - pos) / 16u;
+             if (availableQw == 0u)
+             {
+                 break;
+             }
+ 
+-            const uint32_t chunkQw = std::min<uint32_t>(m_vif1PendingPath2ImageQwc, availableQw);
++            uint32_t chunkQw = std::min<uint32_t>(m_vif1PendingPath2ImageQwc, availableQw);
++            if (directQw != 0u)
++                chunkQw = std::min<uint32_t>(chunkQw, directQw);
+             std::vector<uint8_t> imagePacket(16u + static_cast<size_t>(chunkQw) * 16u, 0u);
+             const uint64_t imageTag =
+                 static_cast<uint64_t>(chunkQw & 0x7FFFu) |
+@@ -328,6 +355,17 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+             {
+                 m_vif1PendingPath2DirectHl = false;
+             }
++            // sor: il resto del DIRECT dopo la fine dell'immagine sono altri dati per il GIF.
++            if (directQw > chunkQw)
++            {
++                const uint32_t restoQw = std::min<uint32_t>(directQw - chunkQw, (sizeBytes - pos) / 16u);
++                if (restoQw != 0u)
++                {
++                    if (m_vif1PendingPath2ImageQwc == 0u)
++                        submitGifPacket(GifPathId::Path2, data + pos, restoQw * 16u, true, false);
++                    pos += restoQw * 16u;
++                }
++            }
+             continue;
+         }
+ 

@@ -10,7 +10,7 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
   <img src="docs/finestra-menu.png" width="70%" alt="The main menu of Shadow of Rome in a Windows window">
 </p>
 
-**Boots to the main menu on Windows. Gameplay does not work yet (stops after New Game).**
+**Boots to the main menu on Windows, and every menu and submenu works. Gameplay does not work yet (stops after New Game).**
 
 This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
@@ -28,6 +28,14 @@ It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousR
 - [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: reaching the menu took 4 planned sessions, about 15 million weighted tokens;
 - written handoff notes after every session, so each one starts from where the last one stopped.
 
+Added for the menu work, because that is what the problems needed:
+
+- scripted key presses timed from a point in the game, plus contact sheets of screenshots (`strumenti/mosaico.py`) that Claude reads to see each screen: every menu result below was checked on a picture;
+- a small script that sends real key presses to the window with Windows' `SendInput` (`strumenti/tasti_veri.py`);
+- logging wrapped around single functions of the running game, to follow a wrong value back to its cause.
+
+An example of this debugging: a volume of 10 was invisible in the Options menu. Claude followed it through the number printing and the game's software floating-point code, down to a translated branch that looked at only 32 bits of a 64-bit register. That happened in an unattended session; my part was the plan for this stage and the rule that a result counts only when it has been checked directly.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -36,21 +44,40 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - The whole executable is translated to C++ and built for Windows, with no errors.
 - All the game's original IOP modules load and run in PS2Recomp's IOP simulator.
-- The game reaches, on screen: the controller notice, the language choice, the memory card check, the violence warning, the CAPCOM logo, the title screen, the main menu and the difficulty choice.
+- From the start to the menu, on screen: the language choice, Start Game and Change video mode (with the NTSC test), the memory card check, the violence warning, the CAPCOM logo, the title screen and the main menu.
+- Every menu, opened and closed, checked on pictures:
+
+| Menu | Works | Notes |
+|---|---|---|
+| New Game | Yes, up to the difficulty choice | What comes after does not work, see below |
+| Load Game | Yes, the screen and going back | Nothing has been loaded: there are no saves yet |
+| Secrets of Rome | Yes | Cheats and the Salvo Master List with its pages open and close. The other 6 entries are locked, as on a new game |
+| Options: Subtitles / Tutorial, Sound, Controller, Violence | Yes | Each value changed and put back |
+| Options: Screen | Yes | Brightness and Screen Position pages |
+| Options: Control Explanation | Yes | All 3 pages |
+| Options: Default, OK | Yes | Default puts the changed values back |
+
+- The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V).
 - About 24 frames per second at the main menu (measured on one PC).
 
 <p align="center">
   <img src="docs/titolo-press-start.png" width="45%" alt="The title screen">
   <img src="docs/menu-principale.png" width="45%" alt="The main menu">
 </p>
+<p align="center">
+  <img src="docs/load-game.png" width="23%" alt="Load Game">
+  <img src="docs/secrets-of-rome.png" width="23%" alt="Secrets of Rome">
+  <img src="docs/options-sound.png" width="23%" alt="Options, Sound">
+  <img src="docs/options-controls.png" width="23%" alt="Options, Control Explanation">
+</p>
 
 **What does not work, or is not checked**
 
-- **Gameplay:** after New Game and the difficulty choice, within about 20 seconds, the thread that reads the disc dies (`cbTimerHandler` jumps to address 0). The game starts loading, but the first 3D scene has never been seen.
+- **Gameplay:** after New Game and the difficulty choice the screen goes black and a thread of the game dies. The first 3D scene has never been seen.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so the opening movie does not play.
 - **Sound is not checked:** the sound driver runs in the simulator, but nobody has checked whether you can hear anything.
 - **Saving probably fails:** "Create a save file" went back to "No data present". "Begin game anyway" works.
-- **Keyboard and real controllers are not tested by hand:** all the tests so far used scripted key presses (`SOR_TASTI`). The keys below come from the code.
+- **Nobody has played it by hand yet:** the tests used scripted key presses. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but its buttons have not been tried. The other keys in the table below come from the code and were not tried with real key presses.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
 ## What you need
@@ -101,13 +128,13 @@ Close it with the X of the window.
 
 ## Keys
 
-If no controller is connected, use the keyboard:
+The keyboard always works, with or without a controller connected:
 
 | PS2 | Keyboard |
 |---|---|
 | D-pad | Arrow keys or W A S D |
 | ✕ | X or Space |
-| ○ | C |
+| ○ | C or Esc |
 | ▢ | Z |
 | △ | V |
 | L1 / R1 | Q / E |
@@ -115,7 +142,7 @@ If no controller is connected, use the keyboard:
 | Start | Enter |
 | Select | Tab |
 
-Esc also counts as ○, but it is the default key of the window library (raylib) for closing the window, so use C.
+In most menus ✕ confirms and △ goes back.
 
 ## From the start to the menu
 

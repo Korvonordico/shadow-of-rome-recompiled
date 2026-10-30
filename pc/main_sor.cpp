@@ -136,6 +136,8 @@ int main(int argc, char *argv[])
             std::cerr << "[sor] runtime non inizializzato" << std::endl;
             return 1;
         }
+        // Esc e' il tasto cerchio (ps2_pad.cpp): non deve chiudere la finestra.
+        SetExitKey(KEY_NULL);
         if (!runtime.loadELF(argv[1]))
         {
             std::cerr << "[sor] ELF non caricato: " << argv[1] << std::endl;

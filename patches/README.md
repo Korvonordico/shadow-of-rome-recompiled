@@ -14,9 +14,12 @@ To undo them: `git -C thirdparty/PS2Recomp checkout -- .`
 | `0002-runtime-stacks-heap-display-and-reports.patch` | `PS2Runtime::setAsyncCallbackStackRegion`: the callback stacks started at the top of RAM, where this game keeps its main thread's stack, and overwrote it. `PS2Runtime::pinGuestHeap`: the runtime's heap stays in a fixed area, and the game's `SetupHeap` no longer moves it over the game's data. The image is always shown in 4:3. `SOR_FOTO`, `SOR_FOTO_OGNI` and `SOR_FOTO_VRAM` save frames during tests. Messages when the runtime stops. |
 | `0003-gs-image-upload-and-interlaced-display.patch` | `sceGsExecLoadImage` and `sceGsExecStoreImage` multiplied the VRAM address by 8, so textures landed in the wrong place and the screen stayed black. With INT=1 and FFMD=1 the buffer has half of the display's lines: half are read and each one is shown twice. `SOR_FOTO_FBP` shows another buffer during tests. Draw counts for the debug report (`sorGsRapporto`). |
 | `0004-pad-modes-and-scripted-keys.patch` | `scePadInfoMode` reports two modes, digital and analog: with only one the game says the analog controller is not connected. `SOR_TASTI` presses keys by itself during tests. |
+| `0005-menu-images-64bit-branches-and-keyboard.patch` | The translator tested `BLTZ`, `BGEZ`, `BLEZ` and `BGTZ` on 32 bits only, while the EE's registers have 64: the game's software floating-point subtraction went wrong for some values (the volume 10 in Options was drawn off screen). `sceGsExecLoadImage` reads the game's real `sceGsLoadImage` packet. The VIF1 interpreter skips the NOP and DIRECT after an image header instead of taking them as data (Options and Load Game were black). `DrawTriangle` computes Z exactly (dots on the Options page). The keyboard works even with a controller connected, and the log says which controller it sees. `SOR_TASTI` accepts `m<seconds>:<key>` (seconds from the first skipped movie), and L1 and R1. Debug: `SOR_GIFDUMP`, `SOR_GIFDUMP_DA`, `SOR_DMADUMP`, `SOR_IMGDUMP`. |
 
 Outside the patches, in `pc/`: `sor_hle.cpp` finds files by reading the disc image's
 ISO9660 index, and skips the movies (the build has no FFmpeg); `main_sor.cpp` places the
 stacks and the heap; `sor_profilo.cpp` is a sampling profiler (`SOR_PROFILO`, read with
 `strumenti/profilo.py`). In `strumenti/stubs_da_analyzer.py`, `InitAlarm` is left to the
-runtime: translated, it made every `SetAlarm` fail.
+runtime: translated, it made every `SetAlarm` fail. `sceGsSetDefLoadImage`, instead, stays
+translated: the game sends by itself the packet that function fills. `main_sor.cpp` also stops
+Esc from closing the window: Esc is ○.

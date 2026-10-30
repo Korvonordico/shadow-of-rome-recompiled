@@ -63,7 +63,7 @@ def scrivi_png(nome, w, h, righe):
 
 
 def main():
-    fs = sorted(glob.glob(sys.argv[1] + '_*.png'))
+    fs = sorted(glob.glob(sys.argv[1] + '_*.png'), key=lambda f: (len(f), f))  # 2 prima di 10 e 100
     col = int(sys.argv[3]) if len(sys.argv) > 3 else 4
     da = int(sys.argv[4]) if len(sys.argv) > 4 else 0
     a = int(sys.argv[5]) if len(sys.argv) > 5 else len(fs)

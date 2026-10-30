@@ -11,6 +11,8 @@
 #include "ps2_runtime_macros.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -242,6 +244,13 @@ namespace
         }
     }
 
+    unsigned long long reg64(R5900Context *ctx, int i)
+    {
+        uint64_t v;
+        std::memcpy(&v, &ctx->r[i], 8);
+        return v;
+    }
+
     void involucro(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
     {
         const uint32_t pc = ctx->pc;
@@ -253,6 +262,34 @@ namespace
             g_sentVal = GPR_U32(ctx, 31);
             std::printf("[sor] sentinella su [0x%x] = ra 0x%x di 0x%x\n", g_sentAddr, g_sentVal, pc);
         }
+        // SOR_SPIA=<fn hex>,<ra hex>[+<fn hex>,<ra hex>...]: stampa argomenti e risultato (64 bit)
+        // delle prime 6 chiamate a fn da ra (ra 0 = da chiunque).
+        struct Spia { uint32_t fn, ra; int quante; };
+        static std::vector<Spia> s_spie = []()
+        {
+            std::vector<Spia> v;
+            const char *e = std::getenv("SOR_SPIA");
+            while (e && *e)
+            {
+                char *fine = nullptr;
+                const uint32_t f = static_cast<uint32_t>(std::strtoul(e, &fine, 16));
+                uint32_t r = 0;
+                if (*fine == ',')
+                    r = static_cast<uint32_t>(std::strtoul(fine + 1, &fine, 16));
+                v.push_back({f, r, 0});
+                e = (*fine == '+') ? fine + 1 : nullptr;
+            }
+            return v;
+        }();
+        Spia *spia = nullptr;
+        for (Spia &q : s_spie)
+            if (pc == q.fn && (!q.ra || GPR_U32(ctx, 31) == q.ra) && q.quante < 6)
+            {
+                ++q.quante;
+                spia = &q;
+                std::printf("[sor] spia 0x%x da 0x%x: a0=%llx a1=%llx a2=%llx a3=%llx\n", pc, GPR_U32(ctx, 31), reg64(ctx, 4),
+                            reg64(ctx, 5), reg64(ctx, 6), reg64(ctx, 7));
+            }
         g_anello[g_numChiamate % kAnello] = {pc, GPR_U32(ctx, 31), GPR_U32(ctx, 4), GPR_U32(ctx, 5)};
         ++g_numChiamate;
         if (s < g_conteggi.size())
@@ -260,6 +297,11 @@ namespace
         const uint32_t ra = GPR_U32(ctx, 31);
         const uint32_t sp = GPR_U32(ctx, 29);
         g_originali[s](rdram, ctx, rt);
+        if (spia)
+        {
+            std::printf("[sor] spia 0x%x -> v0=%llx\n", pc, reg64(ctx, 2));
+            std::fflush(stdout);
+        }
         // Ritorno anomalo: la funzione e' finita (sp tornato com'era) ma il pc non e' il ra
         // con cui era stata chiamata.
         static int anomali = 0;
@@ -305,6 +347,8 @@ void sorStampaTraccia()
 // 3. Filmati: il runtime e' senza FFmpeg, quindi sceMpegGetPicture aspetterebbe per sempre.
 //    Cms_MovieGetPicture (0x30F9F0) dice subito "filmato finito" (bit 0x10 di [a0+0xA], come fa
 //    l'originale quando sceMpegIsEnd risponde si'): il gioco salta il filmato e va avanti.
+extern std::atomic<long long> g_sorAncoraMs; // Stubs/Pad.cpp
+
 namespace
 {
     void filmatoFinito(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
@@ -316,6 +360,8 @@ namespace
         flag |= 0x10u;
         std::memcpy(rdram + a, &flag, 2);
         static int quante = 0;
+        if (quante == 0)
+            g_sorAncoraMs = (long long)std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
         if (quante < 4)
         {
             ++quante;

@@ -28,7 +28,7 @@ grep "error:" _build.log | head -5
 [ -f _build/sor.exe ] || exit 1
 cd _build
 # SOR_* variables reach sor.exe (a Windows program) only if listed in WSLENV.
-export WSLENV=SOR_TRACCIA:SOR_FINESTRA:SOR_FOTO:SOR_FOTO_OGNI:SOR_TASTI:SOR_SENTINELLA:SOR_SENTINELLA_OFF:SOR_FOTO_FBP:SOR_FOTO_VRAM:SOR_PROFILO
+export WSLENV=SOR_TRACCIA:SOR_FINESTRA:SOR_FOTO:SOR_FOTO_OGNI:SOR_TASTI:SOR_SENTINELLA:SOR_SENTINELLA_OFF:SOR_FOTO_FBP:SOR_FOTO_VRAM:SOR_PROFILO:SOR_GIFDUMP:SOR_GIFDUMP_DA:SOR_DMADUMP:SOR_IMGDUMP:SOR_SPIA
 ./sor.exe ../disco/SLES_529.50.pc "$(wslpath -w "$SOR_ISO")" $SEC < /dev/null > ../_$NOME.log 2>&1
 echo "sor.exe uscito con $?"
 cd ..

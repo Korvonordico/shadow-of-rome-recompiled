@@ -12,9 +12,11 @@ import sys, re, tomllib
 # del runtime ancora da fare (lanciano un errore).
 ESCLUSI = {"_calloc_r", "_free_r", "_malloc_trim_r", "malloc_extend_top", "_malloc_r",
            "__malloc_lock", "__malloc_unlock", "fflush", "InitThread", "iWakeupThread",
-           "iRotateThreadReadyQueue", "StartThread", "InitTLB"}
+           "iRotateThreadReadyQueue", "StartThread", "InitTLB", "sceGsSetDefLoadImage"}
 # InitAlarm tolta (sor-menu, 30/10): tradotta, chiamava SetSyscall(0xFC, codice
 # copiato nella memoria del kernel) e il runtime rispondeva KE_ERROR a ogni SetAlarm.
+# sceGsSetDefLoadImage tradotta (sor-tappa1, 30/10): il gioco (classVRAM::tex_trans_set)
+# spedisce da solo il pacchetto che riempie, quindi deve essere quello vero di Sony.
 ESCLUSI_PREFISSI = ("sceGifPk", "sceDmaRecv", "sceDmaWatch", "sceDmaPause", "sceDeci2",
                     "sceTty", "sceMpegGetPictureRAW8")
 
