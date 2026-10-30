@@ -122,7 +122,7 @@ Nothing it creates is committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, 
 
 ## How to start it
 
-- **With the launcher (Windows):** double-click `launcheruild.bat` once, then start `_build\ShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is and remembers it in `_build\launcher.ini`. Arrows and Enter, or the mouse.
+- **With the launcher (Windows):** double-click `launcheruild.bat` once, then start `_buildShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is and remembers it in `_buildauncher.ini`. Arrows and Enter, or the mouse.
 - **Or drag your `.iso` file onto `run.bat`.**
 - **Or from the Ubuntu terminal:**
 
