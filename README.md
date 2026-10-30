@@ -134,3 +134,7 @@ Shadow of Rome belongs to Capcom. This project is not connected to Capcom or Son
 ## License
 
 GPL-3.0, the same as PS2Recomp, which the built program links. See [LICENSE](LICENSE).
+
+---
+
+If you'd like to support me, have a look at my other projects on my profile: [github.com/Korvonordico](https://github.com/Korvonordico).
