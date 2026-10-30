@@ -111,7 +111,7 @@ Run these in the Ubuntu terminal.
    scripts/setup.sh "/mnt/c/Games/game.iso"
    ```
 
-   This takes about 15 minutes on a 6-core PC. It patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++ and builds `_build/sor.exe`. If the build fails, the reason is at the end of `_build.log`.
+   This takes about 20 minutes on a 6-core PC. It patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++ and builds `_build/sor.exe`. If the build fails, the reason is at the end of `_build.log`.
 
 Nothing it creates is committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, `_tools/` and `_build/` stay on your PC. The game's large files are not copied: they are read from your image while you play, so keep the image where it is.
 
