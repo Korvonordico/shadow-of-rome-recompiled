@@ -33,3 +33,4 @@ __pycache__/
 .idea/
 Thumbs.db
 .DS_Store
+_*
