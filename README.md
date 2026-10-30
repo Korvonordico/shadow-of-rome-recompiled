@@ -10,6 +10,10 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
 
 This is an experiment. I can't promise I'll finish it, for personal reasons. If someone is already working on a port of this game, please let me know, so I don't do useless work.
 
+Please be patient: it will take a long time before the game is playable. I work on it with limited time and resources, for personal reasons, so there are no deadlines.
+
+If someone is already working on a port of this game, or is further ahead, please tell me as soon as possible. I'd rather spend my time on something that hasn't been done yet than duplicate work that already exists.
+
 To tell me, open an [issue](../../issues) on this repository.
 
 You need your own legal copy of the game (PAL SLES-52950). No game files are included.
