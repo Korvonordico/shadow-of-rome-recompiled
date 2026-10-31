@@ -12,7 +12,7 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
 <p align="center">
   <a href="docs/first-arena-by-hand.mp4">Watch one minute of the first arena, played by hand on this build</a> (MP4, 9 MB, no sound)
 </p>
-<p align="center"><b>This is only a sample to show that the game starts and runs.</b> It is not fully playable yet: it still has several problems, for example the camera, which sometimes moves in close behind the shoulder in the fights, and many smaller ones. See <a href="#status">Status</a> below.</p>
+<p align="center"><b>This is only a sample to show that the game starts and runs.</b> It is not fully playable yet: it still has many problems. The video was recorded before the camera fix, so in it the camera moves in close behind the shoulder, which it no longer does. See <a href="#status">Status</a> below.</p>
 
 **Boots to the main menu on Windows, every menu and submenu works, and the first arena can be played at full speed (50 Hz in a window). Nothing after the first arena has been tried.**
 
@@ -70,6 +70,8 @@ Added for the saves and the controls:
 
 - commands in the test remote control that read and write the game's memory while it runs (`=peek`, `=poke`): one of them forces a win, so the save screen can be reached without playing a whole round, and it is written down in Status above that the win was forced;
 - reading the camera's position from the game's memory while it runs, to measure when and how far it jumps.
+
+Another example: in the fights the camera kept jumping in close behind Agrippa's shoulder, and it looked like a fault in the controls. The measurements showed the camera moving about 400 units away from where it should be in a quarter of a second. Reading the code that runs in that room led to one instruction, the square root: PS2Recomp took its value from the wrong register, so every distance computed that way was wrong. The instruction appears 182 times in the game, and a small script confirmed that the register PS2Recomp was reading is the unused one in all 182.
 
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
@@ -135,6 +137,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
 - **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
+- **The camera:** it no longer jumps in close behind the shoulder, and the first scene, the first room and the arena now show the wider view. The cause was a wrong square root in PS2Recomp (see `0010` in [patches/README.md](patches/README.md)). The same scripted test, pressing ✕ in the first room: before, the camera moved from distance 101 to 526; now from 94 to 121. Tested with scripted keys and compared with the old build on screenshots, not yet by hand, and not against the original game on a PS2. The same fix changes every distance the game computes this way, so enemies may behave differently too: this has not been checked one by one.
 - **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Francesco then played this build by hand in the first arena for about three minutes and fought there (the video above). Agrippa's own life bar going down and picking up a weapon have not been checked one by one. The rooms after the first arena have not been tried.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
 - **Sound has no reverb:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming). There is no reverb yet.
