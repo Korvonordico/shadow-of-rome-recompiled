@@ -132,7 +132,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 - **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
 - **Sound has no reverb:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming). There is no reverb yet.
 - **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
-- **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one. Everything else was tested with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program.
+- **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one, with a PS4 controller (seen by Windows as "Wireless Controller"): it works for walking and fighting. Everything else was tested with scripted keys.
 - **A small difference left in the picture:** drawing on several threads and drawing strictly in order differ slightly (0.85% of the pixels by more than 16 out of 255, in the trainer's briefing). The published build has the same difference. It has not been explained yet.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
