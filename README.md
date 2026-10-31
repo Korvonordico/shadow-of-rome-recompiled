@@ -7,7 +7,10 @@
 Native PC port of Shadow of Rome (PS2) through static recompilation.
 
 <p align="center">
-  <img src="docs/finestra-menu.png" width="70%" alt="The main menu of Shadow of Rome in a Windows window">
+  <img src="docs/first-arena-by-hand.gif" width="70%" alt="Agrippa fighting in the first arena, played by hand on this build">
+</p>
+<p align="center">
+  <a href="docs/first-arena-by-hand.mp4">Watch one minute of the first arena, played by hand on this build</a> (MP4, 9 MB, no sound)
 </p>
 
 **Boots to the main menu on Windows, every menu and submenu works, and the first arena can be played at full speed (50 Hz in a window). Nothing after the first arena has been tried.**
@@ -69,7 +72,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 **What works**
 
 - The whole executable is translated to C++ and built for Windows, with no errors.
-- All the game's original IOP modules load and run in PS2Recomp's IOP simulator.
+- All the game's original IOP modules load and run in PS2Recomp's IOP simulator (the IOP is the PS2's second processor: it runs the sound, the disc and the memory cards).
 - From the start to the menu, on screen: the language choice, Start Game and Change video mode (with the NTSC test), the memory card check, the violence warning, the CAPCOM logo, the title screen and the main menu.
 - Every menu, opened and closed, checked on pictures:
 
@@ -86,7 +89,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
 - The save file the game makes at startup is created and loaded again.
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). Arrow keys and W A S D now also move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
-- **Speed at 50 Hz, the game's PAL mode:** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second; the previous build is on the same PC:
+- **Speed at 50 Hz, the game's PAL mode (the European version):** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second, which here means frames per second: 50 is full speed. The previous build is on the same PC:
 
 | Part | Previous build | Now | Lowest second now |
 |---|---|---|---|
@@ -125,11 +128,11 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works, but you have to choose it at every start. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
 - **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
-- **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Agrippa's own life bar was never seen going down, and picking up a weapon is not confirmed. The rooms after the first arena have not been tried.
+- **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Francesco then played this build by hand in the first arena for about three minutes and fought there (the video above). Agrippa's own life bar going down and picking up a weapon have not been checked one by one. The rooms after the first arena have not been tried.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
 - **Sound has no reverb:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming). There is no reverb yet.
 - **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
-- **Played by hand only on an older build:** Francesco reached the arena by hand on the slower build. This build was tested only with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but nobody has tried it in the arena.
+- **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one. Everything else was tested with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program.
 - **A small difference left in the picture:** drawing on several threads and drawing strictly in order differ slightly (0.85% of the pixels by more than 16 out of 255, in the trainer's briefing). The published build has the same difference. It has not been explained yet.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
