@@ -18,43 +18,60 @@ namespace
     std::map<DWORD, std::map<uint64_t, uint32_t>> g_campioni;
     std::atomic<bool> g_acceso{false};
 
+    struct Bersaglio
+    {
+        DWORD id;
+        HANDLE h;
+    };
+
     void giro()
     {
         const DWORD io = GetCurrentThreadId();
         const DWORD pid = GetCurrentProcessId();
+        std::map<DWORD, HANDLE> bersagli;
+        DWORD ultimoElenco = 0;
         while (g_acceso.load())
         {
-            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-            if (snap != INVALID_HANDLE_VALUE)
+            // L'istantanea di sistema e' lenta: l'elenco dei thread si aggiorna una volta al secondo.
+            if (GetTickCount() - ultimoElenco > 1000)
             {
-                THREADENTRY32 te{};
-                te.dwSize = sizeof(te);
-                if (Thread32First(snap, &te))
+                ultimoElenco = GetTickCount();
+                HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                if (snap != INVALID_HANDLE_VALUE)
                 {
-                    do
+                    THREADENTRY32 te{};
+                    te.dwSize = sizeof(te);
+                    if (Thread32First(snap, &te))
                     {
-                        if (te.th32OwnerProcessID != pid || te.th32ThreadID == io)
-                            continue;
-                        HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
-                        if (!h)
-                            continue;
-                        if (SuspendThread(h) != (DWORD)-1)
+                        do
                         {
-                            CONTEXT c{};
-                            c.ContextFlags = CONTEXT_CONTROL;
-                            if (GetThreadContext(h, &c))
-                            {
-                                std::lock_guard<std::mutex> lock(g_mutex);
-                                ++g_campioni[te.th32ThreadID][c.Rip];
-                            }
-                            ResumeThread(h);
-                        }
-                        CloseHandle(h);
-                    } while (Thread32Next(snap, &te));
+                            if (te.th32OwnerProcessID != pid || te.th32ThreadID == io || bersagli.count(te.th32ThreadID))
+                                continue;
+                            if (HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID))
+                                bersagli[te.th32ThreadID] = h;
+                        } while (Thread32Next(snap, &te));
+                    }
+                    CloseHandle(snap);
                 }
-                CloseHandle(snap);
             }
-            Sleep(2);
+            for (const auto &b : bersagli)
+            {
+                if (SuspendThread(b.second) != (DWORD)-1)
+                {
+                    CONTEXT c{};
+                    c.ContextFlags = CONTEXT_CONTROL;
+                    const bool ok = GetThreadContext(b.second, &c) != 0;
+                    ResumeThread(b.second);
+                    // Solo dopo aver fatto ripartire il thread: se e' fermo mentre tiene il blocco
+                    // della memoria, allocare qui bloccherebbe tutto il programma.
+                    if (ok)
+                    {
+                        std::lock_guard<std::mutex> lock(g_mutex);
+                        ++g_campioni[b.first][c.Rip];
+                    }
+                }
+            }
+            Sleep(1);
         }
     }
 }
@@ -72,8 +89,6 @@ void sorProfiloScrivi()
     const char *nome = std::getenv("SOR_PROFILO");
     if (!nome)
         return;
-    g_acceso.store(false);
-    Sleep(10);
     FILE *f = std::fopen(nome, "w");
     if (!f)
         return;
@@ -86,4 +101,11 @@ void sorProfiloScrivi()
             std::fprintf(f, "%llx %u\n", (unsigned long long)c.first, c.second);
     }
     std::fclose(f);
+}
+
+// Comando "prof0" del telecomando: ricomincia a contare da adesso.
+void sorProfiloAzzera()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_campioni.clear();
 }

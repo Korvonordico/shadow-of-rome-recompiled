@@ -9,6 +9,11 @@
 #include "runtime/ee_scheduler.h"
 #include "raylib.h"
 
+// sor: il gioco non deve perdere il processore a favore dei programmi in sottofondo (windows.h non puo'
+// stare insieme a raylib.h: qui bastano queste due dichiarazioni).
+extern "C" __declspec(dllimport) void *__stdcall GetCurrentProcess();
+extern "C" __declspec(dllimport) int __stdcall SetPriorityClass(void *processo, unsigned long classe);
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -23,6 +28,8 @@ void sorInstallaSostituzioni(PS2Runtime &rt); // sor_hle.cpp
 void sorStampaTraccia();                       // sor_hle.cpp (con SOR_TRACCIA)
 void sorProfiloAvvia();                        // sor_profilo.cpp (con SOR_PROFILO)
 void sorProfiloScrivi();
+void sorAlzaPrioritaThread();                   // sor_prove.cpp
+void sorProveAvvia(PS2Runtime *rt);             // sor_prove.cpp (SOR_TEMPI, SOR_TELECOMANDO)
 void sorGsRapporto();                          // gs_frontend.cpp (conteggi dei disegni)
 
 namespace
@@ -102,6 +109,12 @@ int main(int argc, char *argv[])
         return 2;
     }
     sorProfiloAvvia();
+    // Solo il thread del gioco (vedi ps2_runtime.cpp) e questo, che mostra le immagini, stanno sopra il normale:
+    // con tutto il processo sopra il normale gli altri programmi del PC restavano fermi anche per decine di secondi.
+    // SOR_PRIORITA_ALTA=1: tutto il processo sopra il normale, per misurare senza il disturbo di altri programmi.
+    sorAlzaPrioritaThread();
+    if (std::getenv("SOR_PRIORITA_ALTA"))
+        SetPriorityClass(GetCurrentProcess(), 0x00008000ul); // ABOVE_NORMAL_PRIORITY_CLASS
     const int secondi = argc >= 4 ? std::atoi(argv[3]) : 60;
     if (secondi > 0)
     {
@@ -131,6 +144,7 @@ int main(int argc, char *argv[])
     {
         PS2Runtime runtime;
         g_runtime.store(&runtime);
+        sorProveAvvia(&runtime);
         if (!runtime.initialize("Shadow of Rome"))
         {
             std::cerr << "[sor] runtime non inizializzato" << std::endl;

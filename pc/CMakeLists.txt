@@ -27,6 +27,8 @@ set(PS2X_ENABLE_AGRESSIVE_LOGS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${SOR_PS2RECOMP}" "${CMAKE_BINARY_DIR}/ps2recomp" EXCLUDE_FROM_ALL)
 # Come rogue-galaxy-recomp: con clang su MinGW l'LTO del runtime rompe il TLS.
 set_property(TARGET ps2_runtime PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF)
+# The same instructions as the translated code (SSE4.1): the fast VU1 and drawing paths use them.
+target_compile_options(ps2_runtime PRIVATE -march=x86-64-v2)
 
 file(GLOB sor_sources CONFIGURE_DEPENDS "${SOR_GENERATED_DIR}/*.cpp")
 list(LENGTH sor_sources sor_count)
@@ -46,6 +48,6 @@ target_precompile_headers(sor_generated PRIVATE
 set_source_files_properties("${SOR_GENERATED_DIR}/register_functions.cpp" PROPERTIES
     SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON COMPILE_OPTIONS "-O0")
 
-add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_hle.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_profilo.cpp")
+add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_hle.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_profilo.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_prove.cpp")
 target_link_libraries(sor PRIVATE sor_generated ps2_runtime)
 target_link_options(sor PRIVATE -static -Wl,--allow-multiple-definition -Wl,-Map=sor.map)

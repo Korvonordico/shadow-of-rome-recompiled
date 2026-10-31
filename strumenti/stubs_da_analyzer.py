@@ -17,8 +17,9 @@ ESCLUSI = {"_calloc_r", "_free_r", "_malloc_trim_r", "malloc_extend_top", "_mall
 # copiato nella memoria del kernel) e il runtime rispondeva KE_ERROR a ogni SetAlarm.
 # sceGsSetDefLoadImage tradotta (sor-tappa1, 30/10): il gioco (classVRAM::tex_trans_set)
 # spedisce da solo il pacchetto che riempie, quindi deve essere quello vero di Sony.
-# sceVu0* stay translated: the runtime's sceVu0MulMatrix multiplies in the opposite order
-# from the original (a1*a2 instead of a2*a1, checked on the game's own bytes), which broke the 3D.
+# sceVu0* tradotte (sor-tappa2, 30/10): la versione del runtime di sceVu0MulMatrix moltiplica
+# nell'ordine opposto all'originale (a1*a2 invece di a2*a1, controllato sui byte del gioco):
+# matrici di vista sbagliate e niente 3D. Il codice vero di Sony non puo' sbagliare ordine.
 ESCLUSI_PREFISSI = ("sceGifPk", "sceDmaRecv", "sceDmaWatch", "sceDmaPause", "sceDeci2",
                     "sceTty", "sceMpegGetPictureRAW8", "sceVu0", "_sceVu0")
 

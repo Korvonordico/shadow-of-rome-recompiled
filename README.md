@@ -44,6 +44,15 @@ Added for the first arena:
 
 Another example: the screen went black after the difficulty choice, and the first clue pointed at the game's timer code. That was only the victim. Following the memory watches back showed the movie's video data overflowing its buffer and overwriting the player's model, because PS2Recomp ran the movie callbacks later instead of during the call. Reading the broken model then corrupted the rest of the memory. After that fix, the 3D took four more separate fixes. One of them: in the character microcode, bone weights were 8 times too small, and that was found by reading the microcode itself.
 
+Added for the speed and the sound:
+
+- a test remote control inside the program (`pc/sor_prove.cpp`): keys injected at the point where the program reads the keyboard, without touching the real one, plus screenshots, a sampling profile and per-thread timings on command;
+- a list of every drawing pass of one frame (`SOR_GSDUMP`), and one number that measures how wrong a screenshot is, so that many tries can be compared without looking at each picture;
+- a comparison of the new fast drawing code with the original, primitive by primitive (`SOR_GSCONFRONTO`), and with the VU1 interpreter (`SOR_VU1VERIFICA`);
+- a recording of the sound output to a file (`SOR_AUDIO_PCM`), read as numbers: nobody can listen from inside a script.
+
+Another example: after the drawing moved to several threads, part of the first 3D scene turned blue and green. It looked like a race between threads, but it stayed the same with one thread. Trying which group of passes fixed the picture showed that one pass read a page and the next one wrote it: the check looked only at the opposite order (read after write). The threads take the screen in bands, so a band further down could read what a band above had just overwritten.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -67,8 +76,8 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
 - The save file the game makes at startup is created and loaded again.
-- The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V).
-- About 24 frames per second at the main menu and about 22 in the first arena (measured on one PC).
+- The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). Arrow keys and W A S D now also move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
+- **Speed:** the menus run at full speed (50 vblanks per second in PAL, about 290 million EE cycles per second). 3D is not at full speed yet, see below.
 - A launcher, `ShadowOfRome.exe`: **Play** starts the game, **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". It is built with the C# compiler that already ships with Windows, so nothing has to be installed (`launcher/build.bat`, source in `launcher/Launcher.cs`).
 
 <p align="center">
@@ -90,15 +99,17 @@ The work is planned in steps, every step is tested on the real game, and I decid
   <img src="docs/first-arena-lanista.png" width="30%" alt="The first arena: the trainer's briefing">
   <img src="docs/first-arena.png" width="30%" alt="The first arena: Agrippa seen from behind, in front of the trainer and the gate">
   <img src="docs/first-arena-walking.png" width="30%" alt="The first arena: Agrippa after walking, with the City Arena sign">
+  <img src="docs/first-arena-fight.png" width="30%" alt="The arena: Agrippa and the gladiators fighting">
 </p>
 
 **What does not work, or is not checked**
 
-- **Gameplay past the first steps:** fighting and the rooms after the first one have not been tried. In the first arena, a scripted left stick walked the character. Other bugs are likely.
+- **3D is not at full speed yet:** measured on the test PC while other programs kept 3 of its 6 cores busy: about 27-34 vblanks per second in the first 3D scene and 20-25 in the arena (full speed is 50). With the game given priority over those programs: about 42 and 34. The main limit now is the thread that runs the game code together with the IOP and the VU1.
+- **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Agrippa's own life bar was never seen going down, and picking up a weapon is not confirmed. The rooms after the first arena have not been tried.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so the opening movie does not play.
-- **Sound is not checked:** the sound driver runs in the simulator, but nobody has checked whether you can hear anything.
+- **Sound is new and nobody has heard it yet:** the game's own sound driver runs in the IOP simulator and now drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming, no reverb). The output was recorded and measured: stereo, real levels, not silent, no clipping, 99% of the samples reached the audio device (with the volume at zero). Whether it sounds right is for a person to say.
 - **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
-- **Nobody has played it by hand yet:** the tests used scripted key presses. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but its buttons have not been tried. The other keys in the table below come from the code and were not tried with real key presses.
+- **Played by hand only on an older build:** Francesco reached the arena by hand on the slow build. This build was tested only with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but nobody has tried it in the arena.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
 ## What you need
@@ -155,6 +166,8 @@ The keyboard always works, with or without a controller connected:
 | PS2 | Keyboard |
 |---|---|
 | D-pad | Arrow keys or W A S D |
+| Left stick | Arrow keys or W A S D (the same keys, they move both) |
+| Right stick | I J K L |
 | ✕ | X or Space |
 | ○ | C or Esc |
 | ▢ | Z |
