@@ -1,0 +1,1635 @@
+diff --git a/ps2xRuntime/include/ps2_runtime.h b/ps2xRuntime/include/ps2_runtime.h
+index 7410817..cb63442 100644
+--- a/ps2xRuntime/include/ps2_runtime.h
++++ b/ps2xRuntime/include/ps2_runtime.h
+@@ -445,13 +445,25 @@ public:
+     inline PS2Memory &memory() { return m_memory; }
+     inline const PS2Memory &memory() const { return m_memory; }
+ 
+-    inline GS &gs() { return m_gs; }
++    inline GS &gs()
++    {
++        m_memory.sorVifAspetta(1u);
++        return m_gs;
++    }
+     inline const GS &gs() const { return m_gs; }
+-    inline GifArbiter &gifArbiter() { return m_gifArbiter; }
++    inline GifArbiter &gifArbiter()
++    {
++        m_memory.sorVifAspetta(2u);
++        return m_gifArbiter;
++    }
+     inline const GifArbiter &gifArbiter() const { return m_gifArbiter; }
+     inline VU1Interpreter &vu0() { return m_vu0; }
+     inline const VU1Interpreter &vu0() const { return m_vu0; }
+-    inline VU1Interpreter &vu1() { return m_vu1; }
++    inline VU1Interpreter &vu1()
++    {
++        m_memory.sorVifAspetta(3u);
++        return m_vu1;
++    }
+     inline const VU1Interpreter &vu1() const { return m_vu1; }
+ 
+     inline PS2AudioBackend &audioBackend() { return m_audioBackend; }
+diff --git a/ps2xRuntime/include/runtime/gs/gs_cpu_backend.h b/ps2xRuntime/include/runtime/gs/gs_cpu_backend.h
+index 6e6b853..b2da065 100644
+--- a/ps2xRuntime/include/runtime/gs/gs_cpu_backend.h
++++ b/ps2xRuntime/include/runtime/gs/gs_cpu_backend.h
+@@ -35,6 +35,7 @@ struct GSVeloceStato
+     uint32_t (*leggiTex)(const GSVeloceStato &, int, int) = nullptr;
+     mutable uint64_t pixelFatti = 0;
+     GSMem::TexturePageCache *cache = nullptr; // solo per le primitive che leggono dove stanno scrivendo
++    bool riferimento = false;                 // SOR_GSCONFRONTO=3: la via generale, per controllare quelle dedicate
+     uint32_t clutVer = 0;
+     uint64_t palChiave = ~0ull;
+     uint32_t pal[256] = {};
+diff --git a/ps2xRuntime/include/runtime/ps2_memory.h b/ps2xRuntime/include/runtime/ps2_memory.h
+index ea86a9c..82cfb5e 100644
+--- a/ps2xRuntime/include/runtime/ps2_memory.h
++++ b/ps2xRuntime/include/runtime/ps2_memory.h
+@@ -1,6 +1,9 @@
+ #ifndef PS2_MEMORY_H
+ #define PS2_MEMORY_H
+ 
++#include <condition_variable>
++#include <deque>
++#include <thread>
+ #include <cstddef>
+ #include <cstdint>
+ #include <array>
+@@ -344,6 +347,15 @@ public:
+     void processVIF1Data(uint32_t srcPhysAddr, uint32_t sizeBytes);
+     void processVIF1Data(const uint8_t *data, uint32_t sizeBytes);
+     void processPendingTransfers();
++    // sor: le catene DMA verso VIF1 (che portano a VU1 e GS) girano su un thread a parte, come sulla console
++    // vera, dove il DMA lavora insieme al processore. Il thread del gioco aspetta che abbiano finito (qui) prima
++    // di toccare qualsiasi cosa che esse usano. SOR_VIFSINCRONO=1 le fa girare sul thread del gioco.
++    void sorVifAspetta(uint32_t chi = 0u) const;
++    void sorAvvisaThreadGioco();
++    [[nodiscard]] bool sorVifInCorso() const { return m_sorVifInCorso.load(std::memory_order_acquire) != 0u; }
++    // Il vblank entra nella stessa coda: l'immagine mostrata e' quella delle catene arrivate prima di lui.
++    void sorVifVblank();
++    void sorImpostaVblank(std::function<void()> fn) { m_sorVblankFn = std::move(fn); }
+     std::vector<uint32_t> consumeCompletedDmacCauses();
+ 
+     int pollDmaRegisters();
+@@ -417,10 +429,22 @@ public:
+         uint32_t srcAddr = 0;
+         uint32_t qwc = 0;
+         std::vector<uint8_t> chainData;
++        bool versoGif = false; // sor: per il thread del VIF: va al GIF (path 3) invece che a VIF1
++        bool vblank = false;   // sor: per il thread del VIF: segna il vblank
+     };
+     std::vector<PendingTransfer> m_pendingGifTransfers;
+     std::vector<PendingTransfer> m_pendingVif0Transfers;
+     std::vector<PendingTransfer> m_pendingVif1Transfers;
++    void sorVifGiro();
++    bool sorVifAccoda(std::vector<PendingTransfer> &lista, bool versoGif);
++    std::deque<PendingTransfer> m_sorVifCoda;
++    std::mutex m_sorVifMutex;
++    std::condition_variable m_sorVifSveglia;
++    mutable std::atomic<uint32_t> m_sorVifInCorso{0u};
++    std::thread m_sorVifThread;
++    bool m_sorVifPartito = false;
++    std::function<void()> m_sorVblankFn;
++    std::atomic<uint32_t> m_sorVblankInCoda{0u};
+     std::mutex m_completedDmacMutex;
+     std::vector<uint32_t> m_completedDmacCauses;
+ 
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+index ae6a899..a03da26 100644
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -2002,7 +2002,7 @@ void EeScheduler::processEvent(const EeEvent &event)
+     case EeEventType::VBlankStart:
+         ++m_vsyncTick;
+         m_runtime.memory().gs().vsyncTick.store(m_vsyncTick, std::memory_order_release);
+-        m_runtime.gs().sorVblank();
++        m_runtime.memory().sorVifVblank();
+         if ((m_vsyncTick & 1u) != 0u)
+         {
+             m_runtime.memory().gs().csr.fetch_or(0x2000ull, std::memory_order_acq_rel);
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index ab25443..ce904e7 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -1233,6 +1233,14 @@ namespace ps2_stubs
+         int32_t mode = static_cast<int32_t>(getRegU32(ctx, 4));
+         auto &mem = runtime->memory();
+ 
++        // sor: finche' il thread del VIF lavora, per il gioco e' tutto finito: l'ordine lo tiene la coda, e
++        // chi tocca VU1 o il GS aspetta da solo.
++        if (mem.sorVifInCorso())
++        {
++            setReturnS32(ctx, 0);
++            return;
++        }
++
+         if (mode == 0)
+         {
+             mem.processPendingTransfers();
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index a0dacb5..6131cb7 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -3,7 +3,7 @@
+ // Il thread del gioco scrive le primitive in una coda e prosegue, come sulla console vera, dove il GS
+ // lavora per conto suo. Le primitive si raccolgono in segmenti: un segmento finisce a ogni operazione che
+ // non si puo' fare in parallelo (caricamento di immagini e CLUT, trasferimenti, linee) e quando una
+-// texture legge memoria appena disegnata. Ogni segmento ha una lista di primitive per ogni banda di 16
++// texture legge memoria appena disegnata. Ogni segmento ha una lista di primitive per ogni banda di 8
+ // righe: i thread si prendono le bande libere una alla volta, e dentro una banda l'ordine resta quello
+ // del gioco. Due bande non toccano mai gli stessi pixel. Quando tutte le bande di un segmento sono finite,
+ // l'ultimo thread fa da solo l'operazione che lo chiude. Al vblank un segmento si chiude con una copia
+@@ -13,6 +13,7 @@
+ #include "runtime/gs/ps2_gs_common.h"
+ 
+ #include <emmintrin.h>
++#include <x86intrin.h>
+ 
+ #include <algorithm>
+ #include <array>
+@@ -33,6 +34,67 @@ uint64_t g_sorGsAttesaUs = 0, g_sorGsVblankUs = 0, g_sorGsSvuota = 0;
+ uint64_t g_sorGsTipi[10] = {}, g_sorGsTipiUs[10] = {};
+ uint64_t g_sorBandaAttesa[8] = {}, g_sorBandaVuoto[8] = {}, g_sorBandaPixel[8] = {};
+ extern uint64_t g_sorGsPrim;
++void sorThreadIdeale(int core); // pc/sor_prove.cpp
++
++// SOR_GSCLASSI: quanto costa ogni tipo di primitiva e ogni tipo di segmento.
++namespace
++{
++    struct VoceClasse
++    {
++        uint32_t chiave;
++        uint64_t prim, pix, cicli;
++    };
++    VoceClasse g_classi[8][1024];
++    struct VoceSeg
++    {
++        uint64_t n, us, prim, chiusuraUs;
++    };
++    VoceSeg g_segStat[6];
++    const bool s_classi = std::getenv("SOR_GSCLASSI") != nullptr;
++    // SOR_GSSENZADISEGNO: niente pixel, per misurare quanto costa tutto il resto.
++    const bool s_senzaDisegno = std::getenv("SOR_GSSENZADISEGNO") != nullptr;
++
++    void stampaClassi()
++    {
++        std::vector<VoceClasse> tutte;
++        for (int t = 0; t < 8; ++t)
++            for (const VoceClasse &v : g_classi[t])
++                if (v.prim)
++                {
++                    bool messa = false;
++                    for (VoceClasse &a : tutte)
++                        if (a.chiave == v.chiave)
++                        {
++                            a.prim += v.prim;
++                            a.pix += v.pix;
++                            a.cicli += v.cicli;
++                            messa = true;
++                        }
++                    if (!messa)
++                        tutte.push_back(v);
++                }
++        std::sort(tutte.begin(), tutte.end(), [](const VoceClasse &a, const VoceClasse &b)
++                  { return a.cicli > b.cicli; });
++        uint64_t tot = 0, totP = 0;
++        for (const VoceClasse &v : tutte)
++        {
++            tot += v.cicli;
++            totP += v.pix;
++        }
++        std::printf("[cla] totale Gcicli %.2f pixel(M) %.1f (per 256 vblank)\n", tot / 1e9, totP / 1e6);
++        for (size_t i = 0; i < tutte.size() && i < 16u; ++i)
++        {
++            const VoceClasse &v = tutte[i];
++            std::printf("[cla] %4.1f%% t%u tme%u abe%u lin%u foto%u ztst%u zm%u tpsm%02x fpsm%02x prim(k)=%.0f pix(M)=%.2f cicli/pix=%.0f\n", 100.0 * v.cicli / tot, v.chiave & 7u, (v.chiave >> 3) & 1u, (v.chiave >> 4) & 1u, (v.chiave >> 5) & 1u, (v.chiave >> 6) & 1u, (v.chiave >> 7) & 3u, (v.chiave >> 21) & 1u, (v.chiave >> 9) & 63u, (v.chiave >> 15) & 63u, v.prim / 1e3, v.pix / 1e6, v.pix ? static_cast<double>(v.cicli) / v.pix : 0.0);
++        }
++        static const char *nomi[6] = {"1", "2-3", "4-7", "8-15", "16+", "0"};
++        for (int i = 0; i < 6; ++i)
++            std::printf("[seg] bande %s: segmenti/vb %.1f ms/vb %.2f prim/vb %.0f chiusura ms/vb %.2f\n", nomi[i], g_segStat[i].n / 256.0, g_segStat[i].us / 256e3, g_segStat[i].prim / 256.0, g_segStat[i].chiusuraUs / 256e3);
++        std::fflush(stdout);
++        std::memset(g_classi, 0, sizeof(g_classi));
++        std::memset(g_segStat, 0, sizeof(g_segStat));
++    }
++}
+ 
+ namespace
+ {
+@@ -48,11 +110,11 @@ namespace
+     constexpr uint32_t kStati = 1u << 13;
+     constexpr uint32_t kSegmenti = 1u << 10;
+     constexpr uint32_t kClut = 1u << 12;
+-    constexpr uint32_t kBande = 64u; // 64 bande da 16 righe: fino a 1024 righe
+-    constexpr uint32_t kRigheBanda = 16u;
++    constexpr uint32_t kBande = 128u; // 128 bande da 8 righe: fino a 1024 righe
++    constexpr uint32_t kRigheBanda = 8u; // da 16 a 8: i thread si dividono meglio il lavoro (39 contro 44 immagini al secondo nel combattimento)
+     constexpr uint32_t kMaxThread = 8u;
+     // Un segmento non cresce all'infinito: i thread devono poter lavorare anche se il gioco non si ferma.
+-    constexpr uint32_t kMaxPrimSegmento = 4096u;
++    constexpr uint32_t kMaxPrimSegmento = 1024u;
+ 
+     enum class Tipo : uint32_t
+     {
+@@ -107,10 +169,13 @@ namespace
+         GSVertex v[3];
+     };
+ 
++    // Quello che si fa da soli prima delle bande, in ordine: carichi di CLUT e caricamenti di immagini.
+     struct CaricoClut
+     {
+         GSTex0Reg tex0{};
+         GSTexClutReg texclut{};
++        Tipo tipo = Tipo::Nessuna; // se non e' Nessuna, non e' una CLUT ma questa operazione
++        Extra *extra = nullptr;
+     };
+ 
+     struct Segmento
+@@ -118,6 +183,7 @@ namespace
+         std::vector<uint32_t> liste[kBande];
+         std::vector<CaricoClut> carichi; // i carichi di CLUT di questo segmento, in ordine
+         uint32_t clutPrimo = 0u;         // la versione da cui partono
++        uint32_t nClut = 0u;             // quanti di quei carichi sono CLUT
+         uint32_t bandeUsate[kBande] = {};
+         uint32_t nBande = 0u;
+         Tipo chiusura = Tipo::Nessuna;
+@@ -225,12 +291,17 @@ struct GSBande::Dentro
+     int copiaInLettura = -1;
+     std::atomic<uint64_t> copieFatte{0u};
+     uint64_t copieChieste = 0u;
++    // Il thread del VIF che aspetta il disegno: dorme, cosi' il suo core lavora per chi disegna.
++    std::mutex mutexAttesaCopia;
++    std::condition_variable svegliaCopia;
++    std::atomic<uint32_t> attendeCopia{0u};
+ 
+     Dentro()
+     {
+         unsigned n = std::thread::hardware_concurrency();
+-        n = n > 2u ? n - 2u : 1u;
+-        nThread = std::min<uint32_t>(n, 4u);
++        // Il thread del gioco e quello del VIF non sono sempre pieni: con 6 core 5 thread di disegno rendono di piu' di 4.
++        n = n > 1u ? n - 1u : 1u;
++        nThread = std::min<uint32_t>(n, 6u);
+         if (const char *e = std::getenv("SOR_GSTHREAD"))
+             nThread = std::min<uint32_t>(static_cast<uint32_t>(std::max(1, std::atoi(e))), kMaxThread);
+     }
+@@ -310,7 +381,12 @@ struct GSBande::Dentro
+                 std::lock_guard<std::mutex> lock(mutexCopie);
+                 copiaUltima = libera;
+             }
+-            copieFatte.fetch_add(1u, std::memory_order_release);
++            copieFatte.fetch_add(1u, std::memory_order_seq_cst);
++            if (attendeCopia.load(std::memory_order_seq_cst) != 0u)
++            {
++                std::lock_guard<std::mutex> lock(mutexAttesaCopia);
++                svegliaCopia.notify_all();
++            }
+             break;
+         }
+         default:
+@@ -322,10 +398,12 @@ struct GSBande::Dentro
+     template <class C>
+     static void girando(C &&condizione)
+     {
++        // Poco: chi ha in mano l'ultima banda puo' essere stato fermato dal sistema per far girare un altro thread, e
++        // gira di nuovo solo se qualcuno gli lascia il posto. Con 4000 giri l'arena faceva 46 immagini al secondo, con 500 fa 49.
+         int giri = 0;
+         while (!condizione())
+         {
+-            if (++giri < 4000)
++            if (++giri < 500)
+                 _mm_pause();
+             else
+                 std::this_thread::yield();
+@@ -334,6 +412,7 @@ struct GSBande::Dentro
+ 
+     void giro(uint32_t id)
+     {
++        sorThreadIdeale(static_cast<int>(id) + 1);
+         GSVeloceStato *stato = cpu.NuovoStatoVeloce();
+         int vuoti = 0;
+         for (;;)
+@@ -344,11 +423,11 @@ struct GSBande::Dentro
+             if (mio == segChiusi.load(std::memory_order_acquire))
+             {
+                 Cronometro cr(g_sorBandaVuoto[id]);
+-                if (++vuoti < 4000)
++                if (++vuoti < 200)
+                 {
+                     _mm_pause();
+                 }
+-                else if (vuoti < 8000)
++                else if (vuoti < 400)
+                 {
+                     std::this_thread::yield();
+                 }
+@@ -372,6 +451,11 @@ struct GSBande::Dentro
+                     uint32_t ver = s.clutPrimo;
+                     for (const CaricoClut &c : s.carichi)
+                     {
++                        if (c.tipo != Tipo::Nessuna)
++                        {
++                            esegui(c.tipo, c.extra);
++                            continue;
++                        }
+                         std::array<uint16_t, 512> &nuova = versioniClut[(ver + 1u) & (kClut - 1u)];
+                         nuova = versioniClut[ver & (kClut - 1u)];
+                         cpu.CaricaClutIn(nuova, c.tex0, c.texclut);
+@@ -402,6 +486,22 @@ struct GSBande::Dentro
+                 for (const uint32_t ip : s.liste[b])
+                 {
+                     const Primitiva &p = primitive[ip & (kPrimitive - 1u)];
++                    if (s_senzaDisegno)
++                        continue;
++                    if (s_classi)
++                    {
++                        const GSDrawState &st = stati[p.stato & (kStati - 1u)];
++                        const uint64_t p0 = stato->pixelFatti, t0 = __rdtsc();
++                        cpu.DisegnaVeloce(st, p.v, static_cast<uint64_t>(p.stato) + 1u, *stato, yLo, yHi, versioniClut[p.clut & (kClut - 1u)].data(), p.clut, p.foto ? foto.get() : nullptr);
++                        const uint64_t cicli = __rdtsc() - t0;
++                        const uint32_t chiave = (static_cast<uint32_t>(st.prim.type) & 7u) | (st.prim.tme ? 8u : 0u) | (st.prim.abe ? 16u : 0u) | (st.linearFilter ? 32u : 0u) | (p.foto ? 64u : 0u) | (static_cast<uint32_t>((st.context.test >> 17) & 3u) << 7) | (static_cast<uint32_t>(st.context.tex0.psm & 63u) << 9) | (static_cast<uint32_t>(st.context.frame.psm & 63u) << 15) | (st.context.zbuf.zmask ? 1u << 21 : 0u);
++                        VoceClasse &v = g_classi[id][(chiave * 2654435761u) >> 22];
++                        v.chiave = chiave;
++                        ++v.prim;
++                        v.pix += stato->pixelFatti - p0;
++                        v.cicli += cicli;
++                        continue;
++                    }
+                     cpu.DisegnaVeloce(stati[p.stato & (kStati - 1u)], p.v, static_cast<uint64_t>(p.stato) + 1u, *stato, yLo, yHi, versioniClut[p.clut & (kClut - 1u)].data(), p.clut, p.foto ? foto.get() : nullptr);
+                 }
+                 bandeFinite.fetch_add(1u, std::memory_order_acq_rel);
+@@ -418,11 +518,30 @@ struct GSBande::Dentro
+                 {
+                     // Il codice originale e i disegni da soli usano la CLUT condivisa.
+                     {
+-                        const uint32_t ultima = s.clutPrimo + static_cast<uint32_t>(s.carichi.size());
++                        const uint32_t ultima = s.clutPrimo + s.nClut;
+                         cpu.ImpostaClut(versioniClut[ultima & (kClut - 1u)], ultima);
+                     }
+                     s.carichi.clear();
++                    s.nClut = 0u;
++                    const auto tChiusura = std::chrono::steady_clock::now();
++                    const Tipo tipoChiusura = s.chiusura;
+                     esegui(s.chiusura, s.extra);
++                    if (s_classi)
++                    {
++                        static std::chrono::steady_clock::time_point tUltimo = std::chrono::steady_clock::now();
++                        static uint32_t primPrima = 0u, copie = 0u;
++                        const auto t1 = std::chrono::steady_clock::now();
++                        const uint32_t nb = s.nBande;
++                        VoceSeg &vs = g_segStat[nb == 0u ? 5 : nb == 1u ? 0 : nb < 4u ? 1 : nb < 8u ? 2 : nb < 16u ? 3 : 4];
++                        ++vs.n;
++                        vs.us += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - tUltimo).count());
++                        vs.chiusuraUs += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - tChiusura).count());
++                        vs.prim += s.primFine - primPrima;
++                        primPrima = s.primFine;
++                        tUltimo = t1;
++                        if (tipoChiusura == Tipo::Copia && ++copie % 256u == 0u)
++                            stampaClassi();
++                    }
+                     s.extra = nullptr;
+                     for (uint32_t i = 0; i < s.nBande; ++i)
+                         s.liste[s.bandeUsate[i]].clear();
+@@ -488,7 +607,7 @@ struct GSBande::Dentro
+         if (!partiti)
+             return;
+         ++g_sorGsSvuota;
+-        if (primNelSegmento != 0u)
++        if (primNelSegmento != 0u || !segmenti[segOra & (kSegmenti - 1u)].carichi.empty())
+             chiudi(Tipo::Nessuna, nullptr);
+         aspetta([&]()
+                 { return segFatti.load(std::memory_order_acquire) == segOra; }, g_sorGsAttesaUs);
+@@ -549,6 +668,8 @@ struct GSBande::Dentro
+     {
+         Pagine scriveAlto, scriveBasso, leggeAlto, leggeBasso;
+         Pagine leggeLarga; // quelle da mettere nella foto: un pixel in piu' per parte
++        int xa = 0, ya = 0, xb = 0, yb = 0; // il rettangolo che scrive
++        uint32_t bitF = 0u, bitZ = 0u;      // i bit che scrive nel colore e nella profondita'
+         bool vuota = false;  // non disegna niente
+         bool suSeStessa = false; // ogni pixel legge solo se stesso
+     };
+@@ -629,6 +750,10 @@ struct GSBande::Dentro
+             z.vuota = true;
+             return;
+         }
++        z.xa = xa;
++        z.ya = ya;
++        z.xb = xb;
++        z.yb = yb;
+         const uint32_t fbw = std::max<uint32_t>(c.frame.fbw, 1u);
+         uint32_t largF, altF;
+         paginaDi(c.frame.psm, largF, altF);
+@@ -636,6 +761,7 @@ struct GSBande::Dentro
+             // I formati a 16 bit e con tavolozza scrivono in tutto il pixel a 32 bit: bitDi li tratta cosi'.
+             const bool trentadue = c.frame.psm == GS_PSM_CT32 || c.frame.psm == GS_PSM_CT24 || c.frame.psm == GS_PSM_Z32 || c.frame.psm == GS_PSM_Z24;
+             const uint32_t bitF = trentadue ? (bitDi(c.frame.psm) & ~c.frame.fbmsk) : 0xFFFFFFFFu;
++            z.bitF = bitF;
+             Pagine f;
+             segnaRettangolo(f, c.frame.fbp, fbw, largF, altF, xa, ya, xb, yb);
+             if (bitF & 0xFF000000u)
+@@ -650,6 +776,7 @@ struct GSBande::Dentro
+             Pagine f;
+             segnaRettangolo(f, c.zbuf.zbp, fbw, largZ, altZ, xa, ya, xb, yb);
+             const uint32_t bitZ = bitDi(c.zbuf.psm);
++            z.bitZ = bitZ;
+             if (bitZ & 0xFF000000u)
+                 aggiungi(z.scriveAlto, f);
+             if (bitZ & 0x00FFFFFFu)
+@@ -707,6 +834,75 @@ struct GSBande::Dentro
+             z.suSeStessa = true;
+     }
+ 
++    // Le bande dividono lo schermo per riga, ma la stessa memoria puo' stare su righe diverse: con un formato o una base
++    // diversi (il gioco scrive le stesse pagine a 16 bit e poi come profondita'). Due primitive cosi' finirebbero in bande
++    // diverse e l'ordine fra loro si perderebbe. Per ogni pagina scritta in questo segmento si ricorda a che riga comincia
++    // e con che disposizione dei pixel: se la prossima la scrive diversamente, prima il segmento si chiude.
++    uint32_t firmaSeg[2][512] = {};
++    uint32_t firmaVal[2][512] = {};
++
++    static uint32_t disposizione(uint8_t psm)
++    {
++        return psm == GS_PSM_CT24 ? GS_PSM_CT32 : psm == GS_PSM_Z24 ? GS_PSM_Z32 : psm;
++    }
++
++    template <class F>
++    static void perPagina(uint32_t base, uint32_t passo, uint8_t psm, const Zone &z, F &&f)
++    {
++        uint32_t larg, alt;
++        paginaDi(psm, larg, alt);
++        const uint32_t tipo = disposizione(psm) << 16;
++        for (int r = z.ya / static_cast<int>(alt); r <= z.yb / static_cast<int>(alt); ++r)
++            for (int k = z.xa / static_cast<int>(larg); k <= z.xb / static_cast<int>(larg); ++k)
++                f((base + static_cast<uint32_t>(r) * passo + static_cast<uint32_t>(k)) & 511u, tipo | (static_cast<uint32_t>(r) * alt));
++    }
++
++    bool righeDiverse(const GSContext &c, const Zone &z) const
++    {
++        const uint32_t fbw = std::max<uint32_t>(c.frame.fbw, 1u);
++        bool diverse = false;
++        const auto guarda = [&](uint32_t bit)
++        {
++            return [&, bit](uint32_t p, uint32_t val)
++            {
++                if ((bit & 0xFF000000u) && firmaSeg[0][p] == segOra + 1u && firmaVal[0][p] != val)
++                    diverse = true;
++                if ((bit & 0x00FFFFFFu) && firmaSeg[1][p] == segOra + 1u && firmaVal[1][p] != val)
++                    diverse = true;
++            };
++        };
++        if (z.bitF != 0u)
++            perPagina(c.frame.fbp, fbw, c.frame.psm, z, guarda(z.bitF));
++        if (z.bitZ != 0u)
++            perPagina(c.zbuf.zbp, fbw, c.zbuf.psm, z, guarda(z.bitZ));
++        return diverse;
++    }
++
++    void segnaRighe(const GSContext &c, const Zone &z)
++    {
++        const uint32_t fbw = std::max<uint32_t>(c.frame.fbw, 1u);
++        const auto segna = [&](uint32_t bit)
++        {
++            return [this, bit](uint32_t p, uint32_t val)
++            {
++                if (bit & 0xFF000000u)
++                {
++                    firmaSeg[0][p] = segOra + 1u;
++                    firmaVal[0][p] = val;
++                }
++                if (bit & 0x00FFFFFFu)
++                {
++                    firmaSeg[1][p] = segOra + 1u;
++                    firmaVal[1][p] = val;
++                }
++            };
++        };
++        if (z.bitF != 0u)
++            perPagina(c.frame.fbp, fbw, c.frame.psm, z, segna(z.bitF));
++        if (z.bitZ != 0u)
++            perPagina(c.zbuf.zbp, fbw, c.zbuf.psm, z, segna(z.bitZ));
++    }
++
+     static bool toccano(const Pagine &a, const Pagine &b)
+     {
+         for (int i = 0; i < 8; ++i)
+@@ -714,6 +910,24 @@ struct GSBande::Dentro
+                 return true;
+         return false;
+     }
++
++    // Un'immagine caricata dal gioco. Ogni caricamento chiuderebbe il segmento, e il disegno 3D ne ha decine a
++    // fotogramma: tutti i thread si aspetterebbero ogni volta. Se nessuna primitiva del segmento tocca quelle pagine,
++    // il caricamento si puo' fare all'inizio del segmento (con i carichi di CLUT, nello stesso ordine).
++    Pagine pagineTrasferimento;
++    bool trasferimentoInCoda = false;
++
++    void carica(Tipo tipo, Extra *e)
++    {
++        if (toccano(pagineTrasferimento, disegnateAlto) || toccano(pagineTrasferimento, disegnateBasso) ||
++            toccano(pagineTrasferimento, letteAlto) || toccano(pagineTrasferimento, letteBasso))
++            chiudi(Tipo::Nessuna, nullptr);
++        parti();
++        CaricoClut c{};
++        c.tipo = tipo;
++        c.extra = e;
++        segmenti[segOra & (kSegmenti - 1u)].carichi.push_back(c);
++    }
+ };
+ 
+ namespace
+@@ -908,6 +1122,10 @@ void GSBande::Submit(const GSPrimitiveBatch &batch)
+     // Scrive dove una primitiva di questo segmento legge: le bande non tengono l'ordine fra loro.
+     if (Dentro::toccano(z.scriveAlto, d->letteAlto) || Dentro::toccano(z.scriveBasso, d->letteBasso))
+         d->chiudi(Tipo::Nessuna, nullptr);
++    // Il segmento pieno si chiude qui e non dopo: le righe segnate devono restare in quello della primitiva.
++    if (d->primNelSegmento >= kMaxPrimSegmento || d->righeDiverse(batch.state.context, z))
++        d->chiudi(Tipo::Nessuna, nullptr);
++    d->segnaRighe(batch.state.context, z);
+     if (!daFoto)
+         dumpPrim(batch, 'B');
+     Dentro::aggiungi(d->disegnateAlto, z.scriveAlto);
+@@ -956,17 +1174,42 @@ void GSBande::LoadClut(const GSTex0Reg &tex0, const GSTexClutReg &texclut)
+     Segmento &s = d->segmenti[d->segOra & (kSegmenti - 1u)];
+     if (s.carichi.size() >= kClut / 2u)
+         d->chiudi(Tipo::Nessuna, nullptr);
+-    d->segmenti[d->segOra & (kSegmenti - 1u)].carichi.push_back({tex0, texclut});
++    {
++        Segmento &ora = d->segmenti[d->segOra & (kSegmenti - 1u)];
++        CaricoClut c{};
++        c.tex0 = tex0;
++        c.texclut = texclut;
++        ora.carichi.push_back(c);
++        ++ora.nClut;
++    }
+     d->serieSola = false;
+     ++d->clutOra;
+ }
+ 
+ void GSBande::BeginTransfer(const GSTransferCommand &command)
+ {
+-    dumpEvento("trasferimento", 0, 0);
++    dumpEvento("trasferimento", command.bitbltbuf.dbp, (static_cast<uint32_t>(command.bitbltbuf.dpsm) << 24) | (command.trxreg.rrw << 12) | command.trxreg.rrh);
+     Extra *e = new Extra();
+     e->trasferimento = command;
+-    d->chiudi(Tipo::Trasferimento, e);
++    d->trasferimentoInCoda = command.direction == 0u;
++    if (!d->trasferimentoInCoda)
++    {
++        d->chiudi(Tipo::Trasferimento, e);
++        return;
++    }
++    uint32_t larg, alt;
++    paginaDi(command.bitbltbuf.dpsm, larg, alt);
++    int xb = static_cast<int>(command.trxpos.dsax) + static_cast<int>(command.trxreg.rrw) - 1;
++    int yb = static_cast<int>(command.trxpos.dsay) + static_cast<int>(command.trxreg.rrh) - 1;
++    // Un'immagine che comincia a meta' pagina sconfina nella pagina dopo.
++    if (command.bitbltbuf.dbp % 32u != 0u)
++    {
++        xb += static_cast<int>(larg);
++        yb += static_cast<int>(alt);
++    }
++    d->pagineTrasferimento.azzera();
++    Dentro::segnaRettangolo(d->pagineTrasferimento, command.bitbltbuf.dbp / 32u, std::max<uint32_t>((std::max<uint32_t>(command.bitbltbuf.dbw, 1u) * 64u) / larg, 1u), larg, alt, static_cast<int>(command.trxpos.dsax), static_cast<int>(command.trxpos.dsay), std::max(xb, static_cast<int>(command.trxpos.dsax)), std::max(yb, static_cast<int>(command.trxpos.dsay)));
++    d->carica(Tipo::Trasferimento, e);
+ }
+ 
+ void GSBande::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+@@ -975,7 +1218,10 @@ void GSBande::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+         return;
+     Extra *e = new Extra();
+     e->dati.assign(data, data + sizeBytes);
+-    d->chiudi(Tipo::Immagine, e);
++    if (d->trasferimentoInCoda)
++        d->carica(Tipo::Immagine, e);
++    else
++        d->chiudi(Tipo::Immagine, e);
+ }
+ 
+ void GSBande::Flush() {}
+@@ -994,8 +1240,18 @@ void GSBande::SegnaVblank()
+     d->chiudi(Tipo::Copia, new Extra());
+     ++d->copieChieste;
+     // Il gioco non deve correre piu' di due fotogrammi davanti al disegno.
+-    d->aspetta([&]()
+-               { return d->copieChieste - d->copieFatte.load(std::memory_order_acquire) <= 2u; }, g_sorGsVblankUs);
++    const auto pronta = [&]()
++    { return d->copieChieste - d->copieFatte.load(std::memory_order_seq_cst) <= 2u; };
++    if (!pronta())
++    {
++        Cronometro cr(g_sorGsVblankUs);
++        std::unique_lock<std::mutex> lock(d->mutexAttesaCopia);
++        d->attendeCopia.store(1u, std::memory_order_seq_cst);
++        while (!d->svegliaCopia.wait_for(lock, std::chrono::milliseconds(2), pronta))
++        {
++        }
++        d->attendeCopia.store(0u, std::memory_order_seq_cst);
++    }
+ }
+ 
+ PresentationFrame GSBande::Present(const GSPresentationRequest &request)
+diff --git a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+index 31c82b4..37e9a1c 100644
+--- a/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp
+@@ -562,6 +562,14 @@ void GSCpuBackend::Submit(const GSPrimitiveBatch &batch)
+         return;
+     }
+     DrawPrimitive(batch);
++    // Le linee non si confrontano, ma la copia del confronto deve averle: dopo le primitive le leggono come texture.
++    if (s_confronto && m_vramCopia.size() == m_vramSize)
++    {
++        uint8_t *vera = m_vram;
++        m_vram = m_vramCopia.data();
++        DrawPrimitive(batch);
++        m_vram = vera;
++    }
+ }
+ 
+ void GSCpuBackend::LoadClut(const GSTex0Reg &tex0, const GSTexClutReg &texclut)
+@@ -1522,6 +1530,11 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+     const uint32_t rrw = m_transfer.trxreg.rrw;
+     const uint32_t dsax = m_transfer.trxpos.dsax;
+     uint32_t offset = 0u;
++    const auto scrivi = m_writeVramFuncs[dpsm & 0x3Fu];
++    uint8_t *const vram = m_vram;
++    // Colonna e riga del prossimo pixel: come copiedPixels % rrw e copiedPixels / rrw, senza le divisioni.
++    uint32_t colonna = m_transferState.copiedPixels % rrw;
++    uint32_t riga = m_transferState.copiedPixels / rrw;
+ 
+     auto advancePixel = [&](uint32_t count)
+     {
+@@ -1536,8 +1549,14 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+             return;
+         }
+ 
+-        m_transferState.x = dsax + (m_transferState.copiedPixels % rrw);
+-        m_transferState.y = m_transfer.trxpos.dsay + (m_transferState.copiedPixels / rrw);
++        colonna += count;
++        while (colonna >= rrw)
++        {
++            colonna -= rrw;
++            ++riga;
++        }
++        m_transferState.x = dsax + colonna;
++        m_transferState.y = m_transfer.trxpos.dsay + riga;
+     };
+ 
+     while (offset < sizeBytes && m_transferState.direction == 0u)
+@@ -1551,7 +1570,7 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+                 return;
+             uint32_t value = 0u;
+             std::memcpy(&value, data + offset, sizeof(value));
+-            WriteVramUnlocked(dpsm, dbp, dbw, m_transferState.x, m_transferState.y, value);
++            scrivi(vram, dbp, dbw, m_transferState.x, m_transferState.y, value);
+             offset += 4u;
+             advancePixel(1u);
+             break;
+@@ -1564,7 +1583,7 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+             const uint32_t value = static_cast<uint32_t>(data[offset]) |
+                                    (static_cast<uint32_t>(data[offset + 1u]) << 8u) |
+                                    (static_cast<uint32_t>(data[offset + 2u]) << 16u);
+-            WriteVramUnlocked(dpsm, dbp, dbw, m_transferState.x, m_transferState.y, value);
++            scrivi(vram, dbp, dbw, m_transferState.x, m_transferState.y, value);
+             offset += 3u;
+             advancePixel(1u);
+             break;
+@@ -1578,14 +1597,14 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+                 return;
+             uint16_t value = 0u;
+             std::memcpy(&value, data + offset, sizeof(value));
+-            WriteVramUnlocked(dpsm, dbp, dbw, m_transferState.x, m_transferState.y, value);
++            scrivi(vram, dbp, dbw, m_transferState.x, m_transferState.y, value);
+             offset += 2u;
+             advancePixel(1u);
+             break;
+         }
+         case GS_PSM_T8:
+         case GS_PSM_T8H:
+-            WriteVramUnlocked(dpsm, dbp, dbw, m_transferState.x, m_transferState.y, data[offset++]);
++            scrivi(vram, dbp, dbw, m_transferState.x, m_transferState.y, data[offset++]);
+             advancePixel(1u);
+             break;
+         case GS_PSM_T4:
+@@ -1594,17 +1613,11 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
+         {
+             const uint8_t packed = data[offset++];
+             const uint32_t firstPixel = m_transferState.copiedPixels;
+-            WriteVramUnlocked(dpsm, dbp, dbw,
+-                              dsax + (firstPixel % rrw),
+-                              m_transfer.trxpos.dsay + (firstPixel / rrw),
+-                              packed & 0x0Fu);
++            scrivi(vram, dbp, dbw, dsax + colonna, m_transfer.trxpos.dsay + riga, packed & 0x0Fu);
+             if (firstPixel + 1u < m_transferState.totalPixels)
+             {
+-                const uint32_t secondPixel = firstPixel + 1u;
+-                WriteVramUnlocked(dpsm, dbp, dbw,
+-                                  dsax + (secondPixel % rrw),
+-                                  m_transfer.trxpos.dsay + (secondPixel / rrw),
+-                                  (packed >> 4u) & 0x0Fu);
++                const bool aCapo = colonna + 1u >= rrw;
++                scrivi(vram, dbp, dbw, dsax + (aCapo ? 0u : colonna + 1u), m_transfer.trxpos.dsay + riga + (aCapo ? 1u : 0u), (packed >> 4u) & 0x0Fu);
+             }
+             advancePixel(std::min<uint32_t>(2u, m_transferState.totalPixels - firstPixel));
+             break;
+@@ -2036,6 +2049,8 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
+ // - fusione e filtro bilineare lavorano sui quattro canali insieme (SSE).
+ // Disegna solo le righe fra yLo e yHi: piu' thread possono lavorare sulla stessa primitiva.
+ // ============================================================================
++#define SOR_INLINE inline __attribute__((always_inline))
++
+ namespace
+ {
+     using namespace GSMem;
+@@ -2062,6 +2077,20 @@ namespace
+             return PageTableP4;
+     }
+ 
++    // Lo stesso di applyTexa per i due formati che lo usano di piu', senza scomporre il colore.
++    SOR_INLINE uint32_t texaC24(const GSTexaReg &texa, uint32_t v)
++    {
++        const uint32_t rgb = v & 0x00FFFFFFu;
++        const uint32_t a = (texa.aem && rgb == 0u) ? 0u : texa.ta0;
++        return rgb | (a << 24);
++    }
++    SOR_INLINE uint32_t texaC16(const GSTexaReg &texa, u16 v)
++    {
++        const uint32_t t = ((v & 0x1Fu) << 3) | ((v & 0x3E0u) << 6) | ((v & 0x7C00u) << 9);
++        const uint32_t a = (v & 0x8000u) != 0u ? texa.ta1 : ((texa.aem && t == 0u) ? 0u : texa.ta0);
++        return t | (a << 24);
++    }
++
+     // Legge un texel di un formato preciso. Sta in una variabile locale: il compilatore tiene tutto nei registri.
+     template <PixelStorageMode P>
+     struct Lettore
+@@ -2079,7 +2108,7 @@ namespace
+             : t(&tabella<P>()[S.tbp % BLOCKS_PER_PAGE]), vram(S.vramTex), cache(S.cache), basePag(S.tbp / BLOCKS_PER_PAGE),
+               passo((S.tbw * 64u) / Tr::PageExtent().x), pal(S.pal), texa(S.st->texa) {}
+ 
+-        inline uint32_t operator()(uint32_t x, uint32_t y) const
++        SOR_INLINE uint32_t operator()(uint32_t x, uint32_t y) const
+         {
+             constexpr uint32_t W = Tr::PageExtent().x, H = Tr::PageExtent().y;
+             const uint32_t pagina = basePag + (y / H) * passo + x / W;
+@@ -2093,9 +2122,9 @@ namespace
+             if constexpr (P == C32)
+                 return v;
+             else if constexpr (P == C24)
+-                return applyTexa(texa, GS_PSM_CT24, v & 0x00FFFFFFu);
++                return texaC24(texa, v);
+             else if constexpr (P == C16)
+-                return applyTexa(texa, GS_PSM_CT16, Rgba5551ToRgba8888(static_cast<u16>(v)));
++                return texaC16(texa, static_cast<u16>(v));
+             else if constexpr (P == P8 || P == P8H)
+                 return pal[static_cast<uint8_t>(v)];
+             else
+@@ -2107,7 +2136,7 @@ namespace
+             const Lettore &L;
+             const uint16_t *col;
+             uint32_t pagRiga;
+-            inline uint32_t operator()(uint32_t x) const
++            SOR_INLINE uint32_t operator()(uint32_t x) const
+             {
+                 constexpr uint32_t W = Tr::PageExtent().x;
+                 const uint32_t pix = (pagRiga + x / W) * static_cast<uint32_t>(Tr::PixelsPerPage()) + col[x % W];
+@@ -2119,9 +2148,9 @@ namespace
+                 if constexpr (P == C32)
+                     return v;
+                 else if constexpr (P == C24)
+-                    return applyTexa(L.texa, GS_PSM_CT24, v & 0x00FFFFFFu);
++                    return texaC24(L.texa, v);
+                 else if constexpr (P == C16)
+-                    return applyTexa(L.texa, GS_PSM_CT16, Rgba5551ToRgba8888(static_cast<u16>(v)));
++                    return texaC16(L.texa, static_cast<u16>(v));
+                 else if constexpr (P == P8 || P == P8H)
+                     return L.pal[static_cast<uint8_t>(v)];
+                 else
+@@ -2164,7 +2193,7 @@ namespace
+     uint32_t texZ16s(const VS &S, int u, int v) { return applyTexa(S.st->texa, GS_PSM_Z16S, Rgba5551ToRgba8888(static_cast<u16>(texCruda<Z16S, PageTableZ16S>(S, u, v)))); }
+     uint32_t texNulla(const VS &, int, int) { return 0xFFFF00FFu; }
+ 
+-    inline uint32_t bilineare(uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, int fx, int fy)
++    SOR_INLINE uint32_t bilineare(uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, int fx, int fy)
+     {
+         const __m128i z = _mm_setzero_si128();
+         const __m128i a = _mm_unpacklo_epi8(_mm_cvtsi32_si128(static_cast<int>(c00)), z);
+@@ -2196,7 +2225,7 @@ namespace
+     };
+ 
+     template <class L>
+-    inline uint32_t campiona(const L &leggi, const Campionatore &C, float texU, float texV)
++    SOR_INLINE uint32_t campiona(const L &leggi, const Campionatore &C, float texU, float texV)
+     {
+         if (!C.lineare)
+             return leggi(static_cast<uint32_t>(C.u(static_cast<int>(texU))), static_cast<uint32_t>(C.v(static_cast<int>(texV))));
+@@ -2208,6 +2237,20 @@ namespace
+         const int fy = static_cast<int>((sv - static_cast<float>(v0)) * 256.0f);
+         const uint32_t ua = static_cast<uint32_t>(C.u(u0));
+         const uint32_t va = static_cast<uint32_t>(C.v(v0));
++        if constexpr (requires { leggi.cache; })
++        {
++            // Senza la copia della pagina: i conti della riga si fanno una volta per le due letture di quella riga.
++            if (!leggi.cache)
++            {
++                const auto rigaA = leggi.riga(va);
++                const uint32_t primo = rigaA(ua);
++                if (fx == 0 && fy == 0)
++                    return primo;
++                const uint32_t ub = static_cast<uint32_t>(C.u(u0 + 1));
++                const auto rigaB = leggi.riga(static_cast<uint32_t>(C.v(v0 + 1)));
++                return bilineare(primo, rigaA(ub), rigaB(ua), rigaB(ub), fx, fy);
++            }
++        }
+         const uint32_t c00 = leggi(ua, va);
+         if (fx == 0 && fy == 0)
+             return c00;
+@@ -2223,7 +2266,7 @@ namespace
+         bool tcc;
+         const GSTex0Reg *tex0;
+         explicit Combinatore(const VS &S) : tfx(S.tfx), tcc(S.tcc), tex0(&S.st->context.tex0) {}
+-        inline uint32_t operator()(uint32_t t, uint32_t c) const
++        SOR_INLINE uint32_t operator()(uint32_t t, uint32_t c) const
+         {
+             const uint32_t va = c & 0xFF000000u;
+             if (tfx == 0u)
+@@ -2252,7 +2295,7 @@ namespace
+         uint64_t test;
+         uint8_t fpsm, afail, ztst, asel, bsel, csel, dsel, fix, nebbiaR, nebbiaG, nebbiaB;
+         bool fC32, zZ24, f16, testAlfa, date, dateLegge, abe, pabe, fba, zmask, nebbia;
+-        bool fC24, semplice; // semplice: niente test, niente profondita', niente nebbia, formato a 32 bit
++        bool fC24;
+         uint32_t (*leggiF)(uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t);
+         void (*scriviF)(uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+         uint32_t (*leggiZf)(uint8_t *, uint32_t, uint32_t, uint32_t, uint32_t);
+@@ -2262,24 +2305,26 @@ namespace
+             : vram(S.vram), fbp(S.fbp), fbw(S.fbw), zbp(S.zbp), fbmsk(S.fbmsk), pagF0(S.fbp / 32u), pagZ0(S.zbp / 32u), test(S.test), fpsm(S.fpsm), afail(S.afail), ztst(S.ztst),
+               asel(S.asel), bsel(S.bsel), csel(S.csel), dsel(S.dsel), fix(S.fix), nebbiaR(S.nebbiaR), nebbiaG(S.nebbiaG), nebbiaB(S.nebbiaB), fC32(S.fC32), zZ24(S.zZ24), f16(S.f16),
+               testAlfa(S.testAlfa), date(S.date), dateLegge(S.dateLegge), abe(S.abe), pabe(S.pabe), fba(S.fba), zmask(S.zmask), nebbia(S.nebbia),
+-              fC24(S.fpsm == GS_PSM_CT24), semplice((S.fC32 || S.fpsm == GS_PSM_CT24) && !S.testAlfa && !S.date && S.ztst == 1u && S.zmask && !S.nebbia),
++              fC24(S.fpsm == GS_PSM_CT24),
+               leggiF(S.leggiF), scriviF(S.scriviF), leggiZf(S.leggiZf), scriviZf(S.scriviZf) {}
+     };
+ 
+     // Quello che serve per una riga: gli indirizzi si fanno con due letture di tabella.
+     struct Riga
+     {
+-        const uint16_t *colF, *colZ;
+-        uint32_t pagF, pagZ;
++        const uint16_t *colF, *colZ, *colF16;
++        uint32_t pagF, pagZ, pagF16;
+         int y;
+         Riga(const Uscita &U, int yy)
+             : colF(PageTableC32[0][static_cast<uint32_t>(yy) & 31u].data()), colZ(PageTableZ32[0][static_cast<uint32_t>(yy) & 31u].data()),
+-              pagF(U.pagF0 + (static_cast<uint32_t>(yy) >> 5) * U.fbw), pagZ(U.pagZ0 + (static_cast<uint32_t>(yy) >> 5) * U.fbw), y(yy) {}
++              colF16(PageTableC16[0][static_cast<uint32_t>(yy) & 63u].data()),
++              pagF(U.pagF0 + (static_cast<uint32_t>(yy) >> 5) * U.fbw), pagZ(U.pagZ0 + (static_cast<uint32_t>(yy) >> 5) * U.fbw),
++              pagF16(U.pagF0 + (static_cast<uint32_t>(yy) >> 6) * U.fbw), y(yy) {}
+     };
+ 
+     constexpr uint32_t kMascheraVram32 = static_cast<uint32_t>(MEMORY_SIZE - 4u);
+ 
+-    inline uint32_t fondi(const Uscita &U, uint32_t rgba, uint32_t a, uint32_t dest)
++    SOR_INLINE uint32_t fondi(const Uscita &U, uint32_t rgba, uint32_t a, uint32_t dest)
+     {
+         const uint32_t alfa = U.csel == 0u ? a : U.csel == 1u ? (dest >> 24) : U.fix;
+         if (alfa <= 128u)
+@@ -2305,6 +2350,28 @@ namespace
+         return fuso;
+     }
+ 
++    // Il controllo della profondita' di pixel(). Se fallisce il pixel non scrive niente in nessun caso (alfa e DATE non
++    // hanno effetti prima di qui): si puo' fare prima di leggere la texture, che e' la parte che costa.
++    SOR_INLINE bool passaZ(const Uscita &U, const Riga &R, int x, uint32_t z)
++    {
++        if (U.ztst == 1u)
++            return true;
++        if (U.ztst == 0u)
++            return false;
++        const uint32_t ux = static_cast<uint32_t>(x);
++        uint32_t attuale;
++        if (U.zZ24)
++        {
++            const uint32_t indZ = ((((R.pagZ + (ux >> 6)) << 11) + R.colZ[ux & 63u]) * 4u) & kMascheraVram32;
++            std::memcpy(&attuale, U.vram + indZ, 4);
++            attuale &= 0x00FFFFFFu;
++        }
++        else
++            attuale = U.leggiZf(U.vram, U.zbp, U.fbw, ux, static_cast<uint32_t>(R.y));
++        return U.ztst == 2u ? z >= attuale : z > attuale;
++    }
++
++    template <bool ZFATTO = false>
+     inline void pixel(const Uscita &U, const Riga &R, int x, uint32_t z, uint32_t rgba, uint8_t fog)
+     {
+         uint32_t a = rgba >> 24;
+@@ -2358,7 +2425,7 @@ namespace
+             return;
+ 
+         const uint32_t indZ = ((((R.pagZ + (ux >> 6)) << 11) + R.colZ[ux & 63u]) * 4u) & kMascheraVram32;
+-        if (U.ztst != 1u)
++        if (!ZFATTO && U.ztst != 1u)
+         {
+             if (U.ztst == 0u)
+                 return;
+@@ -2404,8 +2471,55 @@ namespace
+         }
+     }
+ 
+-    // Lo sprite: stessi conti di DrawSprite.
+-    template <class L>
++    // Lo stesso di pixel<true> quando il formato e' a 32 bit e non servono nebbia, DATE e maschera. Le scelte che
++    // restano stanno nei parametri: il compilatore toglie tutti i controlli che altrimenti si rifanno a ogni pixel.
++    template <bool ABE, bool ALFA, bool ZS>
++    SOR_INLINE void pixelRapido(const Uscita &U, const Riga &R, int x, uint32_t z, uint32_t rgba)
++    {
++        uint32_t a = rgba >> 24;
++        if constexpr (ALFA)
++        {
++            if (!passesAlphaTest(U.test, static_cast<uint8_t>(a)))
++            {
++                pixel<true>(U, R, x, z, rgba, 0u);
++                return;
++            }
++        }
++        const uint32_t ux = static_cast<uint32_t>(x);
++        const uint32_t indF = ((((R.pagF + (ux >> 6)) << 11) + R.colF[ux & 63u]) * 4u) & kMascheraVram32;
++        if constexpr (ABE)
++        {
++            if (!(U.pabe && (a & 0x80u) == 0u))
++            {
++                uint32_t dest;
++                std::memcpy(&dest, U.vram + indF, 4);
++                rgba = fondi(U, rgba, a, dest);
++            }
++        }
++        if (U.fba)
++            a |= 0x80u;
++        const uint32_t out = (rgba & 0x00FFFFFFu) | (a << 24);
++        std::memcpy(U.vram + indF, &out, 4);
++        if constexpr (ZS)
++        {
++            const uint32_t indZ = ((((R.pagZ + (ux >> 6)) << 11) + R.colZ[ux & 63u]) * 4u) & kMascheraVram32;
++            uint32_t vecchio;
++            std::memcpy(&vecchio, U.vram + indZ, 4);
++            const uint32_t nuovo = (vecchio & 0xFF000000u) | (z & 0x00FFFFFFu);
++            std::memcpy(U.vram + indZ, &nuovo, 4);
++        }
++    }
++
++    // Quale via dedicata puo' usare un triangolo; -1 se serve quella generale.
++    inline int viaTriangolo(const VS &S)
++    {
++        if (!S.fC32 || S.date || S.nebbia || S.fbmsk != 0u || (!S.zmask && !S.zZ24))
++            return -1;
++        return (S.abe ? 1 : 0) | (S.testAlfa ? 2 : 0) | (!S.zmask ? 4 : 0);
++    }
++
++    // Lo sprite: stessi conti di DrawSprite. M: 0 via generale, 1 solo colore a 32 o 24 bit, 2 solo colore a 16 bit.
++    template <int M, bool ABE, class L>
+     void spriteTex(const VS &S, const L &leggi, const GSVertex *v, int dx0, int dy0, int dx1, int dy1, int x0, int y0, int spanX, int spanY)
+     {
+         const GSVertex &v0 = v[0];
+@@ -2436,7 +2550,7 @@ namespace
+         }
+         const float du = (u1f - u0f) / static_cast<float>(spanX);
+         const float dv = (v1f - v0f) / static_cast<float>(spanY);
+-        if (S.cache != nullptr || dx1 - dx0 >= 2048)
++        if (S.cache != nullptr || dx1 - dx0 >= 2048 || S.riferimento)
+         {
+             // Con la copia della pagina (primitive da sole): la via completa.
+             for (int y = dy0; y <= dy1; ++y)
+@@ -2482,37 +2596,68 @@ namespace
+                 co.fx = 0;
+             }
+         }
+-        const bool semplice = U.semplice;
+         const bool scriveA = !U.fC24;
+-        const bool leggiSempre = U.abe || U.fbmsk != 0u || U.fC24;
+-        const auto scrivi = [&](const Riga &R, int x, uint32_t rgba)
++        const bool leggiSempre = ABE || U.fbmsk != 0u || U.fC24;
++        const bool controllaZ = U.ztst != 1u;
++        const auto scrivi = [&](const Riga &R, int x, uint32_t rgba) __attribute__((always_inline))
+         {
+-            if (!semplice)
++            if constexpr (M == 0)
+             {
+-                pixel(U, R, x, z1, rgba, fog);
+-                return;
++                pixel<true>(U, R, x, z1, rgba, fog);
+             }
+-            uint32_t a = rgba >> 24;
+-            const uint32_t ux = static_cast<uint32_t>(x);
+-            const uint32_t indF = ((((R.pagF + (ux >> 6)) << 11) + R.colF[ux & 63u]) * 4u) & kMascheraVram32;
+-            uint32_t grezzo = 0u, dest = 0u;
+-            if (leggiSempre)
++            else if constexpr (M == 1)
+             {
+-                std::memcpy(&grezzo, U.vram + indF, 4);
+-                dest = scriveA ? grezzo : ((grezzo & 0x00FFFFFFu) | 0x80000000u);
++                uint32_t a = rgba >> 24;
++                const uint32_t ux = static_cast<uint32_t>(x);
++                const uint32_t indF = ((((R.pagF + (ux >> 6)) << 11) + R.colF[ux & 63u]) * 4u) & kMascheraVram32;
++                uint32_t grezzo = 0u, dest = 0u;
++                if (leggiSempre)
++                {
++                    std::memcpy(&grezzo, U.vram + indF, 4);
++                    dest = scriveA ? grezzo : ((grezzo & 0x00FFFFFFu) | 0x80000000u);
++                }
++                if constexpr (ABE)
++                {
++                    if (!(U.pabe && (a & 0x80u) == 0u))
++                        rgba = fondi(U, rgba, a, dest);
++                }
++                if (U.fba && scriveA)
++                    a |= 0x80u;
++                uint32_t out = (rgba & 0x00FFFFFFu) | (a << 24);
++                if (U.fbmsk != 0u)
++                    out = (out & ~U.fbmsk) | (dest & U.fbmsk);
++                if (!scriveA)
++                    out = (out & 0x00FFFFFFu) | (grezzo & 0xFF000000u);
++                std::memcpy(U.vram + indF, &out, 4);
++            }
++            else
++            {
++                uint32_t a = rgba >> 24;
++                const uint32_t ux = static_cast<uint32_t>(x);
++                const uint32_t ind = (((R.pagF16 + (ux >> 6)) << 12) + R.colF16[ux & 63u]) * 2u & static_cast<uint32_t>(MEMORY_SIZE - 2u);
++                uint32_t dest = 0u;
++                if (leggiSempre)
++                {
++                    uint16_t g;
++                    std::memcpy(&g, U.vram + ind, 2);
++                    dest = Rgba5551ToRgba8888(g);
++                }
++                if constexpr (ABE)
++                {
++                    if (!(U.pabe && (a & 0x80u) == 0u))
++                        rgba = fondi(U, rgba, a, dest);
++                }
++                if (U.fba)
++                    a |= 0x80u;
++                uint32_t out = (rgba & 0x00FFFFFFu) | (a << 24);
++                if (U.fbmsk != 0u)
++                    out = (out & ~U.fbmsk) | (dest & U.fbmsk);
++                const uint16_t v = static_cast<uint16_t>(Rgba8888ToRgba5551(out));
++                std::memcpy(U.vram + ind, &v, 2);
+             }
+-            if (U.abe && !(U.pabe && (a & 0x80u) == 0u))
+-                rgba = fondi(U, rgba, a, dest);
+-            if (U.fba && scriveA)
+-                a |= 0x80u;
+-            uint32_t out = (rgba & 0x00FFFFFFu) | (a << 24);
+-            if (U.fbmsk != 0u)
+-                out = (out & ~U.fbmsk) | (dest & U.fbmsk);
+-            if (!scriveA)
+-                out = (out & 0x00FFFFFFu) | (grezzo & 0xFF000000u);
+-            std::memcpy(U.vram + indF, &out, 4);
+         };
+         const int colonneN = dx1 - dx0 + 1;
++        S.pixelFatti += static_cast<uint64_t>(colonneN) * static_cast<uint64_t>(dy1 - dy0 + 1);
+         for (int y = dy0; y <= dy1; ++y)
+         {
+             const Riga R(U, y);
+@@ -2528,6 +2673,8 @@ namespace
+                 const auto rigaB = leggi.riga(static_cast<uint32_t>(C.v(v0i + 1)));
+                 for (int i = 0; i < colonneN; ++i)
+                 {
++                    if (controllaZ && !passaZ(U, R, dx0 + i, z1))
++                        continue;
+                     const Colonna &co = colonne[i];
+                     const uint32_t c00 = rigaA(co.ua);
+                     const uint32_t t = (co.fx == 0 && fy == 0) ? c00 : bilineare(c00, rigaA(co.ub), rigaB(co.ua), rigaB(co.ub), co.fx, fy);
+@@ -2538,7 +2685,11 @@ namespace
+             {
+                 const auto rigaA = leggi.riga(static_cast<uint32_t>(C.v(static_cast<int>(tv))));
+                 for (int i = 0; i < colonneN; ++i)
++                {
++                    if (controllaZ && !passaZ(U, R, dx0 + i, z1))
++                        continue;
+                     scrivi(R, dx0 + i, K(rigaA(colonne[i].ua), colore));
++                }
+             }
+         }
+     }
+@@ -2551,7 +2702,8 @@ namespace
+     };
+ 
+     // Il triangolo: stessi conti di DrawTriangle, con il tratto utile di ogni riga trovato prima.
+-    template <bool TEX, class L>
++    // CFG: da 0 a 7 la via dedicata (viaTriangolo), -1 la via generale, -2 la via generale senza la profondita' anticipata.
++    template <bool TEX, int CFG, class L>
+     void triangolo(const VS &S, const L &leggi, const Triangolo &T, bool sfuma, bool fst)
+     {
+         const GSVertex &v0 = T.v[0];
+@@ -2602,6 +2754,7 @@ namespace
+             const int xi = std::max(T.minX, static_cast<int>(std::floor(xa)));
+             const int xf = std::min(T.maxX, static_cast<int>(std::ceil(xb)));
+             const Riga R(U, y);
++            S.pixelFatti += static_cast<uint64_t>(xf - xi + 1);
+             for (int x = xi; x <= xf; ++x)
+             {
+                 const float fx = static_cast<float>(x);
+@@ -2610,6 +2763,13 @@ namespace
+                 const float w2 = 1.0f - w0 - w1;
+                 if (w0 < -kEps || w1 < -kEps || w2 < -kEps)
+                     continue;
++                const double z = z2 + ze0 * static_cast<double>(w0) + ze1 * static_cast<double>(w1);
++                const u32 zi = static_cast<u32>(z + 0.5);
++                if constexpr (CFG != -2)
++                {
++                    if (!passaZ(U, R, x, zi))
++                        continue;
++                }
+                 const __m128 W0 = _mm_set1_ps(w0);
+                 const __m128 W1 = _mm_set1_ps(w1);
+                 uint32_t colore = piatto;
+@@ -2639,12 +2799,60 @@ namespace
+                     }
+                     colore = K(campiona(leggi, C, tu, tw), colore);
+                 }
+-                const double z = z2 + ze0 * static_cast<double>(w0) + ze1 * static_cast<double>(w1);
+-                pixel(U, R, x, static_cast<u32>(z + 0.5), colore, serveT ? clampU8(static_cast<int>(tv[3])) : static_cast<uint8_t>(0u));
++                if constexpr (CFG >= 0)
++                    pixelRapido<(CFG & 1) != 0, (CFG & 2) != 0, (CFG & 4) != 0>(U, R, x, zi, colore);
++                else if constexpr (CFG == -1)
++                    pixel<true>(U, R, x, zi, colore, serveT ? clampU8(static_cast<int>(tv[3])) : static_cast<uint8_t>(0u));
++                else
++                    pixel<false>(U, R, x, zi, colore, serveT ? clampU8(static_cast<int>(tv[3])) : static_cast<uint8_t>(0u));
+             }
+         }
+     }
+ 
++    template <bool TEX, class L>
++    void triangoloScelto(const VS &S, const L &leggi, const Triangolo &T, bool sfuma, bool fst)
++    {
++        if (S.riferimento)
++        {
++            triangolo<TEX, -2>(S, leggi, T, sfuma, fst);
++            return;
++        }
++        switch (viaTriangolo(S))
++        {
++        case 0: triangolo<TEX, 0>(S, leggi, T, sfuma, fst); break;
++        case 1: triangolo<TEX, 1>(S, leggi, T, sfuma, fst); break;
++        case 2: triangolo<TEX, 2>(S, leggi, T, sfuma, fst); break;
++        case 3: triangolo<TEX, 3>(S, leggi, T, sfuma, fst); break;
++        case 4: triangolo<TEX, 4>(S, leggi, T, sfuma, fst); break;
++        case 5: triangolo<TEX, 5>(S, leggi, T, sfuma, fst); break;
++        case 6: triangolo<TEX, 6>(S, leggi, T, sfuma, fst); break;
++        case 7: triangolo<TEX, 7>(S, leggi, T, sfuma, fst); break;
++        default: triangolo<TEX, -1>(S, leggi, T, sfuma, fst); break;
++        }
++    }
++
++    template <class L>
++    void spriteScelto(const VS &S, const L &leggi, const GSVertex *v, int dx0, int dy0, int dx1, int dy1, int x0, int y0, int spanX, int spanY)
++    {
++        const bool soloColore = !S.testAlfa && !S.date && S.zmask && !S.nebbia;
++        if (soloColore && (S.fC32 || S.fpsm == GS_PSM_CT24))
++        {
++            if (S.abe)
++                spriteTex<1, true>(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY);
++            else
++                spriteTex<1, false>(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY);
++        }
++        else if (soloColore && S.fpsm == GS_PSM_CT16)
++        {
++            if (S.abe)
++                spriteTex<2, true>(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY);
++            else
++                spriteTex<2, false>(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY);
++        }
++        else
++            spriteTex<0, false>(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY);
++    }
++
+     // Sceglie il lettore giusto per il formato della texture.
+     template <class F>
+     inline void perFormato(const VS &S, F &&f)
+@@ -2824,13 +3032,14 @@ void GSCpuBackend::DisegnaVeloce(const GSDrawState &st, const GSVertex *v, uint6
+         if (st.prim.tme)
+         {
+             perFormato(S, [&](const auto &leggi)
+-                       { spriteTex(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY); });
++                       { spriteScelto(S, leggi, v, dx0, dy0, dx1, dy1, x0, y0, spanX, spanY); });
+             return;
+         }
+         const Uscita U(S);
+         const uint32_t colore = pack32(v[1].r, v[1].g, v[1].b, v[1].a);
+         const u32 z1 = static_cast<u32>(v[1].z);
+         const uint8_t fog = v[1].fog;
++        S.pixelFatti += static_cast<uint64_t>(dx1 - dx0 + 1) * static_cast<uint64_t>(dy1 - dy0 + 1);
+         for (int y = dy0; y <= dy1; ++y)
+         {
+             const Riga R(U, y);
+@@ -2872,9 +3081,9 @@ void GSCpuBackend::DisegnaVeloce(const GSDrawState &st, const GSVertex *v, uint6
+         const bool fst = st.prim.fst;
+         if (st.prim.tme)
+             perFormato(S, [&](const auto &leggi)
+-                       { triangolo<true>(S, leggi, T, sfuma, fst); });
++                       { triangoloScelto<true>(S, leggi, T, sfuma, fst); });
+         else
+-            triangolo<false>(S, LettoreRaro(S), T, sfuma, fst);
++            triangoloScelto<false>(S, LettoreRaro(S), T, sfuma, fst);
+         return;
+     }
+     default:
+@@ -2920,15 +3129,40 @@ void GSCpuBackend::ConfrontaConVecchio(const GSPrimitiveBatch &batch)
+     const GSContext &c = st.context;
+ 
+     uint8_t *vera = m_vram;
++    // SOR_GSCONFRONTO=3: la via generale del disegno veloce contro quelle dedicate: non deve cambiare nemmeno un bit.
++    // A campione, 4000 primitive ogni 40000: confrontarle tutte porta il 3D a meno di un'immagine al secondo.
++    static const bool s_tre = std::getenv("SOR_GSCONFRONTO") && std::getenv("SOR_GSCONFRONTO")[0] == '3';
++    if (s_tre)
++    {
++        static uint64_t s_campione = 0;
++        const uint64_t posto = s_campione++ % 40000u;
++        if (posto == 0u)
++            std::memcpy(m_vramCopia.data(), m_vram, m_vramSize);
++        if (posto >= 4000u)
++        {
++            s_stato->cache = nullptr;
++            DisegnaVeloce(st, batch.vertices.data(), ++s_seq, *s_stato, 0, 1 << 20, m_clut.data(), m_clutVersione.load(std::memory_order_relaxed));
++            return;
++        }
++    }
+     m_vram = m_vramCopia.data();
+-    m_texturePageCache.Invalidate();
+-    DrawPrimitive(batch);
++    if (s_tre)
++    {
++        static GSVeloceStato *s_rif = new GSVeloceStato();
++        s_rif->riferimento = true;
++        DisegnaVeloce(st, batch.vertices.data(), ++s_seq, *s_rif, 0, 1 << 20, m_clut.data(), m_clutVersione.load(std::memory_order_relaxed));
++    }
++    else
++    {
++        m_texturePageCache.Invalidate();
++        DrawPrimitive(batch);
++    }
+     m_vram = vera;
+     static GSMem::TexturePageCache s_cachePagina;
+     s_cachePagina.Invalidate();
+     // SOR_GSCONFRONTO=2: prova anche la via rapida degli sprite, che non usa la copia della pagina.
+     static const bool s_senzaCopia = std::getenv("SOR_GSCONFRONTO") && std::getenv("SOR_GSCONFRONTO")[0] == '2';
+-    s_stato->cache = s_senzaCopia ? nullptr : &s_cachePagina;
++    s_stato->cache = (s_senzaCopia || s_tre) ? nullptr : &s_cachePagina;
+     DisegnaVeloce(st, batch.vertices.data(), ++s_seq, *s_stato, 0, 1 << 20, m_clut.data(), m_clutVersione.load(std::memory_order_relaxed));
+ 
+     const uint32_t chiave = static_cast<uint32_t>(st.prim.type) | (st.prim.tme ? 0x10u : 0u) | (st.prim.abe ? 0x20u : 0u) | (st.linearFilter ? 0x40u : 0u) |
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index ea242b8..8d13043 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1,3 +1,4 @@
++#include <emmintrin.h>
+ #include "runtime/ps2_memory.h"
+ #include "runtime/ps2_address.h"
+ #include "runtime/gs/gs_frontend.h"
+@@ -561,11 +562,16 @@ const uint8_t *PS2Memory::mapVuMemory(uint32_t physAddr, uint32_t size, uint32_t
+     {
+         return ptr;
+     }
++    // sor: solo la memoria di VU1 e' del thread del VIF; le altre letture (registri del GS) non aspettano.
+     if (const uint8_t *ptr = mapRange(PS2_VU1_CODE_BASE, PS2_VU1_CODE_SIZE, m_vu1Code))
+     {
++        sorVifAspetta(4u);
+         return ptr;
+     }
+-    return mapRange(PS2_VU1_DATA_BASE, PS2_VU1_DATA_SIZE, m_vu1Data);
++    const uint8_t *dati = mapRange(PS2_VU1_DATA_BASE, PS2_VU1_DATA_SIZE, m_vu1Data);
++    if (dati)
++        sorVifAspetta(4u);
++    return dati;
+ }
+ 
+ uint32_t PS2Memory::translateAddress(uint32_t virtualAddress)
+@@ -1082,6 +1088,7 @@ void PS2Memory::write128(uint32_t address, __m128i value)
+     }
+     if (!scratch && physAddr == 0x10005000u) // VIF1_FIFO
+     {
++        sorVifAspetta(5u);
+         alignas(16) uint8_t fifoData[16];
+         _mm_storeu_si128(reinterpret_cast<__m128i *>(fifoData), value);
+         processVIF1Data(fifoData, sizeof(fifoData));
+@@ -1125,8 +1132,189 @@ void PS2Memory::write128(uint32_t address, __m128i value)
+     }
+ }
+ 
++// sor: il filo del gioco (solo lui aspetta) e quello del VIF.
++namespace
++{
++    thread_local bool t_sorThreadGioco = false;
++    // Il thread del gioco che aspetta il VIF: dorme, cosi' il suo core lavora per chi disegna.
++    std::mutex s_sorAttesaMutex;
++    std::condition_variable s_sorAttesaSveglia;
++    std::atomic<uint32_t> s_sorAttende{0u};
++    // I registri che non hanno a che fare con VIF1, VU1 e GS: non serve aspettare.
++    inline bool sorRegistroLibero(uint32_t a)
++    {
++        return (a >= 0x10000000u && a < 0x10002000u) || // timer
++               a == 0x10003010u ||                      // GIF_MODE: si limita a stare nel registro
++               (a >= 0x1000A000u && a < 0x1000A100u) || // il canale DMA del GIF: va in coda anche lui
++               (a >= 0x10009000u && a < 0x10009100u) || // il canale DMA di VIF1
++               (a >= 0x1000B000u && a < 0x1000D500u) || // i canali di IPU, SIF e scratchpad
++               (a >= 0x1000E000u && a < 0x1000F600u);   // DMAC e interruzioni
++    }
++}
++
++void PS2Memory::sorAvvisaThreadGioco()
++{
++    t_sorThreadGioco = true;
++}
++
++void PS2Memory::sorVifAspetta(uint32_t chi) const
++{
++    if (!t_sorThreadGioco || m_sorVifInCorso.load(std::memory_order_acquire) == 0u)
++        return;
++    extern uint64_t g_sorEeFermoUs;
++    const auto t0 = std::chrono::steady_clock::now();
++    int giri = 0;
++    while (m_sorVifInCorso.load(std::memory_order_acquire) != 0u)
++    {
++        if (++giri < 2000)
++            _mm_pause();
++        else
++            std::this_thread::yield();
++    }
++    g_sorEeFermoUs += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
++}
++
++void sorThreadIdeale(int core); // pc/sor_prove.cpp
++
++void PS2Memory::sorVifGiro()
++{
++    sorThreadIdeale(0);
++    for (;;)
++    {
++        PendingTransfer p;
++        {
++            std::unique_lock<std::mutex> lock(m_sorVifMutex);
++            m_sorVifSveglia.wait(lock, [this]()
++                                 { return !m_sorVifCoda.empty(); });
++            p = std::move(m_sorVifCoda.front());
++            m_sorVifCoda.pop_front();
++        }
++        if (p.vblank)
++        {
++            m_sorVblankFn();
++            m_sorVblankInCoda.fetch_sub(1u, std::memory_order_seq_cst);
++            m_sorVifInCorso.fetch_sub(1u, std::memory_order_release);
++            if (s_sorAttende.load(std::memory_order_seq_cst) != 0u)
++            {
++                std::lock_guard<std::mutex> lock(s_sorAttesaMutex);
++                s_sorAttesaSveglia.notify_all();
++            }
++            continue;
++        }
++        if (p.versoGif)
++        {
++            m_seenGifCopy = true;
++            m_gifCopyCount.fetch_add(1, std::memory_order_relaxed);
++            submitGifPacket(GifPathId::Path3, p.chainData.data(), static_cast<uint32_t>(p.chainData.size()), false);
++        }
++        else
++            processVIF1Data(p.chainData.data(), static_cast<uint32_t>(p.chainData.size()));
++        if (m_gifArbiter)
++            m_gifArbiter->drain();
++        m_sorVifInCorso.fetch_sub(1u, std::memory_order_release);
++    }
++}
++
++// Mette in coda i trasferimenti verso VIF1. Torna false se devono girare sul thread del gioco.
++bool PS2Memory::sorVifAccoda(std::vector<PendingTransfer> &lista, bool versoGif)
++{
++    static const bool s_sincrono = std::getenv("SOR_VIFSINCRONO") != nullptr;
++    if (s_sincrono || !t_sorThreadGioco)
++        return false;
++    for (auto &p : lista)
++    {
++        p.versoGif = versoGif;
++        if (p.chainData.empty() && p.qwc > 0)
++        {
++            // Una catena e' gia' copiata; qui si copia anche il trasferimento semplice, perche' il gioco si
++            // puo' riprendere la sua memoria appena crede che il DMA sia finito.
++            uint32_t srcPhys = 0;
++            try
++            {
++                srcPhys = translateAddress(p.srcAddr);
++            }
++            catch (const std::exception &)
++            {
++                continue;
++            }
++            const uint64_t bytes = static_cast<uint64_t>(p.qwc) * 16ull;
++            const uint8_t *base = p.fromScratchpad ? m_scratchpad : m_rdram;
++            const uint32_t limite = p.fromScratchpad ? PS2_SCRATCHPAD_SIZE : PS2_RAM_SIZE;
++            p.chainData.resize(bytes);
++            uint64_t fatti = 0;
++            while (fatti < bytes)
++            {
++                if (srcPhys >= limite)
++                    srcPhys = 0;
++                const uint64_t pezzo = std::min<uint64_t>(bytes - fatti, limite - srcPhys);
++                std::memcpy(p.chainData.data() + fatti, base + srcPhys, pezzo);
++                fatti += pezzo;
++                srcPhys += static_cast<uint32_t>(pezzo);
++            }
++        }
++    }
++    {
++        std::lock_guard<std::mutex> lock(m_sorVifMutex);
++        for (auto &p : lista)
++        {
++            if (p.chainData.empty())
++                continue;
++            m_sorVifInCorso.fetch_add(1u, std::memory_order_acq_rel);
++            m_sorVifCoda.push_back(std::move(p));
++        }
++    }
++    m_sorVifSveglia.notify_one();
++    if (!m_sorVifPartito)
++    {
++        m_sorVifPartito = true;
++        m_sorVifThread = std::thread([this]()
++                                     { sorVifGiro(); });
++        m_sorVifThread.detach();
++    }
++    return true;
++}
++
++void PS2Memory::sorVifVblank()
++{
++    if (!m_sorVblankFn)
++        return;
++    if (!m_sorVifPartito || !t_sorThreadGioco)
++    {
++        sorVifAspetta(12u);
++        m_sorVblankFn();
++        return;
++    }
++    // Il gioco non deve correre piu' di due vblank davanti al thread del VIF.
++    extern uint64_t g_sorEeRitmoUs;
++    if (m_sorVblankInCoda.load(std::memory_order_acquire) >= 2u)
++    {
++        const auto t0 = std::chrono::steady_clock::now();
++        {
++            std::unique_lock<std::mutex> lock(s_sorAttesaMutex);
++            s_sorAttende.store(1u, std::memory_order_seq_cst);
++            while (!s_sorAttesaSveglia.wait_for(lock, std::chrono::milliseconds(2), [this]()
++                                                { return m_sorVblankInCoda.load(std::memory_order_seq_cst) < 2u; }))
++            {
++            }
++            s_sorAttende.store(0u, std::memory_order_seq_cst);
++        }
++        g_sorEeRitmoUs += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
++    }
++    PendingTransfer p;
++    p.vblank = true;
++    m_sorVblankInCoda.fetch_add(1u, std::memory_order_acq_rel);
++    m_sorVifInCorso.fetch_add(1u, std::memory_order_acq_rel);
++    {
++        std::lock_guard<std::mutex> lock(m_sorVifMutex);
++        m_sorVifCoda.push_back(std::move(p));
++    }
++    m_sorVifSveglia.notify_one();
++}
++
+ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+ {
++    if (!sorRegistroLibero(address))
++        sorVifAspetta(address);
+     size_t timerIndex = 0u;
+     uint32_t timerOffset = 0u;
+     if (decodeEeTimerRegister(address, timerIndex, timerOffset))
+@@ -1681,6 +1869,9 @@ void PS2Memory::completeDmacChannel(uint32_t channelBase, uint32_t cause)
+ void PS2Memory::processPendingTransfers()
+ {
+     const bool hadGif = !m_pendingGifTransfers.empty();
++    // VIF0 resta sul thread del gioco: prima deve aver finito il thread del VIF.
++    if (!m_pendingVif0Transfers.empty())
++        sorVifAspetta(8u);
+     uint32_t observedGifQwc = 0u;
+     for (const auto &transfer : m_pendingGifTransfers)
+     {
+@@ -1697,8 +1888,13 @@ void PS2Memory::processPendingTransfers()
+         gifStat = (gifStat & ~kGifFqcMask) | (observedGifQwc << 24u);
+     }
+ 
++    const bool gifInCoda = hadGif && sorVifAccoda(m_pendingGifTransfers, true);
++    if (hadGif && !gifInCoda)
++        sorVifAspetta(6u);
+     for (size_t idx = 0; idx < m_pendingGifTransfers.size(); ++idx)
+     {
++        if (gifInCoda)
++            break;
+         auto &p = m_pendingGifTransfers[idx];
+         if (!p.chainData.empty())
+         {
+@@ -1820,8 +2016,11 @@ void PS2Memory::processPendingTransfers()
+     m_pendingVif0Transfers.clear();
+ 
+     const bool hadVif1 = !m_pendingVif1Transfers.empty();
++    const bool vifInCoda = hadVif1 && sorVifAccoda(m_pendingVif1Transfers, false);
+     for (auto &p : m_pendingVif1Transfers)
+     {
++        if (vifInCoda)
++            break;
+         if (!p.chainData.empty())
+         {
+             processVIF1Data(p.chainData.data(), static_cast<uint32_t>(p.chainData.size()));
+@@ -1877,8 +2076,12 @@ void PS2Memory::processPendingTransfers()
+     }
+     m_pendingVif1Transfers.clear();
+ 
+-    if (m_gifArbiter)
++    // Se non c'era niente da fare e il thread del VIF lavora, ci pensa lui a svuotare.
++    if (m_gifArbiter && !vifInCoda && !gifInCoda && (hadGif || hadVif0 || m_sorVifInCorso.load(std::memory_order_acquire) == 0u))
++    {
++        sorVifAspetta(9u);
+         m_gifArbiter->drain();
++    }
+ 
+     static constexpr uint32_t GIF_CHANNEL = 0x1000A000;
+     static constexpr uint32_t VIF0_CHANNEL = 0x10008000;
+@@ -1963,6 +2166,7 @@ void PS2Memory::flushMaskedPath3Packets(bool drainImmediately)
+ 
+ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t sizeBytes, bool drainImmediately, bool path2DirectHl)
+ {
++    sorVifAspetta(7u);
+     if (!data || sizeBytes < 16)
+         return;
+ 
+@@ -2021,6 +2225,7 @@ void PS2Memory::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ 
+ bool PS2Memory::tryProcessNativeGifImageUploadChain(GS &gs, uint32_t tadr, uint32_t chcr)
+ {
++    sorVifAspetta(10u);
+     static constexpr uint32_t GIF_CHANNEL = 0x1000A000u;
+     static constexpr uint32_t D_STAT = 0x1000E010u;
+     static constexpr uint32_t D_CTRL = 0x1000E000u;
+@@ -2213,6 +2418,7 @@ bool PS2Memory::tryProcessNativeGifImageUploadChain(GS &gs, uint32_t tadr, uint3
+ 
+ bool PS2Memory::tryProcessNativeGifPackedChain(GS &gs, uint32_t tadr, uint32_t chcr)
+ {
++    sorVifAspetta(11u);
+     static constexpr uint32_t GIF_CHANNEL = 0x1000A000u;
+     static constexpr uint32_t D_STAT = 0x1000E010u;
+     static constexpr uint32_t D_CTRL = 0x1000E000u;
+@@ -2298,6 +2504,8 @@ int PS2Memory::pollDmaRegisters()
+ 
+ uint32_t PS2Memory::readIORegister(uint32_t address)
+ {
++    if (!sorRegistroLibero(address))
++        sorVifAspetta(address);
+     size_t timerIndex = 0u;
+     uint32_t timerOffset = 0u;
+     if (decodeEeTimerRegister(address, timerIndex, timerOffset))
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index a8fd15c..4ff6839 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -377,6 +377,8 @@ namespace
+ 
+ std::atomic<uint64_t> g_sorContaPresent{0}; // sor: per SOR_TEMPI (pc/sor_prove.cpp)
+ void sorAlzaPrioritaThread(); // pc/sor_prove.cpp
++static thread_local bool s_sorThreadGioco = false;
++static bool sorSonoThreadGioco() { return s_sorThreadGioco; }
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n); // ps2xIOP/.../iop_spu2.cpp
+ static uint64_t g_sorAudioVuoti = 0, g_sorAudioDati = 0;
+ static void sorAudioRichiesta(void *buffer, unsigned int frames)
+@@ -748,9 +750,13 @@ bool PS2Runtime::syncCoreSubsystems()
+     m_gifArbiter.setProcessPacketFn([this](const uint8_t *data, uint32_t size)
+                                     { m_gs.processGIFPacket(data, size); });
+     m_memory.setGifArbiter(&m_gifArbiter);
++    m_memory.sorImpostaVblank([this]()
++                              { m_gs.sorVblank(); });
+     m_memory.setVu1MscalCallback([this](uint32_t startPC, uint32_t top, uint32_t itop)
+                                  {
+-                                     R5900Context *cpuContext = m_eeScheduler ? m_eeScheduler->currentContext() : nullptr;
++                                     // sor: sul thread del VIF non si toccano i contesti del processore.
++                                     static R5900Context s_contestoVif{};
++                                     R5900Context *cpuContext = !sorSonoThreadGioco() ? &s_contestoVif : (m_eeScheduler ? m_eeScheduler->currentContext() : nullptr);
+                                      if (!cpuContext)
+                                      {
+                                          cpuContext = &m_cpuContext;
+@@ -768,7 +774,9 @@ bool PS2Runtime::syncCoreSubsystems()
+                                          (m_vu1.state().stoppedByT ? 0x0400u : 0u); });
+     m_memory.setVu1MscntCallback([this](uint32_t top, uint32_t itop)
+                                  {
+-                                     R5900Context *cpuContext = m_eeScheduler ? m_eeScheduler->currentContext() : nullptr;
++                                     // sor: sul thread del VIF non si toccano i contesti del processore.
++                                     static R5900Context s_contestoVif{};
++                                     R5900Context *cpuContext = !sorSonoThreadGioco() ? &s_contestoVif : (m_eeScheduler ? m_eeScheduler->currentContext() : nullptr);
+                                      if (!cpuContext)
+                                      {
+                                          cpuContext = &m_cpuContext;
+@@ -2476,6 +2484,8 @@ void PS2Runtime::run()
+                            {
+         ThreadNaming::SetCurrentThreadName("GameThread");
+         sorAlzaPrioritaThread();
++        s_sorThreadGioco = true;
++        m_memory.sorAvvisaThreadGioco();
+         try
+         {
+             m_eeScheduler->reset(m_memory.getRDRAM(), m_cpuContext);

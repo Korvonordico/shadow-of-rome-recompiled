@@ -435,6 +435,35 @@ namespace
         SET_GPR_S32(ctx, 2, 1);
         ctx->pc = GPR_U32(ctx, 31);
     }
+
+    // Il compito dei filmati finisce subito, senza aprire il filmato. Prima il filmato partiva e si diceva solo "finito":
+    // - lasciando il gioco fermo sul titolo parte il filmato di presentazione, e i suoi dati continuavano ad arrivare in
+    //   memoria sopra il modello caricato dopo New Game: Mod_mapping scriveva dentro una tabella di salti e il gioco si bloccava;
+    // - a 60 Hz classMOVIE_TASK::task_move non passava mai dal punto che controlla "finito" e lo schermo restava nero.
+    // Stato 3: Movie_task_main chiude da solo il compito. Il bit "filmato visto" e' quello di classMOVIE_TASK::task_move_wait.
+    void filmatoNiente(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t compito = GPR_U32(ctx, 4) & PS2_RAM_MASK;
+        rdram[compito] = 3u;
+        rdram[compito + 1u] = 0u;
+        rdram[compito + 2u] = 0u;
+        rdram[compito + 3u] = 0u;
+        const uint32_t film = rdram[0x4BE2DAu];
+        uint32_t visti;
+        const uint32_t dove = 0x551A44u + (film >> 5) * 4u;
+        std::memcpy(&visti, rdram + dove, 4);
+        visti |= 1u << (film & 31u);
+        std::memcpy(rdram + dove, &visti, 4);
+        g_sorAncoraMs = (long long)std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        static int quanti = 0;
+        if (quanti < 8)
+        {
+            ++quanti;
+            std::printf("[sor] filmato %u saltato\n", film);
+            std::fflush(stdout);
+        }
+        ctx->pc = GPR_U32(ctx, 31);
+    }
 }
 
 void sorInstallaSostituzioni(PS2Runtime &rt)
@@ -442,6 +471,7 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
     rt.registerFunction(0x120190u, cercaFile); // sceCdSearchFile
     rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
     rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
+    rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
 
     const char *mappa = std::getenv("SOR_TRACCIA");
     if (!mappa || !*mappa)

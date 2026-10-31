@@ -10,7 +10,7 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
   <img src="docs/finestra-menu.png" width="70%" alt="The main menu of Shadow of Rome in a Windows window">
 </p>
 
-**Boots to the main menu on Windows, and every menu and submenu works. Gameplay does not work yet (stops after New Game).**
+**Boots to the main menu on Windows, every menu and submenu works, and the first arena can be played at full speed (50 Hz in a window). Nothing after the first arena has been tried.**
 
 This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
@@ -53,6 +53,15 @@ Added for the speed and the sound:
 
 Another example: after the drawing moved to several threads, part of the first 3D scene turned blue and green. It looked like a race between threads, but it stayed the same with one thread. Trying which group of passes fixed the picture showed that one pass read a page and the next one wrote it: the check looked only at the opposite order (read after write). The threads take the screen in bands, so a band further down could read what a band above had just overwritten.
 
+Added for the speed of the first arena:
+
+- a cost table of the drawing by kind of primitive and by segment (`SOR_GSCLASSI`), and a run with no pixels drawn at all (`SOR_GSSENZADISEGNO`), which showed that the drawing was the real limit and not the game's thread;
+- the same screenshots taken with the published build and the new one, in the same scene, compared number by number;
+- a trap on one page of the game's memory (`SOR_TRAPPOLA`) that reports which code writes to it;
+- a profile-guided build, tried and dropped: it gained about 5%, not worth the complication.
+
+Another example: a change that made the drawing faster also put a light veil over the picture, in 63% of the pixels. It was faint, and the comparison with the published build is what showed it. It stayed the same with one thread, so it was not a race. Trying the image uploads in groups led to two of them, which had been separating drawing passes by accident: the game writes the same memory as 16-bit colour and then as depth, and in those two formats the same memory lands on different screen lines, so the two passes fell into different bands and lost their order. The fix checks for exactly that case. The picture now matches the published build, apart from 0.005% of the pixels.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -77,7 +86,17 @@ The work is planned in steps, every step is tested on the real game, and I decid
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
 - The save file the game makes at startup is created and loaded again.
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). Arrow keys and W A S D now also move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
-- **Speed:** the menus run at full speed (50 vblanks per second in PAL, about 290 million EE cycles per second). 3D is not at full speed yet, see below.
+- **Speed at 50 Hz, the game's PAL mode:** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second; the previous build is on the same PC:
+
+| Part | Previous build | Now | Lowest second now |
+|---|---|---|---|
+| Menu | 50 | 50 | 49.9 |
+| Trainer's briefing | 43 | 50 | 42.6 (one second, once) |
+| First room | 41.8 | 50 | 49.7 |
+| Arena | 36.9 | 49.9 | 49.8 |
+| Fight | 37 | 50 | 49.9 |
+
+- **The sound:** Francesco listened to it by hand, on the previous build: it sounds fairly good. The sound code has not changed since.
 - A launcher, `ShadowOfRome.exe`: **Play** starts the game, **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". It is built with the C# compiler that already ships with Windows, so nothing has to be installed (`launcher/build.bat`, source in `launcher/Launcher.cs`).
 
 <p align="center">
@@ -104,12 +123,14 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 **What does not work, or is not checked**
 
-- **3D is not at full speed yet:** measured on the test PC while other programs kept 3 of its 6 cores busy: about 27-34 vblanks per second in the first 3D scene and 20-25 in the arena (full speed is 50). With the game given priority over those programs: about 42 and 34. The main limit now is the thread that runs the game code together with the IOP and the VU1.
+- **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works, but you have to choose it at every start. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
+- **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
 - **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Agrippa's own life bar was never seen going down, and picking up a weapon is not confirmed. The rooms after the first arena have not been tried.
-- **Movies are skipped on purpose:** this build has no FFmpeg, so the opening movie does not play.
-- **Sound is new and nobody has heard it yet:** the game's own sound driver runs in the IOP simulator and now drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming, no reverb). The output was recorded and measured: stereo, real levels, not silent, no clipping, 99% of the samples reached the audio device (with the volume at zero). Whether it sounds right is for a person to say.
+- **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
+- **Sound has no reverb:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming). There is no reverb yet.
 - **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
-- **Played by hand only on an older build:** Francesco reached the arena by hand on the slow build. This build was tested only with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but nobody has tried it in the arena.
+- **Played by hand only on an older build:** Francesco reached the arena by hand on the slower build. This build was tested only with scripted keys. A connected controller (a "Wireless Controller" on the test PC) is seen by the program, but nobody has tried it in the arena.
+- **A small difference left in the picture:** drawing on several threads and drawing strictly in order differ slightly (0.85% of the pixels by more than 16 out of 255, in the trainer's briefing). The published build has the same difference. It has not been explained yet.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
 ## What you need
@@ -187,7 +208,7 @@ In most menus ✕ confirms and △ goes back.
 
 ## From the menu to the first arena
 
-Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, but the keyboard only has the D-pad keys here, and walking with them is not confirmed: a scripted test with short D-pad presses showed no clear movement.
+Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, and on the keyboard the arrow keys or W A S D. Talk to the man with the mace (○, which is C or Esc on the keyboard) to enter the arena.
 
 ## How it works
 

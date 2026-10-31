@@ -33,6 +33,11 @@ extern std::atomic<bool> g_sorFotoSubito;       // ps2_runtime.cpp
 extern uint64_t g_sorGsTipi[10], g_sorGsTipiUs[10], g_sorTrasferimenti[2], g_sorEeFermoUs, g_sorEeRitmoUs;
 extern uint64_t g_sorBandaAttesa[8], g_sorBandaVuoto[8], g_sorBandaPixel[8];
 extern uint64_t g_sorVu1Cicli, g_sorVu1Run, g_sorVu1Lenti, g_sorGsPrim, g_sorGsBarriere, g_sorGsSvuota, g_sorGsAttesaUs, g_sorGsVblankUs, g_sorMpg;
+// Ogni thread preferisce un core suo: il sistema li sposta meno (arena da 48 a 49,9 immagini al secondo).
+void sorThreadIdeale(int core)
+{
+    SetThreadIdealProcessor(GetCurrentThread(), static_cast<DWORD>(core));
+}
 void sorAlzaPrioritaThread()
 {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
@@ -223,6 +228,42 @@ namespace
     }
 
     PS2Runtime *g_rt = nullptr;
+
+    // SOR_TRAPPOLA=<indirizzo hex>,<secondi>: dopo quei secondi la pagina di RAM con quell'indirizzo diventa di sola
+    // lettura. Chi la scrive viene fermato dal processore: si stampa dove stava il programma (si legge con sor.map).
+    uint8_t *g_trappolaDa = nullptr;
+    LONG WINAPI suEccezione(EXCEPTION_POINTERS *e)
+    {
+        if (e->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || !g_trappolaDa)
+            return EXCEPTION_CONTINUE_SEARCH;
+        const uint8_t *a = reinterpret_cast<const uint8_t *>(e->ExceptionRecord->ExceptionInformation[1]);
+        if (a < g_trappolaDa || a >= g_trappolaDa + 4096)
+            return EXCEPTION_CONTINUE_SEARCH;
+        const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+        void *pila[24] = {};
+        const USHORT n = RtlCaptureStackBackTrace(0, 24, pila, nullptr);
+        std::printf("[trappola] scrittura a RAM+0x%llx, thread %lu, rip=+0x%llx pila:", static_cast<unsigned long long>(a - g_rt->memory().getRDRAM()), GetCurrentThreadId(), static_cast<unsigned long long>(static_cast<uintptr_t>(e->ContextRecord->Rip) - base));
+        for (USHORT i = 0; i < n; ++i)
+            std::printf(" +0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(pila[i]) - base));
+        std::printf("\n");
+        std::fflush(stdout);
+        DWORD vecchia;
+        VirtualProtect(g_trappolaDa, 4096, PAGE_READWRITE, &vecchia);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    void giroTrappola(unsigned long indirizzo, int secondi)
+    {
+        Sleep(static_cast<DWORD>(secondi) * 1000u);
+        while (!g_rt)
+            Sleep(100);
+        uint8_t *pagina = reinterpret_cast<uint8_t *>(reinterpret_cast<uintptr_t>(g_rt->memory().getRDRAM() + indirizzo) & ~static_cast<uintptr_t>(4095));
+        AddVectoredExceptionHandler(1, suEccezione);
+        g_trappolaDa = pagina;
+        DWORD vecchia;
+        const BOOL ok = VirtualProtect(pagina, 4096, PAGE_READONLY, &vecchia);
+        std::printf("[trappola] armata su RAM+0x%lx: %d\n", indirizzo, ok ? 1 : 0);
+        std::fflush(stdout);
+    }
 }
 
 // Chiamata da ps2_pad.cpp: vero se il telecomando tiene premuto quel tasto.
@@ -239,6 +280,13 @@ void sorProveAvvia(PS2Runtime *rt)
     g_rt = rt;
     if (std::getenv("SOR_TEMPI"))
         std::thread(giroTempi, &g_rt).detach();
+    if (const char *t = std::getenv("SOR_TRAPPOLA"))
+    {
+        unsigned long indirizzo = 0;
+        int secondi = 20;
+        std::sscanf(t, "%lx,%d", &indirizzo, &secondi);
+        std::thread(giroTrappola, indirizzo, secondi).detach();
+    }
     if (const char *f = std::getenv("SOR_TELECOMANDO"))
     {
         g_telecomando.store(true);
