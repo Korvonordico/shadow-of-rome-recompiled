@@ -12,6 +12,7 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
 <p align="center">
   <a href="docs/first-arena-by-hand.mp4">Watch one minute of the first arena, played by hand on this build</a> (MP4, 9 MB, no sound)
 </p>
+<p align="center"><b>This is only a sample to show that the game starts and runs.</b> It is not fully playable yet: it still has several problems, for example the camera, which sometimes moves in close behind the shoulder in the fights, and many smaller ones. See <a href="#status">Status</a> below.</p>
 
 **Boots to the main menu on Windows, every menu and submenu works, and the first arena can be played at full speed (50 Hz in a window). Nothing after the first arena has been tried.**
 
