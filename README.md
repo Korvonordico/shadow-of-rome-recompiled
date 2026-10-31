@@ -66,6 +66,11 @@ Added for the speed of the first arena:
 
 Another example: a change that made the drawing faster also put a light veil over the picture, in 63% of the pixels. It was faint, and the comparison with the published build is what showed it. It stayed the same with one thread, so it was not a race. Trying the image uploads in groups led to two of them, which had been separating drawing passes by accident: the game writes the same memory as 16-bit colour and then as depth, and in those two formats the same memory lands on different screen lines, so the two passes fell into different bands and lost their order. The fix checks for exactly that case. The picture now matches the published build, apart from 0.005% of the pixels.
 
+Added for the saves and the controls:
+
+- commands in the test remote control that read and write the game's memory while it runs (`=peek`, `=poke`): one of them forces a win, so the save screen can be reached without playing a whole round, and it is written down in Status above that the win was forced;
+- reading the camera's position from the game's memory while it runs, to measure when and how far it jumps.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -80,7 +85,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 | Menu | Works | Notes |
 |---|---|---|
 | New Game | Yes, up to the first arena | See below |
-| Load Game | The screen and going back | It says "No data present" even with the save made at startup. That is probably right, because no game in progress has been saved yet, but it is not checked |
+| Load Game | Yes | It finds a game saved after City Arena Round I and loads it. With no game saved it says "No data present": the file made at startup is not a game in progress |
 | Secrets of Rome | Yes | Cheats and the Salvo Master List with its pages open and close. The other 6 entries are locked, as on a new game |
 | Options: Subtitles / Tutorial, Sound, Controller, Violence | Yes | Each value changed and put back |
 | Options: Screen | Yes | Brightness and Screen Position pages |
@@ -88,8 +93,9 @@ The work is planned in steps, every step is tested on the real game, and I decid
 | Options: Default, OK | Yes | Default puts the changed values back |
 
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
-- The save file the game makes at startup is created and loaded again.
-- The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). Arrow keys and W A S D now also move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
+- **Saving and loading:** the game offers to save after City Arena Round I (the First Match does not). Tested: "Save Successful", the game closed and opened again, Load Game finds "City Arena Round I", "Load Successful", and the game goes on from City Arena Round II. **The win was forced by writing to the game's memory in the test:** nobody has won that round by playing yet. Starting from an empty memory card also works, both when you create the save file at the start and when you skip it and save later (that second way was followed up to the last confirmation). The saves are in `disco/mc0/`.
+- **The 60 Hz choice is remembered:** after you choose it in Change video mode and press Start Game, the game writes `settings.ini` next to `sor.exe`, and the next start begins in that mode. See [Settings](#settings). Tested with scripted keys, not yet from the launcher.
+- The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). The arrow keys and W A S D move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
 - **Speed at 50 Hz, the game's PAL mode (the European version):** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second, which here means frames per second: 50 is full speed. The previous build is on the same PC:
 
 | Part | Previous build | Now | Lowest second now |
@@ -127,12 +133,11 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 **What does not work, or is not checked**
 
-- **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works, but you have to choose it at every start. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
+- **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
 - **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
 - **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Francesco then played this build by hand in the first arena for about three minutes and fought there (the video above). Agrippa's own life bar going down and picking up a weapon have not been checked one by one. The rooms after the first arena have not been tried.
 - **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
 - **Sound has no reverb:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming). There is no reverb yet.
-- **Saving is only partly checked:** the save file made at startup works ("Save Successful."), and it is loaded at the next start. Saving a game in progress has not been tried.
 - **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one, with a PS4 controller (seen by Windows as "Wireless Controller"): it works for walking and fighting. Everything else was tested with scripted keys.
 - **A small difference left in the picture:** drawing on several threads and drawing strictly in order differ slightly (0.85% of the pixels by more than 16 out of 255, in the trainer's briefing). The published build has the same difference. It has not been explained yet.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
@@ -190,9 +195,10 @@ The keyboard always works, with or without a controller connected:
 
 | PS2 | Keyboard |
 |---|---|
-| D-pad | Arrow keys or W A S D |
-| Left stick | Arrow keys or W A S D (the same keys, they move both) |
+| D-pad | Arrow keys |
+| Left stick | W A S D, or the arrow keys (which move the D-pad too) |
 | Right stick | I J K L |
+| L3 / R3 (pressing the sticks) | F / O |
 | ✕ | X or Space |
 | ○ | C or Esc |
 | ▢ | Z |
@@ -202,7 +208,22 @@ The keyboard always works, with or without a controller connected:
 | Start | Enter |
 | Select | Tab |
 
-In most menus ✕ confirms and △ goes back.
+In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
+
+To walk, W A S D is the safer choice: according to the game's list of commands, the D-pad drops your helmet and weapons, and the arrow keys press it too. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
+
+## Settings
+
+The port keeps one setting of its own, in `_build/settings.ini`, next to `sor.exe`:
+
+```
+video=60
+```
+
+- `video=60` starts the game in its 60 Hz mode, `video=50` in its 50 Hz mode (PAL, the original speed of this version).
+- The game writes this file by itself when you choose a mode in Change video mode and press Start Game. You don't need to edit it.
+- With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
+- To go back to the original behaviour, delete the file.
 
 ## From the start to the menu
 

@@ -464,6 +464,75 @@ namespace
         }
         ctx->pc = GPR_U32(ctx, 31);
     }
+
+    // 4. La scelta dei 60 Hz resta fra un avvio e l'altro. Il gioco la tiene nel byte 0x551402 (1 = 60 Hz, 2 = 50 Hz) e
+    //    classPALSELECT_TASK::move_init la applica: basta metterla li' prima del primo move_init. Si scrive quando il
+    //    giocatore ha premuto Start Game. Senza il file e senza scegliere 60 Hz non cambia niente e il file non nasce.
+    const uint32_t kByteFrequenza = 0x551402u;
+    PS2Runtime::RecompiledFunction g_palInit = nullptr, g_palAvviso = nullptr, g_palCard = nullptr;
+    int g_videoNelFile = 0; // 0 = niente file, 1 = 60 Hz, 2 = 50 Hz
+
+    std::string fileImpostazioni()
+    {
+        const char *e = std::getenv("SOR_IMPOSTAZIONI");
+        return e && *e ? e : "settings.ini"; // accanto a sor.exe: launcher e script partono da quella cartella
+    }
+
+    void leggiImpostazioni()
+    {
+        std::ifstream f(fileImpostazioni());
+        std::string riga;
+        while (std::getline(f, riga))
+        {
+            if (riga.rfind("video=60", 0) == 0)
+                g_videoNelFile = 1;
+            else if (riga.rfind("video=50", 0) == 0)
+                g_videoNelFile = 2;
+        }
+    }
+
+    void palInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        static bool fatto = false;
+        if (!fatto)
+        {
+            fatto = true;
+            if (g_videoNelFile)
+            {
+                rdram[kByteFrequenza] = static_cast<uint8_t>(g_videoNelFile);
+                std::printf("[sor] impostazioni: si parte a %d Hz\n", g_videoNelFile == 1 ? 60 : 50);
+                std::fflush(stdout);
+            }
+        }
+        g_palInit(rdram, ctx, rt);
+    }
+
+    void ricordaVideo(uint8_t *rdram)
+    {
+        static bool fatto = false;
+        if (fatto)
+            return;
+        fatto = true;
+        const int scelta = rdram[kByteFrequenza];
+        if ((scelta != 1 && scelta != 2) || scelta == g_videoNelFile || (scelta == 2 && g_videoNelFile == 0))
+            return;
+        std::ofstream f(fileImpostazioni(), std::ios::trunc);
+        f << "video=" << (scelta == 1 ? 60 : 50) << "\n";
+        std::printf("[sor] impostazioni: scelta ricordata, %d Hz\n", scelta == 1 ? 60 : 50);
+        std::fflush(stdout);
+    }
+
+    void palAvviso(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        ricordaVideo(rdram);
+        g_palAvviso(rdram, ctx, rt);
+    }
+
+    void palCard(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        ricordaVideo(rdram);
+        g_palCard(rdram, ctx, rt);
+    }
 }
 
 void sorInstallaSostituzioni(PS2Runtime &rt)
@@ -472,6 +541,13 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
     rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
     rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
     rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
+    leggiImpostazioni();
+    g_palInit = rt.lookupFunction(0x32B7D0u);
+    g_palAvviso = rt.lookupFunction(0x32B170u);
+    g_palCard = rt.lookupFunction(0x32B330u);
+    rt.registerFunction(0x32B7D0u, palInit);   // classPALSELECT_TASK::move_init
+    rt.registerFunction(0x32B170u, palAvviso); // classPALSELECT_TASK::move_alert_disp
+    rt.registerFunction(0x32B330u, palCard);   // classPALSELECT_TASK::move_memcd_check
 
     const char *mappa = std::getenv("SOR_TRACCIA");
     if (!mappa || !*mappa)

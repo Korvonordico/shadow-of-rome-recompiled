@@ -1,0 +1,29 @@
+diff --git a/ps2xRuntime/src/lib/ps2_pad.cpp b/ps2xRuntime/src/lib/ps2_pad.cpp
+index 344e515..923a4b7 100644
+--- a/ps2xRuntime/src/lib/ps2_pad.cpp
++++ b/ps2xRuntime/src/lib/ps2_pad.cpp
+@@ -111,14 +111,20 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+ 
+     // sor: la tastiera vale sempre, anche con un controller collegato.
+     {
+-        if (tastoGiu(KEY_UP) || tastoGiu(KEY_W))
++        // sor: le frecce fanno la croce (i menu del gioco leggono solo quella) e anche la levetta sinistra; WASD solo la
++        // levetta. Nel gioco su, destra e sinistra della croce fanno cadere elmo e armi: con WASD si cammina senza quel rischio.
++        if (tastoGiu(KEY_UP))
+             clearBit(PAD_UP);
+-        if (tastoGiu(KEY_DOWN) || tastoGiu(KEY_S))
++        if (tastoGiu(KEY_DOWN))
+             clearBit(PAD_DOWN);
+-        if (tastoGiu(KEY_LEFT) || tastoGiu(KEY_A))
++        if (tastoGiu(KEY_LEFT))
+             clearBit(PAD_LEFT);
+-        if (tastoGiu(KEY_RIGHT) || tastoGiu(KEY_D))
++        if (tastoGiu(KEY_RIGHT))
+             clearBit(PAD_RIGHT);
++        if (tastoGiu(KEY_F))
++            clearBit(PAD_L3);
++        if (tastoGiu(KEY_O))
++            clearBit(PAD_R3);
+         if (tastoGiu(KEY_X) || tastoGiu(KEY_SPACE))
+             clearBit(PAD_CROSS);
+         if (tastoGiu(KEY_C) || tastoGiu(KEY_ESCAPE))

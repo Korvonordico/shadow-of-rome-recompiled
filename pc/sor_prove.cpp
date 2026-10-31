@@ -57,8 +57,9 @@ namespace
         {"su", 265}, {"giu", 264}, {"sx", 263}, {"dx", 262}, {"w", 87}, {"a", 65}, {"s", 83}, {"d", 68},
         {"i", 73}, {"j", 74}, {"k", 75}, {"l", 76}, {"x", 88}, {"spazio", 32}, {"c", 67}, {"esc", 256},
         {"z", 90}, {"v", 86}, {"q", 81}, {"e", 69}, {"lshift", 340}, {"rshift", 344},
-        {"invio", 257}, {"tab", 258}};
+        {"invio", 257}, {"tab", 258}, {"f", 70}, {"o", 79}};
 
+    PS2Runtime *g_rt = nullptr;
     std::atomic<bool> g_telecomando{false};
     std::mutex g_mutex;
     std::map<int, uint64_t> g_premuti; // fino a quale lettura del pad (tempo del gioco, non dell'orologio)
@@ -101,6 +102,28 @@ namespace
                         }
                     std::printf("[sor] telecomando: tasto %s %d ms%s\n", nome, ms, trovato ? "" : " SCONOSCIUTO");
                     std::fflush(stdout);
+                }
+                else if (campi >= 2 && (!std::strcmp(cmd, "peek") || !std::strcmp(cmd, "poke") || !std::strcmp(cmd, "or32")))
+                {
+                    // peek <ind> [quanti] / poke <ind> <val> / or32 <ind> <val>: memoria del gioco, in esadecimale (solo per le prove).
+                    unsigned ind = 0, val = 1;
+                    std::sscanf(riga.c_str(), "%*s %x %x", &ind, &val);
+                    if (g_rt && ind + 4 <= 0x2000000u)
+                    {
+                        uint32_t *p = reinterpret_cast<uint32_t *>(g_rt->memory().getRDRAM() + (ind & ~3u));
+                        if (!std::strcmp(cmd, "poke"))
+                            *p = val;
+                        else if (!std::strcmp(cmd, "or32"))
+                            *p |= val;
+                        else
+                        {
+                            std::printf("[peek] %08x:", ind);
+                            for (unsigned i = 0; i < val && i < 64 && (ind & ~3u) + (i + 1) * 4 <= 0x2000000u; ++i)
+                                std::printf(" %08x", p[i]);
+                            std::printf("\n");
+                            std::fflush(stdout);
+                        }
+                    }
                 }
                 else if (campi >= 1 && !std::strcmp(cmd, "foto"))
                 {
@@ -226,8 +249,6 @@ namespace
             std::fflush(stdout);
         }
     }
-
-    PS2Runtime *g_rt = nullptr;
 
     // SOR_TRAPPOLA=<indirizzo hex>,<secondi>: dopo quei secondi la pagina di RAM con quell'indirizzo diventa di sola
     // lettura. Chi la scrive viene fermato dal processore: si stampa dove stava il programma (si legge con sor.map).
