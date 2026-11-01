@@ -6,7 +6,7 @@
 name order, and skips a patch that is already applied. Lines added by this project
 are marked `sor`. Some comments are in Italian.
 
-To undo them: `git -C thirdparty/PS2Recomp checkout -- .`
+To undo them: `git -C thirdparty/PS2Recomp checkout -- . && git -C thirdparty/PS2Recomp clean -fd`
 
 | Patch | What it changes |
 |---|---|
@@ -21,6 +21,7 @@ To undo them: `git -C thirdparty/PS2Recomp checkout -- .`
 | `0009-save-settings-keys.patch` | Keyboard: W A S D move only the left stick, the arrow keys move both the D-pad and the left stick, F is L3 and O is R3. |
 | `0010-sqrt-reads-ft.patch` | The translator took the value of `SQRT.S` from `fs`. On the PS2 it is in `ft`, and `fs` is 0 in all the 182 uses in this game: every distance computed this way was wrong, and the camera jumped close to the player. |
 | `0011-cvtw-truncates-and-reverb.patch` | `CVT.W.S` rounded; on the PS2 it truncates and saturates (`ps2_fcvtw`, the same rule as PCSX2). Reverb in the simulated SPU2 chip, the same calculation as PCSX2 (`SPU2/Reverb.cpp`, `SPU2/ReverbResample.cpp`, GPL-3.0). Voice volumes are counted apart from the envelope, and the mix follows `MMIX` and `BVOL`. `SOR_SENZAECO` leaves the reverb out of the mix, for comparisons. `ps2xRuntime/CMakeLists.txt` can link a static FFmpeg from `SOR_FFMPEG_DIR` (off in this build). |
+| `0012-iop-wmemcopy-and-input-volumes.patch` | The IOP's `_wmemcopy` and `_wmemset` counted in words; the count is in bytes (`SNDDRVHD.IRX` gives the same count to `memcpy`). Copying 4 times too much overwrote the driver's variables: one of its threads then used all the IOP's time and the music thread never ran. `AVOL`, `BVOL` and `EVOL` are plain signed 16 bits: doubled, the game's 0x7FFF became -2. The sound no longer runs past the end of an auto DMA block before the next piece arrives, which played short holes of silence. |
 
 Outside the patches, in `pc/`: `sor_hle.cpp` finds files by reading the disc image's
 ISO9660 index, skips the movies (the build has no FFmpeg): `classMOVIE_TASK::task_init` closes the task at once, and keeps the video mode in `settings.ini`; `main_sor.cpp` places the

@@ -1,0 +1,115 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index 81f36ad..e761014 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -63,6 +63,12 @@ namespace
+         return static_cast<int32_t>(static_cast<int16_t>(static_cast<uint16_t>(r << 1u)));
+     }
+ 
++    // AVOL, BVOL, EVOL: signed 16 bits, not doubled (the game writes 0x7FFF and 0x7332)
++    inline int32_t volumeDiretto(uint16_t r)
++    {
++        return static_cast<int32_t>(static_cast<int16_t>(r));
++    }
++
+     inline void aggiornaVolume(uint16_t r, int32_t &corrente, int &contatore)
+     {
+         if ((r & 0x8000u) == 0u)
+@@ -405,7 +411,7 @@ namespace ps2x::iop::detail
+         const uint32_t b = static_cast<uint32_t>(c) << 10u;
+         const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
+         const bool acceso = (reg(0x19Au + b) & 0x80u) != 0u;
+-        const int32_t evolL = volumeFisso(reg(0x764u + bv)), evolR = volumeFisso(reg(0x766u + bv));
++        const int32_t evolL = volumeDiretto(reg(0x764u + bv)), evolR = volumeDiretto(reg(0x766u + bv));
+         if (!acceso && evolL == 0 && evolR == 0)
+             return;
+         const auto reg32 = [&](uint32_t o) { return (static_cast<uint32_t>(reg(o + b)) << 16u) | reg(o + 2u + b); };
+@@ -604,8 +610,8 @@ namespace ps2x::iop::detail
+                 if (a.attivo)
+                 {
+                     const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
+-                    inpL = (a.l[a.posizione] * volumeFisso(reg(0x768u + bv))) >> 15;
+-                    inpR = (a.r[a.posizione] * volumeFisso(reg(0x76Au + bv))) >> 15;
++                    inpL = (a.l[a.posizione] * volumeDiretto(reg(0x768u + bv))) >> 15;
++                    inpR = (a.r[a.posizione] * volumeDiretto(reg(0x76Au + bv))) >> 15;
+                     ++a.posizione;
+                 }
+             }
+@@ -641,8 +647,8 @@ namespace ps2x::iop::detail
+             uscitaR = sat16((sat16(diretR) * static_cast<int64_t>(volR)) >> 15);
+             if (c == 0)
+             {
+-                esternoL = (uscitaL * volumeFisso(reg(0x76Cu + 0x28u))) >> 15;
+-                esternoR = (uscitaR * volumeFisso(reg(0x76Eu + 0x28u))) >> 15;
++                esternoL = (uscitaL * volumeDiretto(reg(0x76Cu + 0x28u))) >> 15;
++                esternoR = (uscitaR * volumeDiretto(reg(0x76Eu + 0x28u))) >> 15;
+             }
+         }
+         outL = uscitaL;
+@@ -702,8 +708,23 @@ namespace ps2x::iop::detail
+         static int s_picco = 0;
+         static uint64_t s_somma = 0, s_n = 0;
+         static const bool s_rapporto = std::getenv("SOR_TEMPI") != nullptr;
++        uint64_t fatti = 0;
+         for (uint64_t i = 0; i < mancano; ++i)
+         {
++            // The next piece of the auto DMA has not arrived yet: wait for the driver instead of playing zeros.
++            // Output runs 100 ms ahead, so the wait cannot be heard. After 20 ms go on: the stream has ended.
++            bool attendi = false;
++            for (const Core &c : m_core)
++                attendi = attendi || (c.adma.attivo && c.adma.resto == 0u && c.adma.posizione >= 256);
++            if (attendi)
++            {
++                if (m_attesaNs == 0)
++                    m_attesaNs = ora;
++                if (ora - m_attesaNs < 20000000)
++                    break;
++            }
++            m_attesaNs = 0;
++            ++fatti;
+             int32_t l, r;
+             generaUno(l, r);
+             metti(static_cast<int16_t>(l), static_cast<int16_t>(r));
+@@ -719,7 +740,7 @@ namespace ps2x::iop::detail
+                 ++s_n;
+             }
+         }
+-        m_generati += mancano;
++        m_generati += fatti;
+         if (s_rapporto && ora - s_ultimoRapporto >= 1000000000)
+         {
+             s_ultimoRapporto = ora;
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.h b/ps2xIOP/src/emulator/core/iop_spu2.h
+index 6588371..8cd6589 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.h
++++ b/ps2xIOP/src/emulator/core/iop_spu2.h
+@@ -80,6 +80,7 @@ namespace ps2x::iop::detail
+         std::vector<uint16_t> m_reg;
+         std::array<Core, 2> m_core;
+         uint32_t m_irqInAttesa = 0;
++        int64_t m_attesaNs = 0;
+         int64_t m_inizioNs = 0;
+         uint64_t m_generati = 0;
+         uint32_t m_conta = 0;
+diff --git a/ps2xIOP/src/emulator/imports/iop_sysclib.cpp b/ps2xIOP/src/emulator/imports/iop_sysclib.cpp
+index 0517478..4e35a48 100644
+--- a/ps2xIOP/src/emulator/imports/iop_sysclib.cpp
++++ b/ps2xIOP/src/emulator/imports/iop_sysclib.cpp
+@@ -316,13 +316,13 @@ namespace ps2x::iop::detail
+         case 37: // atob
+             setV0(0);
+             return true;
+-        case 40: // _wmemcopy, count is 32-bit words
+-            for (uint32_t i = 0; i < a2; ++i)
++        case 40: // sor: _wmemcopy, the count is in bytes (SNDDRVHD gives the same count to memcpy)
++            for (uint32_t i = 0; i < a2 / 4u; ++i)
+                 m_memory.write32(a0 + i * 4u, m_memory.read32(a1 + i * 4u));
+             setV0(a0);
+             return true;
+-        case 41:
+-            for (uint32_t i = 0; i < a2; ++i)
++        case 41: // sor: _wmemset, the count is in bytes too
++            for (uint32_t i = 0; i < a2 / 4u; ++i)
+                 m_memory.write32(a0 + i * 4u, a1);
+             setV0(a0);
+             return true;
