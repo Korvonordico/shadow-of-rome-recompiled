@@ -1,0 +1,23 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index 196bf47..3592bb5 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -164,6 +164,7 @@ namespace ps2_stubs
+             }
+ 
+             writePacketBuilderCurrent(rdram, runtime, stateAddr, currentAddr);
++            refreshPacketBuilderPendingCount(rdram, runtime, stateAddr);
+             writeGuestBytes(rdram,
+                             runtime,
+                             stateAddr + 8u,
+@@ -264,8 +265,9 @@ namespace ps2_stubs
+ 
+         void writePacketBuilderCurrent(uint8_t *rdram, PS2Runtime *runtime, uint32_t stateAddr, uint32_t currentAddr)
+         {
++            // sor: only the pointer, like the original. The tag size is set when the tag is closed: refreshing it
++            // here too made the translated close add to it, and the DMA chain ran into other memory (water surfaces).
+             writeGuestU32(rdram, runtime, stateAddr, currentAddr);
+-            refreshPacketBuilderPendingCount(rdram, runtime, stateAddr);
+         }
+ 
+         uint32_t reservePacketBuilderWords(uint8_t *rdram, PS2Runtime *runtime, uint32_t stateAddr, uint32_t wordCount)
