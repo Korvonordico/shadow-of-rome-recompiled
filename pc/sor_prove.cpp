@@ -103,6 +103,21 @@ namespace
                     std::printf("[sor] telecomando: tasto %s %d ms%s\n", nome, ms, trovato ? "" : " SCONOSCIUTO");
                     std::fflush(stdout);
                 }
+                else if (campi >= 2 && !std::strcmp(cmd, "ipeek"))
+                {
+                    // ipeek <ind> [quanti]: memoria dell'IOP, in esadecimale.
+                    unsigned ind = 0, val = 1;
+                    std::sscanf(riga.c_str(), "%*s %x %x", &ind, &val);
+                    uint32_t p[64] = {};
+                    if (g_rt && g_rt->readIopMemory(ind & ~3u, p, sizeof(p)))
+                    {
+                        std::printf("[ipeek] %08x:", ind);
+                        for (unsigned i = 0; i < val && i < 64; ++i)
+                            std::printf(" %08x", p[i]);
+                        std::printf("%c", 10);
+                        std::fflush(stdout);
+                    }
+                }
                 else if (campi >= 2 && (!std::strcmp(cmd, "peek") || !std::strcmp(cmd, "poke") || !std::strcmp(cmd, "or32")))
                 {
                     // peek <ind> [quanti] / poke <ind> <val> / or32 <ind> <val>: memoria del gioco, in esadecimale (solo per le prove).
@@ -251,25 +266,45 @@ namespace
     }
 
     // SOR_TRAPPOLA=<indirizzo hex>,<secondi>: dopo quei secondi la pagina di RAM con quell'indirizzo diventa di sola
-    // lettura. Chi la scrive viene fermato dal processore: si stampa dove stava il programma (si legge con sor.map).
+    // lettura. Ogni scrittura della pagina passa con un passo solo; se quella parola e' cambiata si stampa chi e' stato
+    // (dove stava il programma: si legge con sor.map), al massimo 40 volte.
     uint8_t *g_trappolaDa = nullptr;
+    uint8_t *g_trappolaParola = nullptr;
+    uint32_t g_trappolaValore = 0;
+    int g_trappolaVolte = 0;
+    thread_local bool t_trappolaPasso = false;
     LONG WINAPI suEccezione(EXCEPTION_POINTERS *e)
     {
+        DWORD vecchia;
+        if (e->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP && t_trappolaPasso)
+        {
+            t_trappolaPasso = false;
+            uint32_t v;
+            std::memcpy(&v, g_trappolaParola, 4);
+            if (v != g_trappolaValore && g_trappolaVolte < 40)
+            {
+                ++g_trappolaVolte;
+                const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+                void *pila[24] = {};
+                const USHORT n = RtlCaptureStackBackTrace(0, 24, pila, nullptr);
+                std::printf("[trappola] 0x%x -> 0x%x, thread %lu, rip=+0x%llx pila:", g_trappolaValore, v, GetCurrentThreadId(), static_cast<unsigned long long>(static_cast<uintptr_t>(e->ContextRecord->Rip) - base));
+                for (USHORT i = 0; i < n; ++i)
+                    std::printf(" +0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(pila[i]) - base));
+                std::printf("\n");
+                std::fflush(stdout);
+            }
+            g_trappolaValore = v;
+            VirtualProtect(g_trappolaDa, 4096, PAGE_READONLY, &vecchia);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
         if (e->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || !g_trappolaDa)
             return EXCEPTION_CONTINUE_SEARCH;
         const uint8_t *a = reinterpret_cast<const uint8_t *>(e->ExceptionRecord->ExceptionInformation[1]);
         if (a < g_trappolaDa || a >= g_trappolaDa + 4096)
             return EXCEPTION_CONTINUE_SEARCH;
-        const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
-        void *pila[24] = {};
-        const USHORT n = RtlCaptureStackBackTrace(0, 24, pila, nullptr);
-        std::printf("[trappola] scrittura a RAM+0x%llx, thread %lu, rip=+0x%llx pila:", static_cast<unsigned long long>(a - g_rt->memory().getRDRAM()), GetCurrentThreadId(), static_cast<unsigned long long>(static_cast<uintptr_t>(e->ContextRecord->Rip) - base));
-        for (USHORT i = 0; i < n; ++i)
-            std::printf(" +0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(pila[i]) - base));
-        std::printf("\n");
-        std::fflush(stdout);
-        DWORD vecchia;
         VirtualProtect(g_trappolaDa, 4096, PAGE_READWRITE, &vecchia);
+        e->ContextRecord->EFlags |= 0x100;
+        t_trappolaPasso = true;
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     void giroTrappola(unsigned long indirizzo, int secondi)
@@ -279,6 +314,8 @@ namespace
             Sleep(100);
         uint8_t *pagina = reinterpret_cast<uint8_t *>(reinterpret_cast<uintptr_t>(g_rt->memory().getRDRAM() + indirizzo) & ~static_cast<uintptr_t>(4095));
         AddVectoredExceptionHandler(1, suEccezione);
+        g_trappolaParola = g_rt->memory().getRDRAM() + indirizzo;
+        std::memcpy(&g_trappolaValore, g_trappolaParola, 4);
         g_trappolaDa = pagina;
         DWORD vecchia;
         const BOOL ok = VirtualProtect(pagina, 4096, PAGE_READONLY, &vecchia);

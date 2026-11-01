@@ -539,10 +539,11 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
 {
     rt.registerFunction(0x120190u, cercaFile); // sceCdSearchFile
     rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
-    if (!std::getenv("SOR_FILMATI")) // for tests only: the movie is not finished yet
+    if (std::getenv("SOR_SENZAFILMATI")) // for tests: the movies are skipped, the same keys always land on the same screens
+    {
         rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
-    if (!std::getenv("SOR_FILMATI"))
         rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
+    }
     leggiImpostazioni();
     g_palInit = rt.lookupFunction(0x32B7D0u);
     g_palAvviso = rt.lookupFunction(0x32B170u);

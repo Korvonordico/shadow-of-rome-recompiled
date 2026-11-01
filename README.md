@@ -80,6 +80,12 @@ Added for the music (temporary code, not kept in the repository):
 
 Another example: the title screen had no music. Reading the game's code suggested a problem in the music stream, and that was only the victim. The report showed one sound thread using 100% of the IOP's time, so the music thread never got a turn. That thread was spinning because its semaphore number had been overwritten, and the trap showed who did it: a copy in the sound driver. PS2Recomp counted the size of that copy (`_wmemcopy`) in words, while the driver passes bytes, so it copied 4 times too much. After that the music was still silent, for a second reason: the input volume 0x7FFF was doubled and became -2.
 
+Added for the movies and the freeze after the First Match:
+
+- the trap on a memory word now reports only the code that really changes that word (`SOR_TRAPPOLA`), and the test remote control can also read the IOP's memory (`=ipeek`).
+
+Another example: the movie's picture was black, with only its subtitles and one small square in a corner. The decoding was fine: the frames were real. The game builds a list of one upload per 16x16 block, and only the first one reached the graphics chip. The size in the list's first tag was double the right one, because one of PS2Recomp's replacements for a library function also updated it, on top of the game's own translated code. The DMA chain then read image commands as if they were its next tag, and stopped.
+
 The work is planned in steps, every step is tested on the real game, and I decide what goes on and what gets published.
 
 ## Status
@@ -117,6 +123,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 
 - **The sound:** Francesco listened to it by hand on an older build: it sounds fairly good. The sound mix has changed since (see the reverb below) and has not been listened to again.
 - **The music:** the title screen, the menu and the arena now have their music, which used to be silent. Checked as numbers on a recording of the output, not by ear: the level goes from silence to about 3000-4000 RMS on the title screen and in the menu, with no clipping. In 30 seconds of title music, the short holes of exact silence went from 155 to 0.
+- **The movies:** the opening movie plays with its subtitles and sound, 30 pictures per second at 50 Hz and at 60 Hz, and goes on to the title screen at its end. Enter skips it. The title screen's attract movie and the movie after New Game play too. Checked on pictures and as numbers on a recording of the output (all 178 seconds of sound, with no holes in a 60-second sample), not by ear. Only these movies have been tried. They are decoded with a small part of [FFmpeg](https://ffmpeg.org), and the picture reaches the screen as a texture, as in the original game.
 - A launcher, `ShadowOfRome.exe`: **Play** starts the game, **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". It is built with the C# compiler that already ships with Windows, so nothing has to be installed (`launcher/build.bat`, source in `launcher/Launcher.cs`).
 
 <p align="center">
@@ -147,8 +154,8 @@ The work is planned in steps, every step is tested on the real game, and I decid
 - **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
 - **The camera:** it no longer jumps in close behind the shoulder, and the first scene, the first room and the arena now show the wider view. The cause was a wrong square root in PS2Recomp (see `0010` in [patches/README.md](patches/README.md)). The same scripted test, pressing ✕ in the first room: before, the camera moved from distance 101 to 526; now from 94 to 121. A second fix (`0011`, float to integer conversion that rounded instead of truncating) removed the bars that stood in front of the view in the arena. With both fixes, short drops appear in the first room and on the way to the arena (35 to 39 frames per second for 1 to 6 seconds): the cause has not been looked for. Tested with scripted keys and compared with the old build on screenshots, not yet by hand, and not against the original game on a PS2. The same fix changes every distance the game computes this way, so enemies may behave differently too: this has not been checked one by one.
 - **Fighting is only partly checked:** with scripted keys Agrippa talks to the man with the mace, enters the arena and meets the enemies. The gladiators fight each other with blood on screen, and the shoulder ram and the weapon grab work with their tutorial pages. Francesco then played this build by hand in the first arena for about three minutes and fought there (the video above). Agrippa's own life bar going down and picking up a weapon have not been checked one by one. The rooms after the first arena have not been tried.
-- **Movies are skipped on purpose:** this build has no FFmpeg, so no movie plays: the game is told at once that each one has finished. This also stops the title screen's attract movie from overwriting the game's memory, which used to freeze the game after a long wait on the title screen.
-- **Reverb is written but not heard:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming, reverb). In the first arena the game keeps the reverb's output volume at 0, so it changes nothing there. Forcing that volume in a test: no clipping and nothing runs away, and the sounds of the fight get up to about 15% stronger. Nobody has listened to it yet, and the zones where the game turns it on have not been reached.- **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one, with a PS4 controller (seen by Windows as "Wireless Controller"): it works for walking and fighting. Everything else was tested with scripted keys.
+- **Reverb is written but not heard:** the game's own sound driver runs in the IOP simulator and drives a simulated SPU2 sound chip (48 voices, envelopes, DMA, streaming, reverb). In the first arena the game keeps the reverb's output volume at 0, so it changes nothing there. Forcing that volume in a test: no clipping and nothing runs away, and the sounds of the fight get up to about 15% stronger. Nobody has listened to it yet, and the zones where the game turns it on have not been reached.
+- **Played by hand only for a short time:** Francesco reached the arena by hand on the slower build, and played a few minutes of the first arena by hand on this one, with a PS4 controller (seen by Windows as "Wireless Controller"): it works for walking and fighting. Everything else was tested with scripted keys.
 - **A small difference left in the picture:** drawing on several threads and drawing strictly in order differ slightly (0.85% of the pixels by more than 16 out of 255, in the trainer's briefing). The published build has the same difference. It has not been explained yet.
 - **It has run on one PC only** (Windows 11, Intel i5-8600K).
 
@@ -157,6 +164,7 @@ The work is planned in steps, every step is tested on the real game, and I decid
 - Your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file.
 - Windows 10 or 11 (64-bit), with [WSL](https://learn.microsoft.com/windows/wsl/install) and Ubuntu. Tested on Windows 11 with Ubuntu 26.04.
 - A CPU with SSE4.1 (nearly every PC since about 2009), and about 2 GB of free disk space.
+- An internet connection during the build: it downloads FFmpeg's source code, for the movies.
 - In Ubuntu: Git, CMake 3.24 or newer, a C++ compiler and Python 3.11 or newer:
 
   ```bash
@@ -183,7 +191,7 @@ Run these in the Ubuntu terminal.
    scripts/setup.sh "/mnt/c/Games/game.iso"
    ```
 
-   This takes about 20 minutes on a 6-core PC. It patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++ and builds `_build/sor.exe`. If the build fails, the reason is at the end of `_build.log`.
+   This takes about 25 minutes on a 6-core PC. It patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++, downloads and builds the part of FFmpeg the movies need (in `~/.cache/shadow-of-rome-ffmpeg`) and builds `_build/sor.exe`. If the build fails, the reason is at the end of `_build.log`.
 
 Nothing it creates is committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, `_tools/` and `_build/` stay on your PC. The game's large files are not copied: they are read from your image while you play, so keep the image where it is.
 
@@ -238,8 +246,8 @@ video=60
 ## From the start to the menu
 
 1. Press Enter, then X to choose the language, then X on Start Game.
-2. Press X until you see "Begin game anyway?", press the left arrow to choose Yes, then X. If the memory card check comes back, that is normal: do it again.
-3. After the CAPCOM logo, press Enter at the title screen.
+2. The first time, with an empty memory card, the game offers to create a save file: press the left arrow to choose Yes, then X. If you choose No, it asks "Begin game anyway?": left arrow, then X.
+3. After the CAPCOM logo the opening movie starts: Enter skips it. Then press Enter at the title screen.
 
 ## From the menu to the first arena
 
@@ -262,6 +270,7 @@ Many names and comments in the code are in Italian. `pc/prova.sh` is the quick r
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
+- [FFmpeg](https://ffmpeg.org) (LGPL), the MPEG-2 decoder for the movies. It is downloaded and built by `pc/compila_ffmpeg.sh`: no part of it is in this repository.
 - [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator: the reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
 
 Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. This project is not connected to Capcom or Sony.

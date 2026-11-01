@@ -1,0 +1,362 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index e761014..5db7b49 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -261,7 +261,10 @@ namespace ps2x::iop::detail
+             break;
+         case 0x19Au: // ATTR: togliere il bit 6 spegne la richiesta
+             if ((value & 0x40u) == 0u)
++            {
+                 m_reg[(0x344u + (static_cast<uint32_t>(c) << 10u)) >> 1u] &= static_cast<uint16_t>(~0x40u);
++                m_reg[0x7C2u >> 1u] &= static_cast<uint16_t>(~(4u << c));
++            }
+             break;
+         case 0x1A0u:
+             tastoOn(c, value);
+@@ -355,6 +358,7 @@ namespace ps2x::iop::detail
+             if (((a - da) & (kRamParole - 1u)) < quanti)
+             {
+                 m_reg[(0x344u + (static_cast<uint32_t>(k) << 10u)) >> 1u] |= 0x40u;
++                m_reg[0x7C2u >> 1u] |= static_cast<uint16_t>(4u << k); // IRQINFO: libsd's handler reads which core it was
+                 m_irqInAttesa |= 1u << kIrqSpu;
+                 ++m_contaIrq;
+             }
+diff --git a/ps2xRuntime/include/ps2_runtime_macros.h b/ps2xRuntime/include/ps2_runtime_macros.h
+index 6e079af..856b4a6 100644
+--- a/ps2xRuntime/include/ps2_runtime_macros.h
++++ b/ps2xRuntime/include/ps2_runtime_macros.h
+@@ -319,6 +319,17 @@ inline int32_t ps2_fcvtw(float a)
+     return (u & 0x80000000u) ? static_cast<int32_t>(0x80000000u) : 0x7FFFFFFF;
+ }
+ 
++// C.EQ, C.LT, C.LE: the EE has no Inf or NaN. It compares sign and size as they are, with denormals as zero, so a
++// comparison never comes out false just because one side holds garbage (a NaN pattern is simply a big number).
++inline int32_t ps2_fcmp(float a)
++{
++    const uint32_t u = std::bit_cast<uint32_t>(a);
++    if ((u & PS2_FLOAT_EXP_MASK) == 0u)
++        return 0;
++    const int32_t m = static_cast<int32_t>(u & 0x7FFFFFFFu);
++    return (u & PS2_FLOAT_SIGN_MASK) ? -m : m;
++}
++
+ enum class Ps2VecOp
+ {
+     Add,
+@@ -866,19 +877,19 @@ inline __m128i ps2_u64_to_epi64_pair(uint64_t value)
+ #define FPU_CVT_L_S(a) ((int64_t)(float)(a))
+ #define FPU_C_F_S(a, b) (0)
+ #define FPU_C_UN_S(a, b) (isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_EQ_S(a, b) ((float)(a) == (float)(b))
++#define FPU_C_EQ_S(a, b) (ps2_fcmp((float)(a)) == ps2_fcmp((float)(b)))
+ #define FPU_C_UEQ_S(a, b) ((float)(a) == (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_OLT_S(a, b) ((float)(a) < (float)(b))
++#define FPU_C_OLT_S(a, b) (ps2_fcmp((float)(a)) < ps2_fcmp((float)(b)))
+ #define FPU_C_ULT_S(a, b) ((float)(a) < (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_OLE_S(a, b) ((float)(a) <= (float)(b))
++#define FPU_C_OLE_S(a, b) (ps2_fcmp((float)(a)) <= ps2_fcmp((float)(b)))
+ #define FPU_C_ULE_S(a, b) ((float)(a) <= (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+ #define FPU_C_SF_S(a, b) (0)
+ #define FPU_C_NGLE_S(a, b) (isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_SEQ_S(a, b) ((float)(a) == (float)(b))
++#define FPU_C_SEQ_S(a, b) (ps2_fcmp((float)(a)) == ps2_fcmp((float)(b)))
+ #define FPU_C_NGL_S(a, b) ((float)(a) == (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_LT_S(a, b) ((float)(a) < (float)(b))
++#define FPU_C_LT_S(a, b) (ps2_fcmp((float)(a)) < ps2_fcmp((float)(b)))
+ #define FPU_C_NGE_S(a, b) ((float)(a) < (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+-#define FPU_C_LE_S(a, b) ((float)(a) <= (float)(b))
++#define FPU_C_LE_S(a, b) (ps2_fcmp((float)(a)) <= ps2_fcmp((float)(b)))
+ #define FPU_C_NGT_S(a, b) ((float)(a) <= (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+ 
+ // QFSRV: Quadword Funnel Shift Right Variable
+diff --git a/ps2xRuntime/include/runtime/ee_scheduler.h b/ps2xRuntime/include/runtime/ee_scheduler.h
+index ff78a06..a1c138f 100644
+--- a/ps2xRuntime/include/runtime/ee_scheduler.h
++++ b/ps2xRuntime/include/runtime/ee_scheduler.h
+@@ -90,6 +90,7 @@ enum class GuestInvocationKind : uint8_t
+     SyscallOverride,
+     ExitHandler,
+     HleCall,
++    ThreadCall, // sor: a call into guest code that may spin waiting for an interrupt, so interrupts still run
+     SifCommand,
+ };
+ 
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+index a03da26..8c0717c 100644
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -278,7 +278,8 @@ void EeScheduler::run()
+             continue;
+         }
+ 
+-        if (!m_pendingInvocations.empty() && running->invocations.empty())
++        if (!m_pendingInvocations.empty() &&
++            (running->invocations.empty() || running->invocations.back().kind == GuestInvocationKind::ThreadCall))
+         {
+             GuestInvocation invocation = std::move(m_pendingInvocations.front());
+             m_pendingInvocations.pop_front();
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index ce904e7..196bf47 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -372,7 +372,7 @@ namespace ps2_stubs
+                 writeGuestU32(rdram, runtime, currentAddr, 0u);
+                 currentAddr += 4u;
+             }
+-            writePacketBuilderCurrent(rdram, runtime, stateAddr, currentAddr);
++            writeGuestU32(rdram, runtime, stateAddr, currentAddr); // sor: see sceVif1PkAddGsAD
+         }
+     }
+ 
+@@ -1419,7 +1419,9 @@ namespace ps2_stubs
+                         currentAddr,
+                         reinterpret_cast<const uint8_t *>(words),
+                         sizeof(words));
+-        writePacketBuilderCurrent(rdram, runtime, stateAddr, currentAddr + 16u);
++        // sor: the original only moves the pointer. The tag size is added when the tag is closed, by the game's own
++        // translated code: refreshing it here too made the size double, and the DMA chain ended after one image.
++        writeGuestU32(rdram, runtime, stateAddr, currentAddr + 16u);
+     }
+ 
+     void sceVif1PkAlign(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+@@ -1534,7 +1536,7 @@ namespace ps2_stubs
+ 
+         const uint32_t tagWord = (getRegU32(ctx, 5) != 0u) ? 0xD0000000u : 0x50000000u;
+         writeGuestU32(rdram, runtime, currentAddr, tagWord);
+-        writePacketBuilderCurrent(rdram, runtime, stateAddr, currentAddr + 4u);
++        writeGuestU32(rdram, runtime, stateAddr, currentAddr + 4u); // sor: see sceVif1PkAddGsAD
+         writeGuestU32(rdram, runtime, stateAddr + 12u, currentAddr);
+     }
+ 
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index 087af64..a003114 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -494,6 +494,8 @@ namespace ps2_stubs
+             bool sawInput = false;
+             bool sawSequenceEnd = false;
+             bool streamEnded = false;
++            uint32_t noDataCalls = 0u;
++            bool audioIsPcm = false;
+             bool decoderFailed = false;
+             uint64_t cdStreamGeneration = 0u;
+             bool waitingForVideoSequenceHeader = true;
+@@ -552,8 +554,8 @@ namespace ps2_stubs
+         constexpr uint32_t kStubMovieWidth = 320u;
+         constexpr uint32_t kStubMovieHeight = 240u;
+         constexpr uint32_t kMpegStrM2V = 0u;
+-        constexpr uint32_t kMpegStrPCM = 1u;
+-        constexpr uint32_t kMpegStrADPCM = 2u;
++        constexpr uint32_t kMpegStrPCM = 2u; // sor: sceMpegStrIPU is 1
++        constexpr uint32_t kMpegStrADPCM = 3u;
+         constexpr uint8_t kMpegPackHeader = 0xBAu;
+         constexpr uint8_t kMpegSystemHeader = 0xBBu;
+         constexpr uint8_t kMpegProgramEnd = 0xB9u;
+@@ -561,6 +563,9 @@ namespace ps2_stubs
+         constexpr uint8_t kMpegPrivateStream1 = 0xBDu;
+         constexpr size_t kStartCodeNotFound = std::numeric_limits<size_t>::max();
+         constexpr uint32_t kMpegCallbackDataSize = 0x20u;
++        constexpr uint32_t kMpegCallbackNoData = 1u;
++        constexpr uint32_t kMaxNoDataCallsWithoutPicture = 64u;
++        constexpr size_t kNoDataLowWaterFrames = 16u;
+ 
+         uint64_t mpegPictureIntervalQ32(uint8_t frameRateCode, uint8_t frameRateExtensionN = 0u, uint8_t frameRateExtensionD = 0u)
+         {
+@@ -1345,17 +1350,16 @@ namespace ps2_stubs
+                     const size_t payloadStart = pes.payloadOffset;
+                     if (payloadStart < packetEnd && payloadStart < playback.pssGuestAddrs.size())
+                     {
++                        // sor: the first packet carries an SShd header that says what the sound is (0x10 = SPU2 ADPCM).
++                        // Calling both callbacks wrote the same data twice into the game's sound buffer.
++                        const uint8_t *audio = buffer.data() + payloadStart;
++                        if (packetEnd - payloadStart >= 16u && std::memcmp(audio + 4, "SShd", 4) == 0)
++                        {
++                            playback.audioIsPcm = audio[12] == 1u;
++                        }
+                         queueStreamCallbackEvent(
+                             mpegAddr,
+-                            kMpegStrPCM,
+-                            playback.pssGuestAddrs[payloadStart],
+-                            static_cast<uint32_t>(packetEnd - payloadStart),
+-                            callbackEvents,
+-                            pes.pts90k,
+-                            pes.dts90k);
+-                        queueStreamCallbackEvent(
+-                            mpegAddr,
+-                            kMpegStrADPCM,
++                            playback.audioIsPcm ? kMpegStrPCM : kMpegStrADPCM,
+                             playback.pssGuestAddrs[payloadStart],
+                             static_cast<uint32_t>(packetEnd - payloadStart),
+                             callbackEvents,
+@@ -1409,8 +1413,10 @@ namespace ps2_stubs
+             // lets the game's producer loop wake the consumer again. Backpressure
+             // still propagates naturally to sceCdStRead because the ring does not
+             // advance while this is true.
+-            return !g_mpeg_stub_state.currentCdStreamEofSeen &&
+-                   playback.decodedFrames.size() >= kMaxDecodedPicturesAhead;
++            // sor: Cms_MovieDemux reads a short answer as the end of the movie. The game already paces itself: it
++            // reads half a buffer at a time and asks for the next half from the no-data callback.
++            (void)playback;
++            return false;
+         }
+ 
+         void recordCdStreamBytesDemuxedUnlocked(
+@@ -2135,6 +2141,11 @@ namespace ps2_stubs
+             {
+                 consumed = appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, callbackEvents);
+                 recordCdStreamBytesDemuxedUnlocked(consumed, completedMpegIds, eofChanged);
++                // sor: past the end code of the movie the answer is short: that is how the game learns the movie is over.
++                if (playback.streamEnded && consumed > 0u)
++                {
++                    --consumed;
++                }
+             }
+             decodedCount = playback.decodedFrames.size();
+             traceIdx = g_mpeg_stub_state.demuxPssTraceCount++;
+@@ -2316,6 +2327,49 @@ namespace ps2_stubs
+         setReturnU32(ctx, getPlaybackState(mpegAddr).decodeMode);
+     }
+ 
++    namespace
++    {
++        // The game's CMS_MOVIE_STREAM: is the half buffer that the no-data callback hands over next already demuxed,
++        // and is the movie not at its end?
++        bool movieHalfReady(const uint8_t *rdram, uint32_t stream)
++        {
++            const uint8_t *base = getConstMemPtr(rdram, stream);
++            if (!base)
++            {
++                return false;
++            }
++            const uint16_t flags = static_cast<uint16_t>(base[0xAu] | (base[0xBu] << 8u));
++            const uint8_t next = base[0x105u] & 1u;
++            return (flags & 0x18u) == 0u && (base[0x108u] & (1u << next)) != 0u;
++        }
++
++        [[noreturn]] void invokeNoDataCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, uint32_t mpegAddr, uint32_t func, uint32_t data)
++        {
++            const uint32_t cbDataAddr = runtime->guestMalloc(kMpegCallbackDataSize, 16u);
++            if (uint8_t *cbData = getMemPtr(rdram, cbDataAddr))
++            {
++                std::memset(cbData, 0, kMpegCallbackDataSize);
++                *reinterpret_cast<uint32_t *>(cbData) = kMpegCallbackNoData;
++            }
++            GuestInvocation invocation{};
++            invocation.kind = GuestInvocationKind::ThreadCall;
++            invocation.context = *ctx;
++            SET_GPR_U32(&invocation.context, 4, mpegAddr);
++            SET_GPR_U32(&invocation.context, 5, cbDataAddr);
++            SET_GPR_U32(&invocation.context, 6, data);
++            SET_GPR_U32(&invocation.context, 7, 0u);
++            SET_GPR_U32(&invocation.context, 29, 0u);
++            SET_GPR_U32(&invocation.context, 31, 0u);
++            invocation.context.pc = func;
++            invocation.onComplete = [rdram, runtime, cbDataAddr](const R5900Context &, R5900Context &parent)
++            {
++                runtime->guestFree(cbDataAddr);
++                sceMpegGetPicture(rdram, &parent, runtime);
++            };
++            runtime->eeScheduler().invokeCurrent(std::move(invocation));
++        }
++    }
++
+     void sceMpegGetPicture(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+     {
+         const uint32_t mpegAddr = getRegU32(ctx, 4);
+@@ -2324,10 +2378,45 @@ namespace ps2_stubs
+         uint32_t height = kStubMovieHeight;
+         uint32_t frameCount = 0u;
+         bool haveFrame = false;
++        bool movieOver = false;
+         MpegDecodedFrame frame;
+         {
+             std::unique_lock<std::mutex> lock(g_mpeg_stub_mutex);
+             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
++            // sor: on the console the library calls the no-data callback (type 1) when the decoder has used up a half
++            // buffer, inside this call. The game's callback then lets the next half be read and demuxed. Here the
++            // frames are decoded at demux time, so waiting for an empty queue would stop the picture and starve the
++            // sound while that half is read. It is called early instead, as soon as the half it would hand over is
++            // ready (it returns at once then), and with an empty queue it waits for it as on the console.
++            if (playback.decodedFrames.size() <= kNoDataLowWaterFrames &&
++                !g_mpeg_stub_state.currentCdStreamEofSeen &&
++                !playback.streamEnded &&
++                !playback.decoderFailed)
++            {
++                const bool empty = playback.decodedFrames.empty();
++                if (empty && ++playback.noDataCalls > kMaxNoDataCallsWithoutPicture)
++                {
++                    playback.streamEnded = true; // the stream has dried up without an end code
++                }
++                else
++                {
++                    const auto callbacks = g_mpeg_stub_state.callbacksByMpeg.find(mpegAddr);
++                    if (callbacks != g_mpeg_stub_state.callbacksByMpeg.end())
++                    {
++                        for (const MpegRegisteredCallback &callback : callbacks->second)
++                        {
++                            if (callback.type == kMpegCallbackNoData && runtime->hasFunction(callback.func) &&
++                                (empty || movieHalfReady(rdram, callback.data)))
++                            {
++                                const uint32_t func = callback.func;
++                                const uint32_t data = callback.data;
++                                lock.unlock();
++                                invokeNoDataCallback(rdram, ctx, runtime, mpegAddr, func, data);
++                            }
++                        }
++                    }
++                }
++            }
+             if (playback.decodedFrames.empty() &&
+                 !g_mpeg_stub_state.currentCdStreamEofSeen &&
+                 !playback.streamEnded &&
+@@ -2377,7 +2466,10 @@ namespace ps2_stubs
+                     playback.nextPictureTickQ32 = currentTickQ32;
+                 }
+ 
+-                if (currentTickQ32 < presentationTargetQ32)
++                // sor: this game asks for each picture on its own clock (at 50 Hz, 3 pictures every 5 vblanks): waiting
++                // here too slowed the 30 fps movies down to 25, and the sound ran dry.
++                constexpr bool kGamePacesPictures = true;
++                if (!kGamePacesPictures && currentTickQ32 < presentationTargetQ32)
+                 {
+                     const uint64_t eligibleTick = (presentationTargetQ32 + kPictureClockOne - 1u) >> 32u;
+                     lock.unlock();
+@@ -2396,6 +2488,7 @@ namespace ps2_stubs
+ 
+                 frame = std::move(playback.decodedFrames.front());
+                 playback.decodedFrames.pop_front();
++                playback.noDataCalls = 0u;
+                 playback.width = static_cast<uint32_t>(frame.width);
+                 playback.height = static_cast<uint32_t>(frame.height);
+                 width = playback.width;
+@@ -2423,6 +2516,7 @@ namespace ps2_stubs
+                 height = playback.height;
+                 frameCount = playback.picturesServed;
+             }
++            movieOver = playback.streamEnded && playback.decodedFrames.empty();
+         }
+ 
+         mpegGuestWrite32(rdram, mpegAddr + 0x00u, width);
+@@ -2439,6 +2533,8 @@ namespace ps2_stubs
+                 *reinterpret_cast<uint32_t *>(inner + 0xe4) = getRegU32(ctx, 6);
+                 *reinterpret_cast<uint32_t *>(inner + 0xdc) = 0;
+                 *reinterpret_cast<uint32_t *>(inner + 0xe0) = 0;
++                // sor: the library's sceMpegIsEnd is translated code here: it reads this word.
++                *reinterpret_cast<uint32_t *>(inner) = movieOver ? 1u : 0u;
+             }
+         }
+ 
+@@ -2494,11 +2590,11 @@ namespace ps2_stubs
+         // Only the producer/demux EOF is authoritative. A sequence_end_code can
+         // be observed while more PSS data is still buffered, and a decoder
+         // failure before producer EOF may still recover on a later sequence.
++        // sor: this game reads the disc by itself, so the producer EOF never comes: the end code of the movie is enough.
+         const bool producerEnded =
+             g_mpeg_stub_state.currentCdStreamEofSeen &&
+             playback.cdStreamGeneration == g_mpeg_stub_state.cdStreamGeneration;
+-        const bool ended = producerEnded &&
+-                           (playback.streamEnded || (playback.decoderFailed && playback.sawInput));
++        const bool ended = playback.streamEnded || (producerEnded && playback.decoderFailed && playback.sawInput);
+         const uint64_t presentationEnd = playback.presentationEndTickQ32;
+         const uint64_t currentTickQ32 = runtime != nullptr
+                                             ? (runtime->eeScheduler().currentVSyncTick() << 32u)

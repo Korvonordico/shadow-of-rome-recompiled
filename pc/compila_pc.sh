@@ -8,6 +8,8 @@ P="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 B="$P/_build"
 LOG="$P/_build.log"
 : > "$LOG"
+# The movies need a small part of FFmpeg. It is built once, on the Linux disk (spaces in a Windows path would break it).
+bash "$P/pc/compila_ffmpeg.sh" "$HOME/.cache/shadow-of-rome-ffmpeg" >> "$LOG" 2>&1 || { echo "FFMPEG FAILED, see the end of $LOG"; exit 1; }
 if [ ! -f "$B/Makefile" ] || [ "$1" = configura ]; then
   cmake -S "$P/pc" -B "$B" -DCMAKE_TOOLCHAIN_FILE="$P/pc/mingw.cmake" -DCMAKE_BUILD_TYPE=Release \
     -DSOR_GENERATED_DIR="$P/gen/main" -DSOR_PS2RECOMP="$P/thirdparty/PS2Recomp" >> "$LOG" 2>&1 || { echo "CONFIGURE FAILED" >> "$LOG"; exit 1; }

@@ -54,7 +54,7 @@ echo "== 4/5 Translation to C++"
 _tools/ps2xRecomp/ps2_recomp analisi/main.toml > analisi/recomp.log 2>&1
 grep -E "Functions processed|Unhandled|Warnings" analisi/recomp.log || true
 
-echo "== 5/5 Build for Windows (5 to 10 minutes, log in _build.log)"
+echo "== 5/5 Build for Windows (5 to 15 minutes, log in _build.log; the first time it also downloads and builds FFmpeg)"
 pc/compila_pc.sh configura || { tail -20 _build.log; echo "BUILD FAILED, see _build.log"; exit 1; }
 [ -f _build/sor.exe ] || { echo "BUILD FAILED, see _build.log"; exit 1; }
 echo "Done: _build/sor.exe. Start it with run.bat or scripts/run.sh."
