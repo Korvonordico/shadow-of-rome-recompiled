@@ -1,0 +1,347 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index 8ec58c3..81f36ad 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -75,6 +75,23 @@ namespace
+     }
+ 
+     FILE *g_wav = nullptr;
++
++    // Filtri del riverbero, che lavora a 24 kHz: stessa tabella di PCSX2 (39 coefficienti).
++    constexpr int kRiverbTap = 39;
++    constexpr int16_t kFiltroGiu[kRiverbTap] = {-1, 0, 2, 0, -10, 0, 35, 0, -103, 0, 266, 0, -616, 0, 1332, 0, -2960, 0, 10246, 16384,
++                                                10246, 0, -2960, 0, 1332, 0, -616, 0, 266, 0, -103, 0, 35, 0, -10, 0, 2, 0, -1};
++    constexpr int16_t kFiltroSu[kRiverbTap] = {-2, 0, 4, 0, -20, 0, 70, 0, -206, 0, 532, 0, -1232, 0, 2664, 0, -5920, 0, 20492, 32767,
++                                               20492, 0, -5920, 0, 2664, 0, -1232, 0, 532, 0, -206, 0, 70, 0, -20, 0, 4, 0, -2};
++
++    inline int32_t sat16(int64_t v)
++    {
++        return static_cast<int32_t>(std::clamp<int64_t>(v, -32768, 32767));
++    }
++
++    inline int32_t mul15(int32_t a, int32_t b)
++    {
++        return (a * b) >> 15;
++    }
+ }
+ 
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n)
+@@ -263,6 +280,15 @@ namespace ps2x::iop::detail
+             m_ram[core.tsa & (kRamParole - 1u)] = value;
+             core.tsa = (core.tsa + 1u) & (kRamParole - 1u);
+             break;
++        case 0x2E0u:
++            core.esa = (core.esa & 0xFFFFu) | (static_cast<uint32_t>(value & 0x3Fu) << 16u);
++            break;
++        case 0x2E2u:
++            core.esa = (core.esa & 0x3F0000u) | value;
++            break;
++        case 0x33Cu:
++            core.eea = (static_cast<uint32_t>(value & 0x3Fu) << 16u) | 0xFFFFu;
++            break;
+         case 0x340u:
+             core.endx &= ~static_cast<uint32_t>(value);
+             break;
+@@ -360,16 +386,104 @@ namespace ps2x::iop::detail
+         v.indice = 0;
+     }
+ 
++    uint32_t IopSpu2::indiceRiverbero(const Core &core, uint32_t base, int32_t scarto) const
++    {
++        const uint32_t inizio = core.esa & 0x3FFFFFu;
++        const uint32_t fine = (core.eea & 0x3FFFFFu) | 0xFFFFu;
++        const uint32_t x = (static_cast<uint32_t>(m_ciclo >> 1u) + base + static_cast<uint32_t>(scarto)) % (fine - inizio + 1u);
++        return (x + inizio) & (kRamParole - 1u);
++    }
++
++    // Il riverbero del chip: lo stesso calcolo di PCSX2 (V_Core::DoReverb). A ogni campione lavora un canale solo, a turno.
++    // Non c'e' l'interruzione sulla memoria del riverbero.
++    void IopSpu2::riverbero(int c, int32_t inL, int32_t inR, int32_t &fuoriL, int32_t &fuoriR)
++    {
++        Core &core = m_core[static_cast<size_t>(c)];
++        fuoriL = fuoriR = 0;
++        if (core.esa >= core.eea)
++            return;
++        const uint32_t b = static_cast<uint32_t>(c) << 10u;
++        const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
++        const bool acceso = (reg(0x19Au + b) & 0x80u) != 0u;
++        const int32_t evolL = volumeFisso(reg(0x764u + bv)), evolR = volumeFisso(reg(0x766u + bv));
++        if (!acceso && evolL == 0 && evolR == 0)
++            return;
++        const auto reg32 = [&](uint32_t o) { return (static_cast<uint32_t>(reg(o + b)) << 16u) | reg(o + 2u + b); };
++        const auto coef = [&](uint32_t o) { return static_cast<int32_t>(static_cast<int16_t>(reg(o + bv))); };
++        const auto ram = [&](uint32_t i) { return static_cast<int32_t>(static_cast<int16_t>(m_ram[i])); };
++
++        const uint32_t pos = core.riverbPos;
++        core.riverbGiu[0][pos] = core.riverbGiu[0][pos | 64u] = static_cast<int16_t>(sat16(inL));
++        core.riverbGiu[1][pos] = core.riverbGiu[1][pos | 64u] = static_cast<int16_t>(sat16(inR));
++
++        const int R = static_cast<int>(m_ciclo & 1u);
++        const uint32_t sameSrc = indiceRiverbero(core, reg32(R ? 0x308u : 0x304u), 0);
++        const uint32_t sameDst = indiceRiverbero(core, reg32(R ? 0x2F0u : 0x2ECu), 0);
++        const uint32_t samePrv = indiceRiverbero(core, reg32(R ? 0x2F0u : 0x2ECu), -1);
++        const uint32_t diffSrc = indiceRiverbero(core, reg32(R ? 0x324u : 0x328u), 0);
++        const uint32_t diffDst = indiceRiverbero(core, reg32(R ? 0x310u : 0x30Cu), 0);
++        const uint32_t diffPrv = indiceRiverbero(core, reg32(R ? 0x310u : 0x30Cu), -1);
++        const uint32_t comb1 = indiceRiverbero(core, reg32(R ? 0x2F8u : 0x2F4u), 0);
++        const uint32_t comb2 = indiceRiverbero(core, reg32(R ? 0x300u : 0x2FCu), 0);
++        const uint32_t comb3 = indiceRiverbero(core, reg32(R ? 0x318u : 0x314u), 0);
++        const uint32_t comb4 = indiceRiverbero(core, reg32(R ? 0x320u : 0x31Cu), 0);
++        const uint32_t apf1Dst = indiceRiverbero(core, reg32(R ? 0x330u : 0x32Cu), 0);
++        const uint32_t apf2Dst = indiceRiverbero(core, reg32(R ? 0x338u : 0x334u), 0);
++        const uint32_t apf1Src = indiceRiverbero(core, reg32(R ? 0x330u : 0x32Cu) - reg32(0x2E4u), 0);
++        const uint32_t apf2Src = indiceRiverbero(core, reg32(R ? 0x338u : 0x334u) - reg32(0x2E8u), 0);
++
++        const int16_t *giu = core.riverbGiu[R] + ((pos - kRiverbTap) & 63u);
++        int32_t ingresso = 0;
++        for (int i = 0; i < kRiverbTap; ++i)
++            ingresso += giu[i] * kFiltroGiu[i];
++        ingresso = mul15(coef(R ? 0x786u : 0x784u), sat16(ingresso >> 15));
++
++        const int32_t vIir = coef(0x774u), vMuro = coef(0x77Eu), vApf1 = coef(0x780u), vApf2 = coef(0x782u);
++        const int32_t same = mul15(vIir, ingresso + mul15(vMuro, ram(sameSrc)) - ram(samePrv)) + ram(samePrv);
++        const int32_t diff = mul15(vIir, ingresso + mul15(vMuro, ram(diffSrc)) - ram(diffPrv)) + ram(diffPrv);
++        int32_t fuori = mul15(coef(0x776u), ram(comb1)) + mul15(coef(0x778u), ram(comb2)) + mul15(coef(0x77Au), ram(comb3)) + mul15(coef(0x77Cu), ram(comb4));
++        const int32_t apf1 = fuori - mul15(vApf1, ram(apf1Src));
++        fuori = ram(apf1Src) + mul15(vApf1, apf1);
++        const int32_t apf2 = fuori - mul15(vApf2, ram(apf2Src));
++        fuori = ram(apf2Src) + mul15(vApf2, apf2);
++
++        if (acceso)
++        {
++            m_ram[sameDst] = static_cast<uint16_t>(sat16(same));
++            m_ram[diffDst] = static_cast<uint16_t>(sat16(diff));
++            m_ram[apf1Dst] = static_cast<uint16_t>(sat16(apf1));
++            m_ram[apf2Dst] = static_cast<uint16_t>(sat16(apf2));
++        }
++
++        const int16_t uscita = static_cast<int16_t>(sat16(fuori));
++        core.riverbSu[R][pos] = core.riverbSu[R][pos | 64u] = uscita;
++        core.riverbSu[1 - R][pos] = core.riverbSu[1 - R][pos | 64u] = 0;
++        core.riverbPos = (pos + 1u) & 63u;
++
++        const uint32_t da = (core.riverbPos - kRiverbTap) & 63u;
++        int32_t sl = 0, sr = 0;
++        for (int i = 0; i < kRiverbTap; ++i)
++        {
++            sl += core.riverbSu[0][da + static_cast<uint32_t>(i)] * kFiltroSu[i];
++            sr += core.riverbSu[1][da + static_cast<uint32_t>(i)] * kFiltroSu[i];
++        }
++        fuoriL = mul15(sat16(sl >> 15), evolL);
++        fuoriR = mul15(sat16(sr >> 15), evolR);
++    }
++
+     void IopSpu2::generaUno(int32_t &outL, int32_t &outR)
+     {
+-        int32_t uscitaL = 0, uscitaR = 0;
++        static const bool s_senzaEco = std::getenv("SOR_SENZAECO") != nullptr; // per le prove: confronto col miscuglio senza riverbero
++        int32_t esternoL = 0, esternoR = 0, uscitaL = 0, uscitaR = 0;
+         for (int c = 0; c < 2; ++c)
+         {
+             Core &core = m_core[static_cast<size_t>(c)];
+             const uint32_t b = static_cast<uint32_t>(c) << 10u;
+             const uint32_t mixL = reg(0x188u + b) | (static_cast<uint32_t>(reg(0x18Au + b)) << 16u);
+             const uint32_t mixR = reg(0x190u + b) | (static_cast<uint32_t>(reg(0x192u + b)) << 16u);
+-            int64_t l = 0, r = 0;
++            const uint32_t mixEL = reg(0x18Cu + b) | (static_cast<uint32_t>(reg(0x18Eu + b)) << 16u);
++            const uint32_t mixER = reg(0x194u + b) | (static_cast<uint32_t>(reg(0x196u + b)) << 16u);
++            int64_t l = 0, r = 0, wl = 0, wr = 0, inpL = 0, inpR = 0;
+             for (uint32_t i = 0; i < 24u; ++i)
+             {
+                 Voce &v = core.voci[i];
+@@ -445,12 +559,17 @@ namespace ps2x::iop::detail
+                 const float p2 = static_cast<float>(v.storia[2]), p3 = static_cast<float>(v.storia[3]);
+                 const float s = p1 + 0.5f * t * (p2 - p0 + t * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 + t * (3.0f * (p1 - p2) + p3 - p0)));
+                 const int32_t campione = (static_cast<int32_t>(s) * v.livello) >> 15;
+-                aggiornaVolume(v.volL, v.volXL, v.contatore);
+-                aggiornaVolume(v.volR, v.volXR, v.contatore);
++                aggiornaVolume(v.volL, v.volXL, v.contaVolL);
++                aggiornaVolume(v.volR, v.volXR, v.contaVolR);
++                const int32_t votoL = (campione * v.volXL) >> 15, votoR = (campione * v.volXR) >> 15;
+                 if ((mixL & (1u << i)) != 0u)
+-                    l += (campione * v.volXL) >> 15;
++                    l += votoL;
+                 if ((mixR & (1u << i)) != 0u)
+-                    r += (campione * v.volXR) >> 15;
++                    r += votoR;
++                if ((mixEL & (1u << i)) != 0u)
++                    wl += votoL;
++                if ((mixER & (1u << i)) != 0u)
++                    wr += votoR;
+             }
+             // Flusso PCM continuo (ADMA)
+             Adma &a = core.adma;
+@@ -485,21 +604,50 @@ namespace ps2x::iop::detail
+                 if (a.attivo)
+                 {
+                     const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
+-                    l += (a.l[a.posizione] * volumeFisso(reg(0x768u + bv))) >> 15;
+-                    r += (a.r[a.posizione] * volumeFisso(reg(0x76Au + bv))) >> 15;
++                    inpL = (a.l[a.posizione] * volumeFisso(reg(0x768u + bv))) >> 15;
++                    inpR = (a.r[a.posizione] * volumeFisso(reg(0x76Au + bv))) >> 15;
+                     ++a.posizione;
+                 }
+             }
+-            // Volume generale del core, e l'uscita del core 0 entra nel core 1
++            // Il miscuglio del core. MMIX dice cosa va diretto all'uscita e cosa al riverbero: voci, flusso, altro core.
+             const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
++            const uint32_t mmix = reg(0x198u + b);
++            const int32_t vl = sat16(l), vr = sat16(r), evl = sat16(wl), evr = sat16(wr);
++            int64_t diretL = 0, diretR = 0, bagnL = 0, bagnR = 0;
++            diretL += (mmix & 0x080u) ? inpL : 0;
++            diretR += (mmix & 0x040u) ? inpR : 0;
++            diretL += (mmix & 0x800u) ? vl : 0;
++            diretR += (mmix & 0x400u) ? vr : 0;
++            diretL += (mmix & 0x008u) ? esternoL : 0;
++            diretR += (mmix & 0x004u) ? esternoR : 0;
++            bagnL += (mmix & 0x020u) ? inpL : 0;
++            bagnR += (mmix & 0x010u) ? inpR : 0;
++            bagnL += (mmix & 0x200u) ? evl : 0;
++            bagnR += (mmix & 0x100u) ? evr : 0;
++            bagnL += (mmix & 0x002u) ? esternoL : 0;
++            bagnR += (mmix & 0x001u) ? esternoR : 0;
++            int32_t ecoL = 0, ecoR = 0;
++            riverbero(c, sat16(bagnL), sat16(bagnR), ecoL, ecoR);
++            if (!s_senzaEco)
++            {
++                diretL += ecoL;
++                diretR += ecoR;
++            }
++            // Volume generale del core. L'uscita del core 0 entra nel core 1 col volume BVOL del core 1; esce il core 1.
+             const uint16_t mL = reg(0x760u + bv), mR = reg(0x762u + bv);
+             const int32_t volL = (mL & 0x8000u) ? 0x7FFF : volumeFisso(mL);
+             const int32_t volR = (mR & 0x8000u) ? 0x7FFF : volumeFisso(mR);
+-            uscitaL += static_cast<int32_t>((std::clamp<int64_t>(l, -32768, 32767) * volL) >> 15);
+-            uscitaR += static_cast<int32_t>((std::clamp<int64_t>(r, -32768, 32767) * volR) >> 15);
++            uscitaL = sat16((sat16(diretL) * static_cast<int64_t>(volL)) >> 15);
++            uscitaR = sat16((sat16(diretR) * static_cast<int64_t>(volR)) >> 15);
++            if (c == 0)
++            {
++                esternoL = (uscitaL * volumeFisso(reg(0x76Cu + 0x28u))) >> 15;
++                esternoR = (uscitaR * volumeFisso(reg(0x76Eu + 0x28u))) >> 15;
++            }
+         }
+-        outL = std::clamp(uscitaL, -32768, 32767);
+-        outR = std::clamp(uscitaR, -32768, 32767);
++        outL = uscitaL;
++        outR = uscitaR;
++        ++m_ciclo;
+     }
+ 
+     bool IopSpu2::dma(int core, uint8_t *ram, uint32_t ramSize, uint32_t indirizzo, uint32_t parole, bool versoChip)
+@@ -579,6 +727,12 @@ namespace ps2x::iop::detail
+             for (const Core &c : m_core)
+                 for (const Voce &v : c.voci)
+                     attive += v.fase != 0u ? 1 : 0;
++            for (int k = 0; k < 2; ++k)
++            {
++                const uint32_t bc = static_cast<uint32_t>(k) << 10u, bvc = static_cast<uint32_t>(k) * 0x28u;
++                std::printf("[spu] core %d attr %04x mmix %03x evol %04x %04x avol %04x bvol %04x mvol %04x %04x esa %05x eea %05x iir %04x\n", k, reg(0x19Au + bc), reg(0x198u + bc), reg(0x764u + bvc), reg(0x766u + bvc),
++                            reg(0x768u + bvc), reg(0x76Cu + bvc), reg(0x760u + bvc), reg(0x762u + bvc), m_core[static_cast<size_t>(k)].esa, m_core[static_cast<size_t>(k)].eea, reg(0x774u + bvc));
++            }
+             std::printf("[spu] voci %d kon %llu dma %llu adma %llu irq %llu picco %d rms %.0f campioni/s %llu\n", attive, static_cast<unsigned long long>(m_contaKon),
+                         static_cast<unsigned long long>(m_contaDma), static_cast<unsigned long long>(m_contaAdma), static_cast<unsigned long long>(m_contaIrq), s_picco,
+                         s_n ? std::sqrt(static_cast<double>(s_somma) / static_cast<double>(s_n)) : 0.0, static_cast<unsigned long long>(s_n));
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.h b/ps2xIOP/src/emulator/core/iop_spu2.h
+index 51b71c3..6588371 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.h
++++ b/ps2xIOP/src/emulator/core/iop_spu2.h
+@@ -2,7 +2,7 @@
+ 
+ // sor: il chip del suono della PS2 (SPU2). I driver del gioco (LIBSD, MODHSYN, SNDDRVHD) girano davvero
+ // nell'IOP e scrivono questi registri: qui ci sono le 48 voci ADPCM, gli inviluppi, i trasferimenti DMA
+-// e il miscuglio finale a 48 kHz. Il riverbero non c'e'.
++// il riverbero e il miscuglio finale a 48 kHz.
+ 
+ #include <array>
+ #include <cstddef>
+@@ -37,7 +37,7 @@ namespace ps2x::iop::detail
+             uint16_t volL = 0, volR = 0, pitch = 0, adsr1 = 0, adsr2 = 0;
+             int32_t livello = 0;
+             int32_t volXL = 0, volXR = 0;
+-            int contatore = 0;
++            int contatore = 0, contaVolL = 0, contaVolR = 0;
+             uint8_t fase = 0; // 0 spenta, 1 attacco, 2 decadimento, 3 sostegno, 4 rilascio
+             bool lsaManuale = false, lsaNuova = false;
+             uint32_t passo = 0;
+@@ -61,6 +61,9 @@ namespace ps2x::iop::detail
+             uint32_t endx = 0;
+             uint32_t tsa = 0;
+             uint32_t irqa = 0;
++            uint32_t esa = 0, eea = 0;
++            int16_t riverbGiu[2][128] = {}, riverbSu[2][128] = {};
++            uint32_t riverbPos = 0;
+             Adma adma;
+         };
+ 
+@@ -68,6 +71,8 @@ namespace ps2x::iop::detail
+         void tastoOff(int core, uint32_t voci);
+         void decodifica(int core, Voce &v);
+         void generaUno(int32_t &outL, int32_t &outR);
++        void riverbero(int c, int32_t inL, int32_t inR, int32_t &fuoriL, int32_t &fuoriR);
++        [[nodiscard]] uint32_t indiceRiverbero(const Core &core, uint32_t base, int32_t scarto) const;
+         void controllaIrq(int core, uint32_t da, uint32_t quanti);
+         [[nodiscard]] uint16_t reg(uint32_t offset) const { return m_reg[offset >> 1u]; }
+ 
+@@ -78,6 +83,7 @@ namespace ps2x::iop::detail
+         int64_t m_inizioNs = 0;
+         uint64_t m_generati = 0;
+         uint32_t m_conta = 0;
++        uint64_t m_ciclo = 0;
+         // Per il registro delle prove
+         uint64_t m_contaKon = 0, m_contaDma = 0, m_contaAdma = 0, m_contaIrq = 0;
+     };
+diff --git a/ps2xRuntime/CMakeLists.txt b/ps2xRuntime/CMakeLists.txt
+index 8af475d..7d53461 100644
+--- a/ps2xRuntime/CMakeLists.txt
++++ b/ps2xRuntime/CMakeLists.txt
+@@ -253,6 +253,11 @@ option(PS2X_ENABLE_FFMPEG "Enable FFmpeg-backed MPEG video decoding" ${PS2X_ENAB
+ if(NOT PS2X_ENABLE_FFMPEG)
+     message(STATUS "FFmpeg disabled; MPEG video decode falls back to stub frames")
+     add_library(ffmpeg INTERFACE)
++elseif(SOR_FFMPEG_DIR)
++    # sor: FFmpeg statico, solo il decodificatore MPEG-2 (pc/compila_ffmpeg.sh).
++    add_library(ffmpeg INTERFACE)
++    target_include_directories(ffmpeg INTERFACE "${SOR_FFMPEG_DIR}/include")
++    target_link_libraries(ffmpeg INTERFACE "${SOR_FFMPEG_DIR}/lib/libavcodec.a" "${SOR_FFMPEG_DIR}/lib/libswscale.a" "${SOR_FFMPEG_DIR}/lib/libavutil.a" bcrypt)
+ elseif(WIN32)
+     include(ExternalProject)
+ 
+@@ -599,7 +604,7 @@ install(TARGETS ps2_runtime ps2EntryRunner
+     ARCHIVE DESTINATION lib
+ )
+ 
+-if(WIN32 AND PS2X_ENABLE_FFMPEG)
++if(WIN32 AND PS2X_ENABLE_FFMPEG AND NOT SOR_FFMPEG_DIR)
+     install(DIRECTORY "${FFMPEG_BIN_DIR}/"
+         DESTINATION bin
+         FILES_MATCHING
+diff --git a/ps2xRuntime/include/ps2_runtime_macros.h b/ps2xRuntime/include/ps2_runtime_macros.h
+index 0485d50..6e079af 100644
+--- a/ps2xRuntime/include/ps2_runtime_macros.h
++++ b/ps2xRuntime/include/ps2_runtime_macros.h
+@@ -311,6 +311,14 @@ inline float ps2_frsqrt(float a, float b)
+     return ps2_fall_normal(a, b, r) ? r : ps2_frsqrt_slow(a, b);
+ }
+ 
++inline int32_t ps2_fcvtw(float a)
++{
++    const uint32_t u = std::bit_cast<uint32_t>(a);
++    if ((u & 0x7F800000u) <= 0x4E800000u)
++        return static_cast<int32_t>(a);
++    return (u & 0x80000000u) ? static_cast<int32_t>(0x80000000u) : 0x7FFFFFFF;
++}
++
+ enum class Ps2VecOp
+ {
+     Add,
+@@ -853,7 +861,8 @@ inline __m128i ps2_u64_to_epi64_pair(uint64_t value)
+ #define FPU_FLOOR_W_S(a) ((int32_t)floorf((float)(a)))
+ #define FPU_CVT_S_W(a) ((float)(int32_t)(a))
+ #define FPU_CVT_S_L(a) ((float)(int64_t)(a))
+-#define FPU_CVT_W_S(a) ((int32_t)nearbyintf((float)(a)))
++// sor: sulla PS2 CVT.W.S tronca verso lo zero e satura (come PCSX2); il bit del segno dice da che parte.
++#define FPU_CVT_W_S(a) ps2_fcvtw((float)(a))
+ #define FPU_CVT_L_S(a) ((int64_t)(float)(a))
+ #define FPU_C_F_S(a, b) (0)
+ #define FPU_C_UN_S(a, b) (isnan((float)(a)) || isnan((float)(b)))
