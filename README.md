@@ -16,6 +16,13 @@ Native PC port of Shadow of Rome (PS2) through static recompilation.
 
 **Boots to the main menu on Windows, every menu and submenu works, the movies play, and the first arena can be played at full speed (50 Hz in a window). City Arena Rounds II and III and the first stage with Octavianus load and run, but so far they were only reached by forcing each win in a test.**
 
+### Latest fix, tested by hand (2 November 2026)
+
+- **Fixed: grey screen and a steady beep after the "City Arena" title card.** From the second movie on, the sound of each movie packet was sent twice, the sound stream broke and the game waited for it forever. Fix: patch `0016` in [patches/README.md](patches/README.md).
+- **Tested by Francesco by hand:** from his own save he went past the title card, watched the movie and played on. It works.
+- **Seen in that test, not fixed yet:** some glitches appear on the floor, and in play the speed is not steady (short slowdowns). The cause is not known yet.
+- **Tested by script:** 3 runs from the same save, with the normal settings, reached the "First Match" map and play in the first arena (the scripted runs were silent).
+
 This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet.

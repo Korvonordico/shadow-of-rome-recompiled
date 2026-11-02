@@ -1,0 +1,15 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index a003114..f813c20 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -2043,6 +2043,10 @@ namespace ps2_stubs
+         {
+             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+             getPlaybackState(param_1) = makeFreshPlaybackState();
++            // sor: sceMpegCreate rebuilds the object, so the callbacks of the previous movie are gone. The game does not always
++            // call sceMpegDelete: kept here, the second movie called its sound callback twice per packet, the stream got corrupted
++            // and the sound thread waited forever (grey screen after the title card).
++            g_mpeg_stub_state.callbacksByMpeg.erase(param_1);
+         }
+ 
+         const uint32_t puVar4 = uVar3 + 0x108u;
