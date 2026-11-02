@@ -30,6 +30,7 @@ It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousR
 
 - a skill for PS2 game porting, written from my earlier port attempts, so the agent follows tested steps instead of guessing;
 - [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: reaching the menu took 4 planned sessions, about 15 million weighted tokens;
+- [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. It ran in my local test builds (it is not part of this repository) and caught the freeze in the Germanian Forest by itself;
 - written handoff notes after every session, so each one starts from where the last one stopped.
 
 Added for the menu work, because that is what the problems needed:
