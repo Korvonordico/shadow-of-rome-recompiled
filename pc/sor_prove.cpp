@@ -123,7 +123,9 @@ namespace
                     // peek <ind> [quanti] / poke <ind> <val> / or32 <ind> <val>: memoria del gioco, in esadecimale (solo per le prove).
                     unsigned ind = 0, val = 1;
                     std::sscanf(riga.c_str(), "%*s %x %x", &ind, &val);
-                    if (g_rt && ind + 4 <= 0x2000000u)
+                    // ind <= limite - 4, non ind + 4 <= limite: con ind = 0xffffffff (un nodo di lista letto durante un
+                    // cambio di scena) la somma gira a 3 e si leggeva fuori dalla RAM (eccezione 0xc0000005).
+                    if (g_rt && ind <= 0x2000000u - 4u)
                     {
                         uint32_t *p = reinterpret_cast<uint32_t *>(g_rt->memory().getRDRAM() + (ind & ~3u));
                         if (!std::strcmp(cmd, "poke"))
