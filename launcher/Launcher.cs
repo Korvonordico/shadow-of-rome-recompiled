@@ -1,5 +1,6 @@
 // Shadow of Rome PC port - launcher.
-// Build: csc -target:winexe -out:ShadowOfRome.exe Launcher.cs  (the .NET Framework compiler that ships with Windows)
+// Build: build.bat, or csc -target:winexe -win32icon:ShadowOfRome.ico -out:ShadowOfRome.exe Launcher.cs
+// (the .NET Framework compiler that ships with Windows).
 // Only "Play" works for now; the other entries are greyed out as "coming soon".
 // logo.png (next to the exe) is optional and NOT part of the repository: it is the project's logo (docs/logo.png
 // in the repository). Without it the title is drawn in text.
@@ -14,6 +15,7 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
+    const string Version = "0.0.6";   // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "CREDITS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "AVCTORES", "EXI" };
     static readonly bool[] Ready = { true, false, false, false, false, false, true };
@@ -32,7 +34,7 @@ class Launcher : Form
 
     Launcher()
     {
-        Text = "Shadow of Rome";
+        Text = "Shadow of Rome Recompiled " + Version;
         ClientSize = new Size(960, 540);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -87,11 +89,21 @@ class Launcher : Form
         return "";
     }
 
+    string Exe { get { return Path.Combine(dir, "sor.exe"); } }
+    string Elf { get { return Path.GetFullPath(Path.Combine(dir, @"..\disco\SLES_529.50.pc")); } }
+
+    // What stops Play before it asks for the disc, or "" if nothing does.
+    string Missing()
+    {
+        if (!File.Exists(Exe)) return "SOR.EXE NOT FOUND  ·  BUILD THE GAME FIRST: SEE THE README";
+        if (!File.Exists(Elf)) return "DISCO\\SLES_529.50.PC NOT FOUND  ·  RUN SCRIPTS/SETUP.SH FIRST: SEE THE README";
+        return "";
+    }
+
     void Play()
     {
-        string exe = Path.Combine(dir, "sor.exe");
-        string elf = Path.Combine(dir, @"..\disco\SLES_529.50.pc");
-        if (!File.Exists(exe)) { message = "SOR.EXE NOT FOUND NEXT TO THE LAUNCHER"; Invalidate(); return; }
+        message = Missing();
+        if (message != "") { Invalidate(); return; }
         string iso = ReadIso();
         if (iso == "" || !File.Exists(iso))
         {
@@ -102,10 +114,23 @@ class Launcher : Form
                 File.WriteAllText(IniPath, "iso=" + iso + Environment.NewLine);
             }
         }
-        var psi = new ProcessStartInfo(exe, "\"" + elf + "\" \"" + iso + "\" 0") { WorkingDirectory = dir, UseShellExecute = false };
+        var psi = new ProcessStartInfo(Exe, "\"" + Elf + "\" \"" + iso + "\" 0") { WorkingDirectory = dir, UseShellExecute = false };
         psi.EnvironmentVariables["SOR_FINESTRA"] = "1";
-        try { Process.Start(psi); Close(); }
-        catch (Exception ex) { message = "COULD NOT START THE GAME: " + ex.Message; Invalidate(); }
+        Process p;
+        try { p = Process.Start(psi); }
+        catch (Exception ex) { message = "COULD NOT START THE GAME: " + ex.Message; Invalidate(); return; }
+        // If the game closes within 3 seconds, something is wrong: come back and say so instead of vanishing,
+        // and forget the disc image, so that the next Play asks for it again.
+        Hide();
+        if (p.WaitForExit(3000))
+        {
+            try { File.Delete(IniPath); } catch (Exception) { }
+            Show();
+            message = "THE GAME CLOSED AT ONCE (CODE " + p.ExitCode + ")  ·  PLAY ASKS FOR THE DISC IMAGE AGAIN";
+            Invalidate();
+            return;
+        }
+        Close();
     }
 
     static void Spaced(Graphics g, string s, Font f, Brush b, float x, float y, float gap)
@@ -168,6 +193,10 @@ class Launcher : Form
             {
                 g.DrawString("by Korvonordico", smallFont, tiny, 92, 514);
             }
+            // the version in a plain font: the serif ones may draw 0 as a small o
+            using (var ver = new SolidBrush(Color.FromArgb(120, 112, 102)))
+            using (var right = new StringFormat { Alignment = StringAlignment.Far })
+                g.DrawString("Version " + Version, smallFont, ver, new RectangleF(600, 514, 320, 20), right);
         }
     }
 
@@ -176,8 +205,10 @@ class Launcher : Form
     {
         Application.EnableVisualStyles();
         var f = new Launcher();
-        if (args.Length == 2 && args[0] == "--picture")
-        {   // draws the window into a PNG (used for docs/launcher.png) and exits
+        if (args.Length >= 2 && args[0] == "--picture")
+        {   // draws the window into a PNG (used for docs/launcher.png) and exits;
+            // with a third word "play", draws what Play would say before asking for the disc
+            if (args.Length == 3 && args[2] == "play") f.message = f.Missing() != "" ? f.Missing() : "READY TO PLAY";
             using (var bmp = new Bitmap(f.ClientSize.Width, f.ClientSize.Height))
             {
                 using (var g = Graphics.FromImage(bmp)) f.OnPaint(new PaintEventArgs(g, f.ClientRectangle));
