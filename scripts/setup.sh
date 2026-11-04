@@ -60,7 +60,8 @@ pc/compila_pc.sh configura || { tail -20 _build.log; echo "BUILD FAILED, see _bu
 [ -f _build/sor.exe ] || { echo "BUILD FAILED, see _build.log"; exit 1; }
 
 echo "== 6/6 The launcher (_build/ShadowOfRome.exe)"
-if (cd launcher && cmd.exe /c build.bat nopause); then
+# .\build.bat, not build.bat: with NoDefaultCurrentDirectoryInExePath set, cmd does not look in the current folder.
+if (cd launcher && cmd.exe /c '.\build.bat' nopause); then
   echo "Done. Start the game with _build/ShadowOfRome.exe (Play), run.bat or scripts/run.sh."
 else
   echo "Done: _build/sor.exe. The launcher was not built: double-click launcher\\build.bat in Windows."
