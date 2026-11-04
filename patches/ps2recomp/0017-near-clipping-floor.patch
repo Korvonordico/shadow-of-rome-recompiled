@@ -1,0 +1,642 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index 5db7b49..c2229d6 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -35,6 +35,15 @@ namespace
+         return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+     }
+ 
++    // SOR_SPU_TRACCIA=1: one line per key on/off, ATTR/IRQA/ADMAS change, DMA and interrupt, plus the playing voices
++    // once a second (with SOR_TEMPI). =2 also prints every auto DMA block. For finding where a sound stream stops.
++    const int g_spuTraccia = []() { const char *e = std::getenv("SOR_SPU_TRACCIA"); return e ? std::atoi(e) : 0; }();
++    double spuOra()
++    {
++        static const int64_t s_t0 = adessoNs();
++        return static_cast<double>(adessoNs() - s_t0) / 1e9;
++    }
++
+     constexpr int kFiltro0[5] = {0, 60, 115, 98, 122};
+     constexpr int kFiltro1[5] = {0, 0, -52, -55, -60};
+ 
+@@ -184,7 +193,10 @@ namespace ps2x::iop::detail
+     void IopSpu2::write16(uint32_t phys, uint16_t value)
+     {
+         const uint32_t o = phys & 0x7FEu;
++        const uint16_t vecchio = m_reg[o >> 1u];
+         m_reg[o >> 1u] = value;
++        if (g_spuTraccia && vecchio != value && o < 0x760u && ((o & 0x3FFu) == 0x19Au || (o & 0x3FFu) == 0x1B0u))
++            std::printf("[spux] %.3f %s c%u %04x -> %04x\n", spuOra(), (o & 0x3FFu) == 0x19Au ? "attr" : "admas", (o >> 10u) & 1u, vecchio, value);
+         if (o >= 0x760u)
+             return;
+         const int c = (o >> 10u) & 1;
+@@ -258,6 +270,8 @@ namespace ps2x::iop::detail
+             break;
+         case 0x19Eu:
+             core.irqa = (core.irqa & 0xF0000u) | value;
++            if (g_spuTraccia)
++                std::printf("[spux] %.3f irqa c%d %05x\n", spuOra(), c, core.irqa);
+             break;
+         case 0x19Au: // ATTR: togliere il bit 6 spegne la richiesta
+             if ((value & 0x40u) == 0u)
+@@ -330,12 +344,17 @@ namespace ps2x::iop::detail
+             v.lsaNuova = false;
+             c.endx &= ~(1u << i);
+             ++m_contaKon;
++            if (g_spuTraccia)
++                std::printf("[spux] %.3f kon c%d v%u ssa %05x lsa %05x%s pitch %04x vol %04x/%04x adsr %04x/%04x\n", spuOra(), core, i, v.ssa, v.lsa,
++                            v.lsaManuale ? " (set)" : "", v.pitch, v.volL, v.volR, v.adsr1, v.adsr2);
+         }
+     }
+ 
+     void IopSpu2::tastoOff(int core, uint32_t voci)
+     {
+         Core &c = m_core[static_cast<size_t>(core)];
++        if (g_spuTraccia && voci != 0u)
++            std::printf("[spux] %.3f koff c%d %06x\n", spuOra(), core, voci);
+         for (uint32_t i = 0; i < 24u; ++i)
+         {
+             if ((voci & (1u << i)) != 0u && c.voci[i].fase != 0u)
+@@ -361,6 +380,8 @@ namespace ps2x::iop::detail
+                 m_reg[0x7C2u >> 1u] |= static_cast<uint16_t>(4u << k); // IRQINFO: libsd's handler reads which core it was
+                 m_irqInAttesa |= 1u << kIrqSpu;
+                 ++m_contaIrq;
++                if (g_spuTraccia)
++                    std::printf("[spux] %.3f irq c%d irqa %05x by %05x+%u\n", spuOra(), k, a, da, quanti);
+             }
+         }
+         (void)core;
+@@ -666,6 +687,9 @@ namespace ps2x::iop::detail
+         const uint32_t bytes = parole * 4u;
+         m_contaDma += bytes;
+         const uint32_t admas = reg(0x1B0u + (static_cast<uint32_t>(core) << 10u));
++        if (g_spuTraccia && (g_spuTraccia >= 2 || !(versoChip && (admas & (1u << static_cast<uint32_t>(core))) != 0u)))
++            std::printf("[spux] %.3f dma c%d %s tsa %05x from %06x bytes %u%s\n", spuOra(), core, versoChip ? "in" : "out", c.tsa, indirizzo, bytes,
++                        (versoChip && (admas & (1u << static_cast<uint32_t>(core))) != 0u) ? " adma" : "");
+         if (versoChip && (admas & (1u << static_cast<uint32_t>(core))) != 0u)
+         {
+             ++m_contaAdma;
+@@ -680,6 +704,18 @@ namespace ps2x::iop::detail
+         const uint32_t mezze = bytes / 2u;
+         if (fisico + bytes > ramSize)
+             return true;
++        if (g_spuTraccia && versoChip && c.tsa >= 0xfc000u && c.tsa < 0xfc800u)
++        {
++            // Stream blocks: where the ADPCM headers carry flags, and the first bytes of the block
++            char testo[200];
++            int n = 0;
++            for (uint32_t o = 0; o + 16u <= bytes && n < 150; o += 16u)
++                if (ram[fisico + o + 1u] != 0u)
++                    n += std::snprintf(testo + n, sizeof(testo) - static_cast<size_t>(n), " %x:%02x", o, ram[fisico + o + 1u]);
++            testo[n] = 0;
++            std::printf("[spux] stream %05x head %02x%02x%02x%02x%02x%02x%02x%02x flags%s\n", c.tsa, ram[fisico], ram[fisico + 1u], ram[fisico + 2u], ram[fisico + 3u],
++                        ram[fisico + 4u], ram[fisico + 5u], ram[fisico + 6u], ram[fisico + 7u], testo);
++        }
+         controllaIrq(core, c.tsa, mezze);
+         for (uint32_t i = 0; i < mezze; ++i)
+         {
+@@ -761,6 +797,15 @@ namespace ps2x::iop::detail
+             std::printf("[spu] voci %d kon %llu dma %llu adma %llu irq %llu picco %d rms %.0f campioni/s %llu\n", attive, static_cast<unsigned long long>(m_contaKon),
+                         static_cast<unsigned long long>(m_contaDma), static_cast<unsigned long long>(m_contaAdma), static_cast<unsigned long long>(m_contaIrq), s_picco,
+                         s_n ? std::sqrt(static_cast<double>(s_somma) / static_cast<double>(s_n)) : 0.0, static_cast<unsigned long long>(s_n));
++            if (g_spuTraccia)
++                for (int k = 0; k < 2; ++k)
++                    for (uint32_t i = 0; i < 24u; ++i)
++                    {
++                        const Voce &v = m_core[static_cast<size_t>(k)].voci[i];
++                        if (v.fase != 0u)
++                            std::printf("[spux] %.3f voice c%d v%u nax %05x lsa %05x flag %x phase %u level %d pitch %04x\n", spuOra(), k, i, v.nax, v.lsa, v.flag, v.fase,
++                                        v.livello, v.pitch);
++                    }
+             std::fflush(stdout);
+             if (g_wav)
+                 std::fflush(g_wav);
+diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
+index c4517ed..d48046e 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.cpp
++++ b/ps2xIOP/src/emulator/iop_emulator.cpp
+@@ -1,4 +1,5 @@
+ #include "iop_emulator.h"
++#include <cstdlib>
+ #include "imports/iop_cdvd.h"
+ #include "core/iop_cpu.h"
+ #include "imports/iop_heaplib.h"
+@@ -506,8 +507,13 @@ namespace ps2x::iop::detail
+             }
+             try
+             {
++                static const bool s_traccia = std::getenv("SOR_SPU_TRACCIA") != nullptr;
+                 for (const int irq : completed)
+-                    (void)intrman.dispatchInterrupt(irq, *this);
++                {
++                    const bool fatto = intrman.dispatchInterrupt(irq, *this);
++                    if (s_traccia && (irq == 9 || !fatto))
++                        std::printf("[spux] iop interrupt %d %s\n", irq, fatto ? "handled" : "NOT HANDLED");
++                }
+             }
+             catch (...)
+             {
+diff --git a/ps2xRecomp/src/lib/vu_translation_helpers.cpp b/ps2xRecomp/src/lib/vu_translation_helpers.cpp
+index 509fd07..4475f43 100644
+--- a/ps2xRecomp/src/lib/vu_translation_helpers.cpp
++++ b/ps2xRecomp/src/lib/vu_translation_helpers.cpp
+@@ -226,7 +226,7 @@ namespace ps2recomp
+ 
+         std::string shuffle_pattern = fmt::format("_MM_SHUFFLE({},{},{},{})", field, field, field, field);
+ 
+-        return fmt::format("{{ __m128 mul_res = PS2_VMUL(ctx->vu0_vf[{}], _mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], {})); "
++        std::string code = fmt::format("{{ __m128 mul_res = PS2_VMUL(ctx->vu0_vf[{}], _mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], {})); "
+                            "__m128 res = PS2_VSUB(ctx->vu0_acc, mul_res); "
+                            "__m128i mask = _mm_set_epi32({}, {}, {}, {}); "
+                            "ctx->vu0_vf[{}] = _mm_blendv_ps(ctx->vu0_vf[{}], res, _mm_castsi128_ps(mask)); }}",
+@@ -234,6 +234,16 @@ namespace ps2recomp
+                            (dest_mask & 0x1) ? -1 : 0, (dest_mask & 0x2) ? -1 : 0,
+                            (dest_mask & 0x4) ? -1 : 0, (dest_mask & 0x8) ? -1 : 0,
+                            vfd, vfd);
++        // sor: the game reads the MAC flags (CFC2 $vi17) only right after VMSUBw, in its sphere against view test:
++        // with the flags always 0, the world's parts near the camera lost their clipping and left holes in the floor.
++        // The other VU0 macro instructions don't write them, so that they cost nothing.
++        code.pop_back();
++        code += fmt::format(" alignas(16) uint32_t m[4]; _mm_store_si128(reinterpret_cast<__m128i *>(m), _mm_castps_si128(res)); uint32_t f = 0u; "
++                            "for (int i = 0; i < 4; ++i) {{ const uint32_t b = (8u >> i) & {}u; if (!b) continue; const uint32_t e = (m[i] >> 23) & 0xFFu; "
++                            "if (m[i] >> 31) f |= b << 4; if (e == 0u) {{ f |= b; if (m[i] & 0x7FFFFFu) f |= b << 8; }} else if (e == 0xFFu) f |= b << 12; }} "
++                            "ctx->vu0_mac_flags = f; }}",
++                            static_cast<unsigned>(dest_mask));
++        return code;
+     }
+ 
+     std::string CodeGenerator::translateVU_VMINI_Field(const Instruction &inst)
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index 6131cb7..c9e9714 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -29,6 +29,8 @@
+ #include <thread>
+ #include <vector>
+ 
++std::atomic<bool> g_sorGsTuttiChiesto{false}; // telecomando "gstutti"
++std::atomic<bool> g_sorGsTuttiChiesto2{false};
+ uint64_t g_sorGsBarriere = 0; // per SOR_TEMPI
+ uint64_t g_sorGsAttesaUs = 0, g_sorGsVblankUs = 0, g_sorGsSvuota = 0;
+ uint64_t g_sorGsTipi[10] = {}, g_sorGsTipiUs[10] = {};
+@@ -988,8 +990,60 @@ namespace
+         }
+         ++s_dumpN;
+     }
++    // sor: telecomando "gstutti": every primitive of the next frame, with its vertices, in a text file.
++    FILE *s_tutti = nullptr;
++    uint64_t s_tuttiQuanti = 0;
++    int s_tuttiResto = 0;
++    void tuttiVblank()
++    {
++        if (s_tutti)
++        {
++            std::fprintf(s_tutti, "V%c", 10);
++            if (--s_tuttiResto == 0)
++            {
++                std::fclose(s_tutti);
++                s_tutti = nullptr;
++                g_sorGsTuttiChiesto2.store(false);
++            }
++        }
++        if (g_sorGsTuttiChiesto.exchange(false))
++        {
++            const char *pre = std::getenv("SOR_FOTO");
++            char nome[300];
++            std::snprintf(nome, sizeof(nome), "%s_gs%llu.txt", pre ? pre : "gstutti", static_cast<unsigned long long>(++s_tuttiQuanti));
++            s_tutti = std::fopen(nome, "w");
++            s_tuttiResto = 4;
++            g_sorGsTuttiChiesto2.store(s_tutti != nullptr);
++        }
++    }
++    void tuttiPrim(const GSPrimitiveBatch &b)
++    {
++        if (!s_tutti)
++            return;
++        const GSDrawState &st = b.state;
++        const GSContext &c = st.context;
++        std::fprintf(s_tutti, "P t%d tme=%d abe=%d fst=%d iip=%d fge=%d fbp=%x fbw=%u fpsm=%x msk=%x zbp=%x zm=%d test=%llx tbp=%x tbw=%u tpsm=%x tw=%d th=%d tfx=%d tcc=%d alpha=%llx clamp=%llx sc=%d,%d,%d,%d of=%d,%d",
++                     static_cast<int>(st.prim.type), st.prim.tme ? 1 : 0, st.prim.abe ? 1 : 0, st.prim.fst ? 1 : 0, st.prim.iip ? 1 : 0, st.prim.fge ? 1 : 0,
++                     c.frame.fbp, c.frame.fbw, c.frame.psm, c.frame.fbmsk, c.zbuf.zbp, c.zbuf.zmask ? 1 : 0, static_cast<unsigned long long>(c.test),
++                     c.tex0.tbp0, c.tex0.tbw, c.tex0.psm, st.textureWidth, st.textureHeight, c.tex0.tfx, c.tex0.tcc,
++                     static_cast<unsigned long long>(c.alpha), static_cast<unsigned long long>(c.clamp),
++                     c.scissor.x0, c.scissor.x1, c.scissor.y0, c.scissor.y1, c.xyoffset.ofx >> 4, c.xyoffset.ofy >> 4);
++        for (uint32_t i = 0; i < b.vertexCount; ++i)
++        {
++            const GSVertex &p = b.vertices[static_cast<size_t>(i)];
++            std::fprintf(s_tutti, " | %.2f %.2f %.0f %g %g %g %u %u %u %u %u %u", p.x, p.y, p.z, p.s, p.t, p.q, p.u, p.v, p.r, p.g, p.b, p.a);
++        }
++        std::fputc(10, s_tutti);
++    }
++    void tuttiPrimSeC(const GSPrimitiveBatch &b)
++    {
++        if (s_tutti)
++            std::fputc('A', s_tutti);
++        tuttiPrim(b);
++    }
+     void dumpVblank()
+     {
++        tuttiVblank();
+         static const char *e = std::getenv("SOR_GSDUMP");
+         if (!e)
+             return;
+@@ -1031,10 +1085,13 @@ void GSBande::Reset()
+     d->cbp[0] = d->cbp[1] = 0u;
+ }
+ 
++void sorGsTuttiAdc(const GSPrimitiveBatch &batch) { tuttiPrimSeC(batch); } // sor: vertices the game sends with ADC set
++
+ void GSBande::Submit(const GSPrimitiveBatch &batch)
+ {
+     if (batch.vertexCount == 0u)
+         return;
++    tuttiPrim(batch);
+     ++g_sorGsPrim;
+     const GSPrimType tipo = batch.state.prim.type;
+     if (tipo == GS_PRIM_LINE || tipo == GS_PRIM_LINESTRIP)
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 69c191c..6e4bb72 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -1622,6 +1622,9 @@ void GS::writeRegisterUnlocked(uint8_t regAddr, uint64_t value)
+     recordRegisterDebugEventUnlocked(regAddr, value);
+ }
+ 
++extern std::atomic<bool> g_sorGsTuttiChiesto2; // gs_bande.cpp
++void sorGsTuttiAdc(const GSPrimitiveBatch &batch);
++
+ void GS::vertexKick(bool drawing)
+ {
+     ++m_vtxCount;
+@@ -1670,6 +1673,8 @@ void GS::vertexKick(bool drawing)
+     if (m_vtxCount < needed)
+         return;
+ 
++    if (!drawing && g_sorGsTuttiChiesto2.load(std::memory_order_relaxed))
++        sorGsTuttiAdc(buildDrawBatch(needed));
+     if (drawing && m_backend)
+     {
+         GSPrimitiveBatch batch = buildDrawBatch(needed);
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+index dfb00ea..3163ab7 100644
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+@@ -1669,8 +1669,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
+     m_activeMemory = memory;
+ 
+     // sor: prima la via veloce (ps2_vu1_veloce.cpp); con SOR_VU1VERIFICA tutte e due, confrontate.
+-    static const bool s_sorVerifica = std::getenv("SOR_VU1VERIFICA") != nullptr;
+-    if (s_sorVerifica && !m_sorDentroVerifica)
++    // The value of SOR_VU1VERIFICA is how many seconds to wait: at the start it would slow down the way to the place to check.
++    static const char *s_sorVerifica = std::getenv("SOR_VU1VERIFICA");
++    static const auto s_sorVerificaDa = std::chrono::steady_clock::now() + std::chrono::seconds(s_sorVerifica ? std::atoi(s_sorVerifica) : 0);
++    if (s_sorVerifica && !m_sorDentroVerifica && std::chrono::steady_clock::now() >= s_sorVerificaDa)
+     {
+         sorVerifica(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
+         return;
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_veloce.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_veloce.cpp
+index 1c9a5d4..90e65c3 100644
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_veloce.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_veloce.cpp
+@@ -65,6 +65,9 @@ namespace
+         uint32_t macAttesa[16]{};
+         int32_t viVecchio = 0;
+         bool preso = false;
++        uint32_t bersaglioJr = 0;
++        const int32_t *inizio = nullptr;
++        bool daInterprete = false;
+         uint64_t salti = 0;
+         uint64_t cicli = 0;
+     };
+@@ -440,6 +443,28 @@ namespace
+             return nullptr;
+         return c.ops + o->imm;
+     }
++    // JR/JALR: the target is read before the delay slot, the jump happens after it.
++    const Op *fnLeggiJr(Ctx &c, const Op *o)
++    {
++        const int32_t v = (o->flag & 1) ? c.viVecchio : c.st->vi[o->a];
++        c.bersaglioJr = (static_cast<uint32_t>(static_cast<uint16_t>(v)) * 8u) & 0x3FFFu;
++        return o + 1;
++    }
++    const Op *fnViCostante(Ctx &c, const Op *o) { c.st->vi[o->b] = o->imm; return o + 1; }
++    // A target with no block (not a return address) goes on in the interpreter, from a block boundary.
++    const Op *fnSaltoJr(Ctx &c, const Op *)
++    {
++        if (++c.salti > (1u << 22))
++            return nullptr;
++        const int32_t i = c.inizio[c.bersaglioJr / 8u];
++        if (i < 0)
++        {
++            c.st->pc = c.bersaglioJr;
++            c.daInterprete = true;
++            return nullptr;
++        }
++        return c.ops + i;
++    }
+     const Op *fnFine(Ctx &c, const Op *o)
+     {
+         c.st->pc = static_cast<uint32_t>(o->imm);
+@@ -523,27 +548,27 @@ namespace
+         const uint8_t x = op >= 0x3Cu ? specialeUpper(u) : op;
+         return x == 0x1C || x == 0x20 || x == 0x21 || x == 0x24 || x == 0x25;
+     }
+-    enum class Lower { Nessuno, Salto, Cond, Fm, Fc, Fs, Altro };
++    enum class Lower { Nessuno, Salto, Cond, Bal, Jr, Fm, Fc, Fs, Altro };
+     Lower tipoLower(uint32_t l)
+     {
+         const uint8_t hi = (l >> 25) & 0x7Fu;
+         if (hi == 0x20u) return Lower::Salto;
++        if (hi == 0x21u) return Lower::Bal;
++        if (hi == 0x24u || hi == 0x25u) return Lower::Jr;
+         if (hi >= 0x28u && hi <= 0x2Fu) return Lower::Cond;
+         if (hi == 0x10u || hi == 0x12u || hi == 0x13u || hi == 0x1Cu) return Lower::Fc;
+         if (hi == 0x18u || hi == 0x1Au || hi == 0x1Bu) return Lower::Fm;
+         if (hi == 0x14u || hi == 0x16u || hi == 0x17u || hi == 0x15u || hi == 0x11u) return Lower::Fs;
+         return Lower::Altro;
+     }
+-    bool saltoNonNoto(uint32_t l)
+-    {
+-        const uint8_t hi = (l >> 25) & 0x7Fu;
+-        return hi == 0x21u || hi == 0x24u || hi == 0x25u;
+-    }
++    bool eSalto(Lower t) { return t == Lower::Salto || t == Lower::Cond || t == Lower::Bal || t == Lower::Jr; }
++    uint32_t s_ultimoPc = 0; // where the last translation stopped, for the log
+ }
+ 
+ struct VU1Programma
+ {
+     std::vector<Op> ops;
++    std::vector<int32_t> inizio;
+     int32_t partenza = 0;
+     bool buono = false;
+ };
+@@ -578,9 +603,18 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+ 
+     // Un flag MAC serve solo se qualcosa nel programma lo legge.
+     bool serveMac = false;
++    // Where a JR can come back to.
++    std::vector<uint32_t> ritorni;
+     for (uint32_t i = 0; i < visti.size(); ++i)
+-        if (visti[i] && !(parola(i * 8u, true) & 0x80000000u) && tipoLower(parola(i * 8u, false)) == Lower::Fm)
++    {
++        if (!visti[i] || (parola(i * 8u, true) & 0x80000000u))
++            continue;
++        const uint32_t l = parola(i * 8u, false);
++        if (tipoLower(l) == Lower::Fm)
+             serveMac = true;
++        if (((l >> 25) & 0x7Fu) == 0x21u || ((l >> 25) & 0x7Fu) == 0x25u)
++            ritorni.push_back(i * 8u + 16u);
++    }
+ 
+     const auto aggiungi = [&p](Op o) -> Op &
+     {
+@@ -968,6 +1002,7 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+         // Una coppia intera. Per i salti scrive solo la condizione: il salto vero va dopo lo slot.
+         const auto emettiCoppia = [&](uint32_t pc, bool prossimaLeggeVecchio, uint8_t regVecchio) -> bool
+         {
++            s_ultimoPc = pc;
+             const DecodedInstructionPair d = decodeInstructionPair(code, pc);
+             if (d.upperUsage.reserved || d.lowerUsage.reserved || d.dBit || d.tBit)
+                 return false;
+@@ -1015,7 +1050,7 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+             {
+                 if (!emettiUpper(d))
+                     return false;
+-                if (!(tipoLower(d.lower) == Lower::Salto || tipoLower(d.lower) == Lower::Cond) && !emettiLower(d))
++                if (!eSalto(tipoLower(d.lower)) && !emettiLower(d))
+                     return false;
+             }
+             segnaScritture(d);
+@@ -1033,8 +1068,7 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+             const bool iBit = (u & 0x80000000u) != 0u;
+             const bool eBit = (u & 0x40000000u) != 0u;
+             const Lower t = iBit ? Lower::Nessuno : tipoLower(l);
+-            if (!iBit && saltoNonNoto(l))
+-                return false;
++            s_ultimoPc = pc;
+             if (t == Lower::Fs)
+                 return false;
+ 
+@@ -1042,11 +1076,12 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+             bool leggeVecchio = false;
+             uint8_t regVecchio = 0u;
+             const uint32_t pcDopo = pc + 8u;
+-            if (pcDopo + 8u <= codeSize && !eBit && t != Lower::Salto && t != Lower::Cond && !isCapo(pcDopo))
++            if (pcDopo + 8u <= codeSize && !eBit && !eSalto(t) && !isCapo(pcDopo))
+             {
+                 const uint32_t uDopo = parola(pcDopo, true);
+                 const uint32_t lDopo = parola(pcDopo, false);
+-                if (!(uDopo & 0x80000000u) && tipoLower(lDopo) == Lower::Cond)
++                const Lower tDopo = (uDopo & 0x80000000u) ? Lower::Nessuno : tipoLower(lDopo);
++                if (tDopo == Lower::Cond || tDopo == Lower::Jr)
+                 {
+                     const DecodedInstructionPair d = decodeInstructionPair(code, pc);
+                     if (d.lowerUsage.delaysNextBranchRead && d.lowerUsage.viWrite != 0u)
+@@ -1055,25 +1090,25 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+                             if (d.lowerUsage.viWrite & (1u << v))
+                                 regVecchio = static_cast<uint8_t>(v);
+                         const bool usaS = VIS(lDopo) == regVecchio;
+-                        const bool usaT = VIT(lDopo) == regVecchio;
++                        const bool usaT = tDopo == Lower::Cond && VIT(lDopo) == regVecchio;
+                         if (usaS || usaT)
+                             leggeVecchio = true;
+                     }
+                 }
+             }
+-            if (t == Lower::Cond && isCapo(pc))
++            if ((t == Lower::Cond || t == Lower::Jr) && isCapo(pc))
+             {
+                 // Un salto subito dopo un altro salto: la regola della lettura vecchia dipenderebbe
+                 // da dove si arriva. Si controlla la coppia prima, se puo' cadere qui.
+                 if (pc >= 8u)
+                 {
+                     const DecodedInstructionPair d = decodeInstructionPair(code, pc - 8u);
+-                    if (d.lowerUsage.delaysNextBranchRead && d.lowerUsage.viWrite != 0u)
++                    if (d.lowerUsage.delaysNextBranchRead && (d.lowerUsage.viWrite & ((1u << VIS(l)) | (t == Lower::Cond ? 1u << VIT(l) : 0u))) != 0u)
+                         return false;
+                 }
+             }
+ 
+-            if (t == Lower::Salto || t == Lower::Cond)
++            if (eSalto(t))
+             {
+                 if (eBit)
+                     return false;
+@@ -1113,22 +1148,58 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+                     }
+                     aggiungi(o);
+                 }
++                if (t == Lower::Jr)
++                {
++                    Op o;
++                    o.fn = fnLeggiJr;
++                    o.a = VIS(l);
++                    if (pc >= 8u && !isCapo(pc))
++                    {
++                        const DecodedInstructionPair prima = decodeInstructionPair(code, pc - 8u);
++                        if (prima.lowerUsage.delaysNextBranchRead && (prima.lowerUsage.viWrite & (1u << VIS(l))) != 0u)
++                            o.flag = 1u;
++                    }
++                    aggiungi(o);
++                }
++                if (t == Lower::Bal || hi == 0x25u)
++                {
++                    if (VIT(l) != 0u)
++                    {
++                        Op o;
++                        o.fn = fnViCostante;
++                        o.b = VIT(l);
++                        o.imm = static_cast<int32_t>((pc + 16u) / 8u);
++                        aggiungi(o);
++                    }
++                }
+                 // Lo slot del salto
++                // A slot can also start a block (B x with a BAL to its slot): it is simply translated twice.
+                 const uint32_t slot = pc + 8u;
+-                if (slot + 8u > codeSize || isCapo(slot))
++                if (slot + 8u > codeSize)
+                     return false;
+                 const uint32_t uS = parola(slot, true);
+                 const uint32_t lS = parola(slot, false);
+-                if ((uS & 0x40000000u) || (!(uS & 0x80000000u) && (tipoLower(lS) == Lower::Salto || tipoLower(lS) == Lower::Cond || saltoNonNoto(lS) || tipoLower(lS) == Lower::Fs)))
++                if ((uS & 0x40000000u) || (!(uS & 0x80000000u) && (eSalto(tipoLower(lS)) || tipoLower(lS) == Lower::Fs)))
+                     return false;
+                 if (!emettiCoppia(slot, false, 0u))
+                     return false;
+                 // Fine del blocco: quello che e' in arrivo diventa visibile qui (controllato sopra).
+-                if (!controllaUscita(bersaglio))
++                if (t != Lower::Jr && !controllaUscita(bersaglio))
+                     return false;
+                 if (t == Lower::Cond && !controllaUscita(slot + 8u))
+                     return false;
++                if (t == Lower::Jr)
++                    for (const uint32_t r : ritorni)
++                        if (!controllaUscita(r))
++                            return false;
+                 scaduti(~0ull);
++                if (t == Lower::Jr)
++                {
++                    Op o;
++                    o.fn = fnSaltoJr;
++                    aggiungi(o);
++                }
++                else
+                 {
+                     Op o;
+                     o.fn = t == Lower::Cond ? fnSeSalto : fnSalto;
+@@ -1153,7 +1224,7 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+                     return false;
+                 const uint32_t uS = parola(slot, true);
+                 const uint32_t lS = parola(slot, false);
+-                if ((uS & 0x40000000u) || (!(uS & 0x80000000u) && (tipoLower(lS) == Lower::Salto || tipoLower(lS) == Lower::Cond || saltoNonNoto(lS) || tipoLower(lS) == Lower::Fs)))
++                if ((uS & 0x40000000u) || (!(uS & 0x80000000u) && (eSalto(tipoLower(lS)) || tipoLower(lS) == Lower::Fs)))
+                     return false;
+                 if (!emettiCoppia(slot, false, 0u))
+                     return false;
+@@ -1182,6 +1253,7 @@ bool VU1Interpreter::sorTraduci(VU1Programma &p, const uint8_t *code, uint32_t c
+         p.ops[opCicli].imm = static_cast<int32_t>(ciclo);
+     }
+     p.partenza = inizio[entrata / 8u];
++    p.inizio = inizio;
+ 
+     for (const auto &[indice, bersaglio] : daLegare)
+     {
+@@ -1221,7 +1293,8 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+         // Trova tutto il codice raggiungibile e ne fa l'impronta: lo stesso programma ricaricato
+         // (succede centinaia di volte a fotogramma) non si traduce di nuovo.
+         const uint32_t entrata = m_state.pc;
+-        std::vector<uint8_t> visti(0x4000u / 8u, 0u), capo(0x4000u / 8u, 0u);
++        // percorsi: walked as code. visti: also the delay slots, which can be the start of a subroutine too.
++        std::vector<uint8_t> visti(0x4000u / 8u, 0u), capo(0x4000u / 8u, 0u), percorsi(0x4000u / 8u, 0u);
+         std::vector<uint32_t> pila{entrata};
+         capo[entrata / 8u] = 1u;
+         bool traducibile = true;
+@@ -1236,11 +1309,12 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+                     traducibile = false;
+                     break;
+                 }
+-                if (visti[pc / 8u])
++                if (percorsi[pc / 8u])
+                 {
+                     capo[pc / 8u] = 1u;
+                     break;
+                 }
++                percorsi[pc / 8u] = 1u;
+                 visti[pc / 8u] = 1u;
+                 uint32_t l, u;
+                 std::memcpy(&l, vuCode + pc, 4);
+@@ -1258,9 +1332,25 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+                 if (!(u & 0x80000000u))
+                 {
+                     const Lower t = tipoLower(l);
+-                    if (saltoNonNoto(l))
++                    if (t == Lower::Bal || t == Lower::Jr)
+                     {
+-                        traducibile = false;
++                        if (pc + 16u > codeSize)
++                        {
++                            traducibile = false;
++                            break;
++                        }
++                        visti[(pc + 8u) / 8u] = 1u;
++                        if (t == Lower::Bal)
++                        {
++                            const uint32_t bersaglio = (pc + 8u + static_cast<int32_t>(IMM11(l)) * 8) & 0x3FFFu;
++                            capo[bersaglio / 8u] = 1u;
++                            pila.push_back(bersaglio);
++                        }
++                        if (((l >> 25) & 0x7Fu) != 0x24u)
++                        {
++                            capo[(pc + 16u) / 8u] = 1u;
++                            pila.push_back(pc + 16u);
++                        }
+                         break;
+                     }
+                     if (t == Lower::Salto || t == Lower::Cond)
+@@ -1303,8 +1393,21 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+         {
+             posto = std::make_unique<VU1Programma>();
+             posto->buono = traducibile && sorTraduci(*posto, vuCode, codeSize, entrata, capi, visti);
+-            std::printf("[sor] VU1 veloce: ingresso 0x%x, %zu blocchi, %zu operazioni: %s\n", entrata, capi.size(), posto->ops.size(),
+-                        posto->buono ? "tradotto" : "resta all'interprete");
++            std::printf("[sor] VU1 veloce: ingresso 0x%x, %zu blocchi, %zu operazioni: %s", entrata, capi.size(), posto->ops.size(),
++                        posto->buono ? "tradotto\n" : "resta all'interprete");
++            if (!posto->buono)
++            {
++                std::printf(" (fermo a 0x%x)\n", s_ultimoPc);
++                // Same format as SOR_MPGDUMP, for strumenti/vudis.py.
++                if (const char *dump = std::getenv("SOR_MPGDUMP"))
++                    if (FILE *f = std::fopen((std::string(dump) + "_scarto_" + std::to_string(entrata) + ".bin").c_str(), "wb"))
++                    {
++                        const std::vector<uint8_t> vuoto(0x4000u + 584u, 0u);
++                        std::fwrite(vuoto.data(), 1, vuoto.size(), f);
++                        std::fwrite(vuCode, 1, codeSize, f);
++                        std::fclose(f);
++                    }
++            }
+             std::fflush(stdout);
+         }
+         prog = posto.get();
+@@ -1321,6 +1424,7 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+     c.mascheraDati = dataSize - 1u;
+     c.ops = prog->ops.data();
+     c.vu = this;
++    c.inizio = prog->inizio.data();
+     c.clipLavoro = m_state.clip;
+     const uint32_t csr = _mm_getcsr();
+     _mm_setcsr(0xFFC0u); // verso lo zero, FTZ, DAZ, eccezioni mascherate
+@@ -1335,6 +1439,14 @@ bool VU1Interpreter::sorEseguiVeloce(uint8_t *vuCode, uint32_t codeSize, uint8_t
+     m_cycle += c.cicli;
+     m_state.cycles = m_cycle;
+     g_sorVu1Cicli += c.cicli;
++    if (c.daInterprete)
++    {
++        static int s_avvisi = 0;
++        if (++s_avvisi <= 20)
++            std::printf("[sor] VU1 veloce: JR a 0x%x senza blocco, continua l'interprete\n", m_state.pc);
++        ++g_sorVu1Lenti;
++        return false;
++    }
+     ++g_sorVu1Run;
+     return true;
+ }

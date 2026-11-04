@@ -45,6 +45,7 @@ void sorAlzaPrioritaThread()
 void sorProfiloAzzera();                        // sor_profilo.cpp
 void sorProfiloScrivi();
 
+extern std::atomic<bool> g_sorGsTuttiChiesto; // gs_bande.cpp
 namespace
 {
     struct Tasto
@@ -145,6 +146,10 @@ namespace
                 else if (campi >= 1 && !std::strcmp(cmd, "foto"))
                 {
                     g_sorFotoSubito.store(true);
+                }
+                else if (campi >= 1 && !std::strcmp(cmd, "gstutti"))
+                {
+                    g_sorGsTuttiChiesto.store(true);
                 }
                 else if (campi >= 1 && !std::strcmp(cmd, "prof0"))
                 {
