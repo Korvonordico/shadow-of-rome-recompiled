@@ -8,6 +8,8 @@
 
 <p align="center">Version 0.0.7 · <a href="CHANGELOG.md">What changed</a></p>
 
+<p align="center"><b>The game is being tested now.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
+
 <p align="center">
   <img src="docs/first-arena-by-hand.gif" width="70%" alt="Agrippa fighting in the first arena, played by hand on this build">
 </p>

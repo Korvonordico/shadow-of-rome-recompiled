@@ -1,0 +1,41 @@
+name: Game problem
+description: Something went wrong while playing (crash, freeze, wrong graphics or sound, the launcher)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: The game is being tested now. Every report is read and fixed as soon as possible. Thank you!
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where in the game?
+      description: For example "the first arena", "the menu", "after the second cutscene".
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      options:
+        - 0.0.7 (ready-made package)
+        - 0.0.7 (built myself)
+        - older
+    validations:
+      required: true
+  - type: input
+    id: pc
+    attributes:
+      label: Your PC
+      description: Windows version and processor, if you know them.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshot or anything else
+      description: You can drag a screenshot or a video here.
