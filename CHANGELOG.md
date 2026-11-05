@@ -2,11 +2,11 @@
 
 Version numbers count the big steps of the port. Each digit goes from 0 to 9 and then carries over: 0.0.9 is followed by 0.1.0.
 
-## 0.0.7 (not released yet)
+## 0.0.7 (5 November 2026)
 
 ### The launcher
 
-- **A ready-made package**, to play without building anything: the launcher and the game's program, built for Windows. The first Play asks for your disc image and reads from it, into `disco` next to the launcher, the files the game needs (the executable, `SYSTEM.CNF` and the IOP modules), as `scripts/setup.sh` does. It checks that the image is the European disc (the executable's SHA-1) and says so when it is not. Checked by script on the disc this port was made on: the files it writes are identical, byte for byte, to the ones `scripts/setup.sh` writes. Not tested by hand yet.
+- **A ready-made package**, to play without building anything: the launcher and the game's program, built for Windows. The first Play asks for your disc image and reads from it, into `disco` next to the launcher, the files the game needs (the executable, `SYSTEM.CNF` and the IOP modules), as `scripts/setup.sh` does. It checks that the image is the European disc (the executable's SHA-1) and says so when it is not. Checked by script on the disc this port was made on: the files it writes are identical, byte for byte, to the ones `scripts/setup.sh` writes. Tested by hand: the game starts from the package.
 - `ShadowOfRome.exe --read-disc <image> <folder>` does the same reading without opening the window (for tests).
 - A build made with `scripts/setup.sh` keeps working as before: the launcher uses `..\disco` when it is there.
 
@@ -14,7 +14,7 @@ Version numbers count the big steps of the port. Each digit goes from 0 to 9 and
 
 ### The game
 
-- **The flat grey shape on the sand near the camera, in the arenas, is gone** (patch `0017`). It was a hole, not a colour problem: the game draws the parts of the floor closest to the camera in a separate way, and it decides which parts need it from a flag of the PS2's vector unit. The translated code never set that flag, so those parts were never drawn and the background showed through. The same check is used in 22 places in the game (models, lights, blood, shadows, enemies appearing), so some of those may look different now too. Checked by script on screenshots in the arenas. Not tested by hand yet.
+- **The flat grey shape on the sand near the camera, in the arenas, is gone** (patch `0017`). It was a hole, not a colour problem: the game draws the parts of the floor closest to the camera in a separate way, and it decides which parts need it from a flag of the PS2's vector unit. The translated code never set that flag, so those parts were never drawn and the background showed through. The same check is used in 22 places in the game (models, lights, blood, shadows, enemies appearing), so some of those may look different now too. Checked by script on screenshots in the arenas. Tested by hand: the game starts from the package.
 - **That way of drawing no longer slows the game to 4 frames per second** (patch `0017`): its small programs for the vector unit now run in the fast code too. Measured by script, one run each: 47.9 frames per second instead of 48.4 on a walk, 44.3 instead of 45.5 in a fight (the two fights were not identical). The small loss comes from the floor that is drawn now.
 
 ### The launcher
