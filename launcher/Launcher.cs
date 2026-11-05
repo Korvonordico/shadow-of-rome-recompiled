@@ -4,18 +4,22 @@
 // Only "Play" works for now; the other entries are greyed out as "coming soon".
 // logo.png (next to the exe) is optional and NOT part of the repository: it is the project's logo (docs/logo.png
 // in the repository). Without it the title is drawn in text.
+// The first Play reads from the player's own disc image the files the game needs (the executable, SYSTEM.CNF and
+// the IOP modules) into disco\, next to the exe (or ..\disco when the game was built with scripts/setup.sh).
 using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "0.0.6";   // the version of the whole port (CHANGELOG.md)
+    const string Version = "0.0.7";   // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "CREDITS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "AVCTORES", "EXI" };
     static readonly bool[] Ready = { true, false, false, false, false, false, true };
@@ -90,14 +94,103 @@ class Launcher : Form
     }
 
     string Exe { get { return Path.Combine(dir, "sor.exe"); } }
-    string Elf { get { return Path.GetFullPath(Path.Combine(dir, @"..\disco\SLES_529.50.pc")); } }
+    // disco\ next to the exe (the ready-made package), or ..\disco when the game was built with scripts/setup.sh
+    string Disco { get { string up = Path.GetFullPath(Path.Combine(dir, @"..\disco")); return File.Exists(Path.Combine(up, "SLES_529.50.pc")) ? up : Path.Combine(dir, "disco"); } }
+    string Elf { get { return Path.Combine(Disco, "SLES_529.50.pc"); } }
 
     // What stops Play before it asks for the disc, or "" if nothing does.
     string Missing()
     {
         if (!File.Exists(Exe)) return "SOR.EXE NOT FOUND  ·  BUILD THE GAME FIRST: SEE THE README";
-        if (!File.Exists(Elf)) return "DISCO\\SLES_529.50.PC NOT FOUND  ·  RUN SCRIPTS/SETUP.SH FIRST: SEE THE README";
         return "";
+    }
+
+    // The SHA-1 of SLES_529.50 on the European disc (PAL, SLES-52950) the port was made on: the code in sor.exe
+    // was translated from it, so another version of the game cannot work with it.
+    const string ElfSha1 = "e56561c4b73fd6e01f63c1157bb7ce457fdb65d0";
+
+    // Lists the files of an ISO9660 image: full path in capitals -> (first sector, size).
+    static Dictionary<string, long[]> IsoFiles(FileStream f)
+    {
+        var all = new Dictionary<string, long[]>();
+        var pvd = ReadAt(f, 16 * 2048L, 2048);
+        if (pvd[1] != 'C' || pvd[2] != 'D' || pvd[3] != '0' || pvd[4] != '0' || pvd[5] != '1') throw new InvalidDataException("NOT A DISC IMAGE (ISO9660)");
+        IsoDir(f, BitConverter.ToUInt32(pvd, 156 + 2), BitConverter.ToUInt32(pvd, 156 + 10), "", all, 0);
+        return all;
+    }
+
+    static void IsoDir(FileStream f, long lba, long size, string prefix, Dictionary<string, long[]> all, int depth)
+    {
+        if (depth > 8) return;
+        var d = ReadAt(f, lba * 2048, (int)Math.Min(size, 1 << 20));
+        int i = 0;
+        while (i < d.Length)
+        {
+            int len = d[i];
+            if (len == 0) { i = (i / 2048 + 1) * 2048; continue; }
+            if (i + 33 > d.Length) break;
+            long elba = BitConverter.ToUInt32(d, i + 2), esize = BitConverter.ToUInt32(d, i + 10);
+            int flags = d[i + 25], nl = d[i + 32];
+            string name = System.Text.Encoding.ASCII.GetString(d, i + 33, Math.Min(nl, d.Length - i - 33));
+            i += len;
+            if (nl == 1 && (name[0] == '\0' || name[0] == '\x01')) continue;
+            name = prefix + "/" + name.Split(';')[0].ToUpperInvariant();
+            if ((flags & 2) != 0) IsoDir(f, elba, esize, name, all, depth + 1);
+            else all[name] = new[] { elba, esize };
+        }
+    }
+
+    static byte[] ReadAt(FileStream f, long pos, int n)
+    {
+        var b = new byte[n];
+        f.Seek(pos, SeekOrigin.Begin);
+        int got = 0;
+        while (got < n) { int r = f.Read(b, got, n - got); if (r <= 0) break; got += r; }
+        return b;
+    }
+
+    // Reads from the disc image into disco\ the files the game needs; "" when done, or what went wrong.
+    // The executable is checked against the PAL disc, then saved with its empty segment past the PS2's 32 MB
+    // turned off (PT_NULL), as strumenti/elf_per_pc.py does: the runtime's loader refuses that segment.
+    static string ReadDisc(string iso, string disco)
+    {
+        try
+        {
+            using (var f = new FileStream(iso, FileMode.Open, FileAccess.Read))
+            {
+                var all = IsoFiles(f);
+                if (!all.ContainsKey("/SLES_529.50")) return "THIS IS NOT THE EUROPEAN DISC (SLES-52950)  ·  OTHER VERSIONS DO NOT WORK YET";
+                var e = all["/SLES_529.50"];
+                var elf = ReadAt(f, e[0] * 2048, (int)e[1]);
+                string sha;
+                using (var s = SHA1.Create()) sha = BitConverter.ToString(s.ComputeHash(elf)).Replace("-", "").ToLowerInvariant();
+                if (sha != ElfSha1) return "THIS DISC'S GAME IS A DIFFERENT VERSION  ·  ONLY THE EUROPEAN DISC (SLES-52950) WORKS";
+                uint phoff = BitConverter.ToUInt32(elf, 0x1c);
+                int phentsize = BitConverter.ToUInt16(elf, 0x2a), phnum = BitConverter.ToUInt16(elf, 0x2c);
+                for (int i = 0; i < phnum; i++)
+                {
+                    int o = (int)phoff + i * phentsize;
+                    uint type = BitConverter.ToUInt32(elf, o), vaddr = BitConverter.ToUInt32(elf, o + 8);
+                    uint filesz = BitConverter.ToUInt32(elf, o + 16), memsz = BitConverter.ToUInt32(elf, o + 20);
+                    if (type == 1 && filesz == 0 && (ulong)vaddr + memsz > 0x2000000) { elf[o] = elf[o + 1] = elf[o + 2] = elf[o + 3] = 0; }
+                }
+                Directory.CreateDirectory(Path.Combine(disco, "MODULES"));
+                foreach (var kv in all)
+                {
+                    string dest = null;
+                    if (kv.Key == "/SYSTEM.CNF") dest = Path.Combine(disco, "SYSTEM.CNF");
+                    else if (kv.Key.StartsWith("/MODULES/")) dest = Path.Combine(disco, "MODULES", kv.Key.Substring(9));
+                    if (dest != null) File.WriteAllBytes(dest, ReadAt(f, kv.Value[0] * 2048, (int)kv.Value[1]));
+                }
+                string tmp = Path.Combine(disco, "SLES_529.50.pc.part");
+                File.WriteAllBytes(tmp, elf);
+                string pc = Path.Combine(disco, "SLES_529.50.pc");
+                if (File.Exists(pc)) File.Delete(pc);
+                File.Move(tmp, pc);
+            }
+            return "";
+        }
+        catch (Exception ex) { return "COULD NOT READ THE DISC IMAGE: " + ex.Message.ToUpperInvariant(); }
     }
 
     void Play()
@@ -111,9 +204,18 @@ class Launcher : Form
             {
                 if (d.ShowDialog(this) != DialogResult.OK) { message = "THE GAME NEEDS YOUR OWN COPY OF THE DISC"; Invalidate(); return; }
                 iso = d.FileName;
-                File.WriteAllText(IniPath, "iso=" + iso + Environment.NewLine);
             }
         }
+        if (!File.Exists(Elf))
+        {   // the first Play: read the game's files from the disc image (a few seconds)
+            message = "READING YOUR DISC  ·  ONLY THE FIRST TIME";
+            Invalidate(); Update();
+            Cursor = Cursors.WaitCursor;
+            message = ReadDisc(iso, Disco);
+            Cursor = Cursors.Default;
+            if (message != "") { Invalidate(); return; }
+        }
+        File.WriteAllText(IniPath, "iso=" + iso + Environment.NewLine);
         var psi = new ProcessStartInfo(Exe, "\"" + Elf + "\" \"" + iso + "\" 0") { WorkingDirectory = dir, UseShellExecute = false };
         psi.EnvironmentVariables["SOR_FINESTRA"] = "1";
         Process p;
@@ -204,6 +306,12 @@ class Launcher : Form
     static void Main(string[] args)
     {
         Application.EnableVisualStyles();
+        if (args.Length == 3 && args[0] == "--read-disc")
+        {   // reads the disc image into a folder and exits (used by the tests); exit code 1 and the reason on failure
+            string why = ReadDisc(args[1], args[2]);
+            if (why != "") { File.WriteAllText(Path.Combine(args[2], "read-disc-error.txt"), why); Environment.Exit(1); }
+            return;
+        }
         var f = new Launcher();
         if (args.Length >= 2 && args[0] == "--picture")
         {   // draws the window into a PNG (used for docs/launcher.png) and exits;

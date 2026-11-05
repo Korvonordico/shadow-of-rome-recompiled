@@ -6,7 +6,7 @@
 
 <p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program.</p>
 
-<p align="center">Version 0.0.6 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 0.0.7 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center">
   <img src="docs/first-arena-by-hand.gif" width="70%" alt="Agrippa fighting in the first arena, played by hand on this build">
@@ -22,7 +22,7 @@
 
 This project makes it run on a Windows PC as a normal program. It is not an emulator. A tool called [PS2Recomp](https://github.com/ran-j/PS2Recomp) reads the game's program from the disc and rewrites every one of its instructions as C++ code, which is then built for Windows. This is called static recompilation. The parts of the PS2 that the game talks to (the graphics chip, the sound chip, the memory card, the disc drive) are played by a runtime that comes with PS2Recomp, with many fixes of mine (see [patches](patches/README.md)).
 
-**You need your own copy of the game** (the European disc, PAL, SLES-52950), as an `.iso` file. No game files are included, and the game cannot be downloaded ready to play from here: the program is made from Capcom's code, so everyone builds it on their own PC from their own disc. The build is automatic, but it needs some tools first: see [How to get it running](#how-to-get-it-running).
+**You need your own copy of the game** (the European disc, PAL, SLES-52950), as an `.iso` file. No game data is included. The ready-made package on the [Releases](../../releases) page holds only the program: the game's code translated to C++ and built for Windows, and the launcher. The first time you press Play, the launcher reads the rest from your own disc image. You can also build the program yourself from your disc: see [How to get it running](#how-to-get-it-running).
 
 This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
@@ -30,7 +30,7 @@ If someone is already working on a port of this game, or is further ahead, pleas
 
 ## The launcher
 
-`ShadowOfRome.exe` starts the game in a window. **Play** starts it (the first time it asks where your `.iso` file is, and remembers it), **Quit** closes it. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". If the game has not been built yet, Play says what is missing. The version is in the bottom right corner.
+`ShadowOfRome.exe` starts the game in a window. **Play** starts it, **Quit** closes it. The first time, Play asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". The version is in the bottom right corner.
 
 <p align="center">
   <img src="docs/launcher.png" width="70%" alt="The launcher: Play and Quit, the other entries greyed out as coming soon, the project's logo and the version number">
@@ -82,6 +82,10 @@ Most checks below were done by **test scripts**: small programs that press the k
 | The two areas after it (055, 056) | Load and run | Script, each one reached by a forced jump |
 | City Arena Rounds II and III, the first Octavianus stage | Load and run | Script, with each win forced |
 | The rest of the story | Not played. Of 31 later stages tried, 30 load and run | Script, each one reached by a forced ending |
+
+### What's new in 0.0.7
+
+- **A ready-made package:** download it from [Releases](../../releases), unpack it, open `ShadowOfRome.exe`, press Play and choose your `.iso` file. No WSL, no tools, no build. The game itself is the same as in 0.0.6.
 
 ### What's new in 0.0.6
 
@@ -169,16 +173,28 @@ Most checks below were done by **test scripts**: small programs that press the k
 
 ## How to get it running
 
+### The easy way: the ready-made package
+
+1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
+2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009). A processor with 6 cores or more is best: the game needs them to run at full speed.
+3. Download `ShadowOfRome-0.0.7-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
+5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
+
+Saves and the files read from your disc stay in that folder. Close the game with the X of its window.
+
+### Building it yourself
+
 You build the game once, on your PC, from your own disc image. It takes some setting up, then one command does the rest. All of this was tested on one PC, with Windows 11 and Ubuntu 26.04.
 
-### What you need
+#### What you need
 
 - Your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 - Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009). A processor with 6 cores or more is best: the game needs them to run at full speed.
 - About 2 GB of free disk space, and an internet connection during the build (it downloads some code it needs, for example for the movies).
 - WSL with Ubuntu: a Linux system inside Windows, made by Microsoft. The build runs there; the game then runs in Windows.
 
-### Step 1: install the tools (once)
+#### Step 1: install the tools (once)
 
 1. Open PowerShell as administrator (right-click the Start button and choose "Terminal (Admin)", or "Windows PowerShell (Admin)" on Windows 10) and run:
 
@@ -206,7 +222,7 @@ You build the game once, on your PC, from your own disc image. It takes some set
 
    If you keep it somewhere else, set the `LLVM_MINGW` variable to its folder.
 
-### Step 2: download and build the game
+#### Step 2: download and build the game
 
 Run these in the Ubuntu window.
 
@@ -235,7 +251,7 @@ Nothing it creates is uploaded anywhere or committed to Git: `disco/`, `mappa/`,
 
 </details>
 
-### Step 3: play
+#### Step 3: play
 
 - **With the launcher:** open the folder `C:\Users\YOUR_NAME\shadow-of-rome-recompiled\_build` and double-click `ShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is, and remembers it in `_build/launcher.ini`. Arrows and Enter, or the mouse. If the launcher was not built, double-click `launcher\build.bat` once.
 - **Or drag your `.iso` file onto `run.bat`.**

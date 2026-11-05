@@ -2,6 +2,14 @@
 
 Version numbers count the big steps of the port. Each digit goes from 0 to 9 and then carries over: 0.0.9 is followed by 0.1.0.
 
+## 0.0.7 (not released yet)
+
+### The launcher
+
+- **A ready-made package**, to play without building anything: the launcher and the game's program, built for Windows. The first Play asks for your disc image and reads from it, into `disco` next to the launcher, the files the game needs (the executable, `SYSTEM.CNF` and the IOP modules), as `scripts/setup.sh` does. It checks that the image is the European disc (the executable's SHA-1) and says so when it is not. Checked by script on the disc this port was made on: the files it writes are identical, byte for byte, to the ones `scripts/setup.sh` writes. Not tested by hand yet.
+- `ShadowOfRome.exe --read-disc <image> <folder>` does the same reading without opening the window (for tests).
+- A build made with `scripts/setup.sh` keeps working as before: the launcher uses `..\disco` when it is there.
+
 ## 0.0.6 (4 November 2026)
 
 ### The game
