@@ -1,0 +1,1028 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index c2229d6..d075838 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -30,6 +30,7 @@ namespace
+         g_testa.store(t + 1u, std::memory_order_release);
+     }
+ 
++    uint64_t g_sorSpuPersi = 0u, g_sorSpuAttese = 0u; // SOR_TEMPI: samples never made (time dropped), waits for the auto DMA
+     int64_t adessoNs()
+     {
+         return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+@@ -109,10 +110,34 @@ namespace
+     }
+ }
+ 
++// sor: written by the game's clock at each vblank (EeScheduler.cpp), read by the SPU2 below (the same thread).
++std::atomic<int64_t> g_sorGiocoNs{0}, g_sorGiocoAncoraNs{0}, g_sorGiocoPeriodoNs{0};
++size_t sorSpu2Coda() { return g_testa.load(std::memory_order_acquire) - g_fondo.load(std::memory_order_relaxed); }
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n)
+ {
++    // sor: keeps the speakers' queue near 40 ms, as with the PC's clock. With the game's clock (orologio, below) it
++    // could stay full after a load, and the voices came late. Every half second, what has stayed in the queue above
++    // 60 ms all that time is skipped down to 40 ms. SOR_AUDIO_CODA=0: never.
++    static const bool s_regola = !(std::getenv("SOR_AUDIO_CODA") && std::getenv("SOR_AUDIO_CODA")[0] == '0');
++    static size_t s_minimo = SIZE_MAX, s_contati = 0;
+     size_t f = g_fondo.load(std::memory_order_relaxed);
+-    const size_t disponibili = g_testa.load(std::memory_order_acquire) - f;
++    size_t disponibili = g_testa.load(std::memory_order_acquire) - f;
++    if (s_regola)
++    {
++        s_minimo = std::min(s_minimo, disponibili);
++        s_contati += n;
++        if (s_contati >= 24000u)
++        {
++            if (s_minimo != SIZE_MAX && s_minimo > 2880u)
++            {
++                const size_t salta = s_minimo - 1920u;
++                f += salta;
++                disponibili -= salta;
++            }
++            s_minimo = SIZE_MAX;
++            s_contati = 0;
++        }
++    }
+     const size_t quanti = std::min(n, disponibili);
+     for (size_t i = 0; i < quanti; ++i)
+     {
+@@ -734,16 +759,38 @@ namespace ps2x::iop::detail
+         if ((++m_conta & 15u) != 0u)
+             return;
+         const int64_t ora = adessoNs();
+-        if (m_inizioNs == 0)
+-            m_inizioNs = ora;
+-        const uint64_t dovuti = static_cast<uint64_t>(ora - m_inizioNs) / 1000u * kFreq / 1000000u + 4800u; // 100 ms di anticipo
++        // sor: the sound follows the game's clock, not the PC's. With the PC's, every time the game stopped for a
++        // moment (the PC busy with something else) the pictures lost that time and the sound did not: the voices ran
++        // ahead of the lips a little more each time. The game's clock (EeScheduler.cpp) moves one period at each vblank
++        // the game handles and, in between, with the real time, never more than a period: it stops when the game
++        // stops. SOR_AUDIO_ORA=1: the PC's clock, as before.
++        static const bool s_oraPc = std::getenv("SOR_AUDIO_ORA") && std::getenv("SOR_AUDIO_ORA")[0] == '1';
++        const int64_t ancora = g_sorGiocoAncoraNs.load(std::memory_order_relaxed);
++        const int64_t gioco = ancora != 0 ? g_sorGiocoNs.load(std::memory_order_relaxed) +
++                                                std::clamp<int64_t>(ora - ancora, 0, g_sorGiocoPeriodoNs.load(std::memory_order_relaxed))
++                                          : 0;
++        if (ancora != 0 && m_g0 == 0)
++        {
++            m_g0 = gioco;
++            m_gen0 = m_generati;
++        }
++        const bool suGioco = !s_oraPc && ancora != 0;
++        const int64_t tempo = suGioco ? gioco : ora;
++        if (m_inizioNs == 0 || suGioco != m_suGioco)
++        {   // the first call, and the change from the PC's clock to the game's (at its first vblank): no jump
++            m_suGioco = suGioco;
++            m_inizioNs = tempo - static_cast<int64_t>(m_generati > 4800u ? m_generati - 4800u : 0u) * 1000000 / (kFreq / 1000u);
++        }
++        const uint64_t dovuti = static_cast<uint64_t>(std::max<int64_t>(0, tempo - m_inizioNs)) / 1000u * kFreq / 1000000u + 4800u; // 100 ms di anticipo
+         uint64_t mancano = dovuti > m_generati ? dovuti - m_generati : 0u;
+-        if (mancano > 2400u)
++        if (mancano > 2400u && (!suGioco || mancano > 48000u))
+         {
+             // Il gioco e' rimasto fermo (caricamento): non si recupera tutto.
++            g_sorSpuPersi += mancano - 2400u;
+             m_generati += mancano - 2400u;
+             mancano = 2400u;
+         }
++        mancano = std::min<uint64_t>(mancano, 2400u); // on the game's clock the rest comes at the next calls
+         static int64_t s_ultimoRapporto = ora;
+         static int s_picco = 0;
+         static uint64_t s_somma = 0, s_n = 0;
+@@ -761,7 +808,10 @@ namespace ps2x::iop::detail
+                 if (m_attesaNs == 0)
+                     m_attesaNs = ora;
+                 if (ora - m_attesaNs < 20000000)
++                {
++                    ++g_sorSpuAttese;
+                     break;
++                }
+             }
+             m_attesaNs = 0;
+             ++fatti;
+@@ -794,6 +844,10 @@ namespace ps2x::iop::detail
+                 std::printf("[spu] core %d attr %04x mmix %03x evol %04x %04x avol %04x bvol %04x mvol %04x %04x esa %05x eea %05x iir %04x\n", k, reg(0x19Au + bc), reg(0x198u + bc), reg(0x764u + bvc), reg(0x766u + bvc),
+                             reg(0x768u + bvc), reg(0x76Cu + bvc), reg(0x760u + bvc), reg(0x762u + bvc), m_core[static_cast<size_t>(k)].esa, m_core[static_cast<size_t>(k)].eea, reg(0x774u + bvc));
+             }
++            // sfaso: how far the sound has moved from the game's clock since they started together (ms; it should stay put)
++            const double sfaso = m_g0 != 0 ? static_cast<double>(m_generati - m_gen0) / 48.0 - static_cast<double>(gioco - m_g0) / 1e6 : 0.0;
++            std::printf("[spu] t %.1f persi %llu attese %llu sfaso %.0f ms\n", static_cast<double>(ora) / 1e9, static_cast<unsigned long long>(g_sorSpuPersi),
++                        static_cast<unsigned long long>(g_sorSpuAttese), sfaso);
+             std::printf("[spu] voci %d kon %llu dma %llu adma %llu irq %llu picco %d rms %.0f campioni/s %llu\n", attive, static_cast<unsigned long long>(m_contaKon),
+                         static_cast<unsigned long long>(m_contaDma), static_cast<unsigned long long>(m_contaAdma), static_cast<unsigned long long>(m_contaIrq), s_picco,
+                         s_n ? std::sqrt(static_cast<double>(s_somma) / static_cast<double>(s_n)) : 0.0, static_cast<unsigned long long>(s_n));
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.h b/ps2xIOP/src/emulator/core/iop_spu2.h
+index 8cd6589..5f30ad9 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.h
++++ b/ps2xIOP/src/emulator/core/iop_spu2.h
+@@ -82,6 +82,8 @@ namespace ps2x::iop::detail
+         uint32_t m_irqInAttesa = 0;
+         int64_t m_attesaNs = 0;
+         int64_t m_inizioNs = 0;
++        bool m_suGioco = false;          // sor: the sound follows the game's clock (iop_spu2.cpp, orologio)
++        int64_t m_g0 = 0; uint64_t m_gen0 = 0; // sor, SOR_TEMPI: where the game's clock and the sound started together
+         uint64_t m_generati = 0;
+         uint32_t m_conta = 0;
+         uint64_t m_ciclo = 0;
+diff --git a/ps2xRuntime/CMakeLists.txt b/ps2xRuntime/CMakeLists.txt
+index 7d53461..19d3ac2 100644
+--- a/ps2xRuntime/CMakeLists.txt
++++ b/ps2xRuntime/CMakeLists.txt
+@@ -388,6 +388,7 @@ add_library(ps2_runtime STATIC
+     src/lib/gs/ps2_gs_memory.cpp
+     src/lib/gs/gs_frontend.cpp
+     src/lib/gs/gs_cpu_backend.cpp
++    src/lib/gs/gs_pcsx2_mirror.cpp
+     src/lib/ps2_iop_host.cpp
+     src/lib/ps2_memory.cpp
+     src/lib/ps2_pad.cpp
+diff --git a/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h b/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h
+new file mode 100644
+index 0000000..49f8a26
+--- /dev/null
++++ b/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h
+@@ -0,0 +1,19 @@
++#pragma once
++#include <cstdint>
++
++struct GSRegisters;
++
++// Mirror of the game's GS traffic to PCSX2's GS on the video card (sor-gs.dll). No-ops when it is off.
++bool sorGpuMirrorOn();
++// True while PCSX2's GS draws the picture inside the game's window: the CPU drawing and its presentation are
++// skipped then (SOR_GPU_CPU_DRAW=1 keeps them, for side-by-side tests).
++bool sorGpuDrawsWindow();
++// Pictures PCSX2's GS has shown so far (its own thread); false with an older sor-gs.dll.
++bool sorGpuFramesShown(uint64_t &shown);
++void sorGpuMirrorGif(const uint8_t *data, uint32_t sizeBytes);
++void sorGpuMirrorReg(uint8_t reg, uint64_t value);
++void sorGpuMirrorImage(uint64_t bitbltbuf, uint64_t trxpos, uint64_t trxreg, uint64_t trxdir, const uint8_t *data,
++                       uint32_t sizeBytes);
++void sorGpuMirrorVblank(const GSRegisters *priv);
++// Closes PCSX2's GS cleanly (also at exit, by itself): call it before std::_Exit.
++void sorGpuMirrorClose();
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+index d2f34d0..8fb652d 100644
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -1,6 +1,8 @@
+ #include "runtime/ee_scheduler.h"
+ #include <atomic>
+ std::atomic<uint32_t> g_sorVblankUs{16667u}; // sor: lo imposta sceGsResetGraph
++extern std::atomic<int64_t> g_sorGiocoNs, g_sorGiocoAncoraNs, g_sorGiocoPeriodoNs; // ps2xIOP iop_spu2.cpp: the sound follows the game's clock
++int64_t sorGsPaceNs(uint32_t nominalUs); // sor: gs_pcsx2_mirror.cpp, VSYNC: the screen's pace (0 = the game's own)
+ 
+ #include "ps2_log.h"
+ #include "ps2_runtime_macros.h"
+@@ -9,6 +11,8 @@ std::atomic<uint32_t> g_sorVblankUs{16667u}; // sor: lo imposta sceGsResetGraph
+ #include <cassert>
+ #include <cstdio>
+ #include <cstring>
++#include <cstdlib>
++#include <thread>
+ #include <limits>
+ #include <stdexcept>
+ 
+@@ -2017,11 +2021,37 @@ void EeScheduler::processDueDeadlines()
+                 // sor: il periodo segue il modo video scelto dal gioco (PAL 50 Hz, NTSC 60 Hz). Se si e'
+                 // rimasti indietro non si recupera di corsa: il gioco andrebbe piu' veloce dell'originale.
+                 const uint32_t sorPeriodoUs = g_sorVblankUs.load(std::memory_order_relaxed);
+-                const auto sorPeriodo = std::chrono::microseconds(sorPeriodoUs);
++                // VSYNC (sor-gs.dll): when the screen's rate is a whole multiple of the game's, the game's clock
++                // follows the screen's, so every picture stays on screen the same time; 0 = the game's own period.
++                const int64_t sorPassoNs = sorGsPaceNs(sorPeriodoUs);
++                const auto sorPeriodo = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
++                    std::chrono::nanoseconds(sorPassoNs > 0 ? sorPassoNs : static_cast<int64_t>(sorPeriodoUs) * 1000));
+                 auto sorProssimo = scheduled.hostDeadline + sorPeriodo;
++                // SOR_PROVA_STALLO=<ms> (tests): every 120 vblanks the game stops that long, as when the PC is busy.
++                static const int s_stallo = std::getenv("SOR_PROVA_STALLO") ? std::atoi(std::getenv("SOR_PROVA_STALLO")) : 0;
++                static uint32_t s_contaStallo = 0;
++                if (s_stallo > 0 && ++s_contaStallo % 120u == 0u)
++                    std::this_thread::sleep_for(std::chrono::milliseconds(s_stallo));
+                 const auto sorOra = std::chrono::steady_clock::now();
++                {   // the game's clock for the sound: one period more at each vblank handled
++                    const int64_t p = std::chrono::duration_cast<std::chrono::nanoseconds>(sorPeriodo).count();
++                    g_sorGiocoPeriodoNs.store(p, std::memory_order_relaxed);
++                    g_sorGiocoNs.fetch_add(p, std::memory_order_relaxed);
++                    g_sorGiocoAncoraNs.store(std::chrono::duration_cast<std::chrono::nanoseconds>(sorOra.time_since_epoch()).count(), std::memory_order_relaxed);
++                }
+                 if (sorProssimo + sorPeriodo < sorOra)
++                {
++                    static const bool s_tempi = std::getenv("SOR_TEMPI") != nullptr;
++                    static int64_t s_perso = 0;
++                    s_perso += std::chrono::duration_cast<std::chrono::nanoseconds>(sorOra - sorProssimo).count();
+                     sorProssimo = sorOra;
++                    if (s_tempi)
++                    {
++                        std::printf("[ee] t %.1f orologio del gioco: perso in tutto %.0f ms\n",
++                                    std::chrono::duration<double>(sorOra.time_since_epoch()).count(), static_cast<double>(s_perso) / 1e6);
++                        std::fflush(stdout);
++                    }
++                }
+                 scheduleEvent(scheduled.deadlineCycle + microsecondsToEeCycles(sorPeriodoUs),
+                               sorProssimo,
+                               EeEvent{EeEventType::VBlankStart, 0, 0});
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/DMA.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/DMA.cpp
+index b32e44a..82ad264 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/DMA.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/DMA.cpp
+@@ -205,8 +205,9 @@ namespace ps2_stubs
+     }
+ 
+     void sceDmaSendI(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+-    {
+-        setReturnS32(ctx, submitDmaSend(rdram, ctx, runtime, false));
++    {   // sor: interleave mode (SOR_SHADOWFIX=0 = old chain behaviour)
++        static const bool on = [] { const char *e = std::getenv("SOR_SHADOWFIX"); return !(e && e[0] == '0'); }();
++        setReturnS32(ctx, submitDmaSend(rdram, ctx, runtime, false, on));
+     }
+ 
+     void sceDmaSendM(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+index 3592bb5..c175523 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp
+@@ -9,6 +9,7 @@ extern std::atomic<uint32_t> g_sorVblankUs; // sor: EeScheduler.cpp
+ #include "ps2_log.h"
+ #include "runtime/gs/ps2_gs_common.h"
+ #include "runtime/gs/ps2_gs_psmct16.h"
++#include "runtime/gs/gs_pcsx2_mirror.h"
+ #include "runtime/ee_scheduler.h"
+ 
+ namespace ps2_stubs
+@@ -758,6 +759,17 @@ namespace ps2_stubs
+         mem.processPendingTransfers();
+ 
+         ps2TraceGuestRangeWrite(rdram, dstAddr, totalImageBytes, "sceGsExecStoreImage", ctx);
++        if (sorGpuDrawsWindow()) // sor: what PCSX2's GS drew is not in the CPU copy of the GS memory
++        {
++            static int s_told = 0;
++            if (s_told < 8)
++            {
++                ++s_told;
++                std::fprintf(stderr, "[gpu] the game reads the GS memory: %ux%u psm %u at block %u (CPU copy, may be old)\n",
++                             static_cast<unsigned>(img.width), static_cast<unsigned>(img.height),
++                             static_cast<unsigned>(img.psm), static_cast<unsigned>(sbp));
++            }
++        }
+         runtime->gs().consumeLocalToHostBytes(dst, totalImageBytes);
+         runtime->guestFree(pktAddr);
+ 
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+index b1bb6d8..87bc257 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+@@ -1,5 +1,8 @@
+ #include <algorithm>
+ #include <cctype>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
+ 
+ namespace
+ {
+@@ -401,6 +404,23 @@ namespace
+ 
+     bool readHostRange(const std::filesystem::path &path, uint64_t offsetBytes, uint8_t *dst, size_t byteCount)
+     {
++        // sor: SOR_CDTEMPI=1 prints the reads from the disc image that take more than 2 ms (pauses during loads).
++        static const bool sorCdTempi = std::getenv("SOR_CDTEMPI") != nullptr;
++        struct SorCdTempo
++        {
++            bool on;
++            uint64_t offset;
++            size_t bytes;
++            std::chrono::steady_clock::time_point t0;
++            ~SorCdTempo()
++            {
++                if (!on)
++                    return;
++                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
++                if (ms > 2.0)
++                    std::fprintf(stderr, "[cd] read %zu KB at %.1f MB: %.1f ms\n", bytes / 1024, offset / 1048576.0, ms);
++            }
++        } sorTempo{sorCdTempi, offsetBytes, byteCount, std::chrono::steady_clock::now()};
+         if (!dst)
+         {
+             g_lastCdError = -1;
+@@ -1335,7 +1355,7 @@ namespace
+         return 0;
+     }
+ 
+-    int32_t submitDmaSend(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, bool preferNormalCount)
++    int32_t submitDmaSend(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, bool preferNormalCount, bool interleave = false)
+     {
+         if (!runtime)
+         {
+@@ -1370,6 +1390,12 @@ namespace
+         {
+             chcr = 0x00000185u | transferTagEnable; // MODE=1 chain, DIR=1, TIE=1, STR=1.
+         }
++        if (interleave && (channelBase == 0x1000D000u || channelBase == 0x1000D400u))
++        {   // sor: sceDmaSendI = interleave mode (MOD=2); size = transferred qwords (SOR_SHADOWFIX)
++            qwc = normalizeQwcFromArg(countArg);
++            madr = payloadPhys;
++            chcr = 0x00000189u; // MODE=2 interleave, DIR=1, TIE=1, STR=1.
++        }
+ 
+         mem.writeIORegister(channelBase + 0x20u, qwc & 0xFFFFu);
+         mem.writeIORegister(channelBase + 0x10u, madr);
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index f813c20..2a29c9c 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -21,6 +21,8 @@ extern "C"
+ 
+ #include "Syscalls/Helpers/State.h"
+ 
++void sorFourThree(); // sor (pc/main_sor.cpp): a film is on, so it stays 4:3 on a wide screen
++
+ namespace ps2_stubs
+ {
+     namespace
+@@ -2376,6 +2378,7 @@ namespace ps2_stubs
+ 
+     void sceMpegGetPicture(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+     {
++        ::sorFourThree();
+         const uint32_t mpegAddr = getRegU32(ctx, 4);
+         const uint32_t imageAddr = getRegU32(ctx, 5);
+         uint32_t width = kStubMovieWidth;
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 6e4bb72..2f672e0 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -1,6 +1,7 @@
+ #include "runtime/gs/gs_frontend.h"
+ #include "runtime/gs/gs_cpu_backend.h"
+ #include "runtime/gs/gs_bande.h"
++#include "runtime/gs/gs_pcsx2_mirror.h"
+ #include "ps2_log.h"
+ #include "runtime/ps2_memory.h"
+ #include <atomic>
+@@ -575,6 +576,7 @@ GSPresentationRequest GS::buildPresentationRequestUnlocked() const
+ void GS::sorVblank()
+ {
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
++    sorGpuMirrorVblank(m_privRegs);
+     if (m_backend)
+         m_backend->SegnaVblank();
+ }
+@@ -696,6 +698,7 @@ bool GS::copyLatchedHostPresentationFrame(std::vector<uint8_t> &outPixels,
+ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ {
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
++    sorGpuMirrorGif(data, sizeBytes);
+     if (!data || sizeBytes < 16 || !m_backend)
+         return;
+ 
+@@ -869,6 +872,7 @@ bool GS::processNativePackedGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ 
+     if (!processed)
+         return false;
++    sorGpuMirrorGif(data, sizeBytes); // only once it was really drawn: a refused packet goes the slow way
+ 
+     ++m_nativePackedGIFPacketCount;
+     return true;
+@@ -882,6 +886,7 @@ void GS::uploadImageNative(uint64_t bitbltbuf,
+                            uint32_t sizeBytes)
+ {
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
++    sorGpuMirrorImage(bitbltbuf, trxpos, trxreg, trxdir, data, sizeBytes);
+     uploadImageNativeUnlocked(bitbltbuf, trxpos, trxreg, trxdir, data, sizeBytes);
+ }
+ 
+@@ -1159,6 +1164,7 @@ void GS::writeRegisterPacked(uint8_t regDesc, uint64_t lo, uint64_t hi)
+ 
+ void GS::writeRegister(uint8_t regAddr, uint64_t value)
+ {
++    sorGpuMirrorReg(regAddr, value);
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+     writeRegisterUnlocked(regAddr, value);
+ }
+@@ -1701,7 +1707,8 @@ void GS::vertexKick(bool drawing)
+             d.scissor[0] = c.scissor.x0; d.scissor[1] = c.scissor.x1; d.scissor[2] = c.scissor.y0; d.scissor[3] = c.scissor.y1;
+         }
+         updatePreferredDisplaySourceForDraw(batch);
+-        m_backend->Submit(batch);
++        if (!sorGpuDrawsWindow()) // sor: PCSX2's GS draws the picture, a CPU copy would only cost time
++            m_backend->Submit(batch);
+         recordDrawDebugEventUnlocked(needed);
+     }
+ 
+diff --git a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+new file mode 100644
+index 0000000..40d4e29
+--- /dev/null
++++ b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+@@ -0,0 +1,323 @@
++// Mirror of everything the game sends to the GS, forwarded to PCSX2's GS (sor-gs.dll), which draws it on the video
++// card. Turned on by a file named "gpu" next to sor.exe (or SOR_GPU=1); without it nothing changes.
++// SPDX-License-Identifier: GPL-3.0+
++#include "runtime/gs/gs_pcsx2_mirror.h"
++#include "runtime/ps2_memory.h"
++
++#include <atomic>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <mutex>
++#include <string>
++#include <vector>
++
++#if defined(_WIN32)
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#endif
++
++extern "C" void *GetWindowHandle(void); // raylib
++extern std::atomic<uint32_t> g_sorVblankUs; // EeScheduler.cpp: 20000 PAL, 16667 NTSC
++// VSYNC: the screen's pace (sor-gs.dll's sorgs_pace), read by the game's clock (EeScheduler.cpp); 0 = the game's own.
++static std::atomic<long long (*)(unsigned int)> s_sorPaceFn{nullptr};
++int64_t sorGsPaceNs(uint32_t nominalUs)
++{
++    const auto f = s_sorPaceFn.load(std::memory_order_relaxed);
++    return f ? static_cast<int64_t>(f(nominalUs)) : 0;
++}
++
++namespace
++{
++    using OpenFn = int (*)(void *, float, int);
++    using RegsFn = void *(*)();
++    using GifFn = void (*)(const void *, unsigned int);
++    using VsyncFn = void (*)(unsigned int);
++    using SnapFn = void (*)(const char *);
++
++    std::recursive_mutex s_lock;
++    int s_state = 0; // 0 unknown, 1 on, -1 off
++    bool s_opened = false;
++    OpenFn s_open = nullptr;
++    RegsFn s_regs = nullptr;
++    GifFn s_gif = nullptr;
++    VsyncFn s_vsync = nullptr;
++    SnapFn s_snap = nullptr;
++    using CloseFn = void (*)();
++    CloseFn s_close = nullptr;
++    using ShownFn = unsigned long long (*)();
++    ShownFn s_shownFn = nullptr;
++    void (*s_wideFn)(int) = nullptr; // sor-gs.dll's sorgs_wide: 1 wide, 0 4:3 (widescreen only)
++    float s_upscale = 1.0f;
++    int s_renderer = 1;
++    int s_attach = 0; // 1: draw inside the game's window; 0: a window of its own (side by side, for tests)
++    std::atomic<bool> s_drawsWindow{false}; // read without the lock, at every draw
++    unsigned long long s_dropped = 0;
++    std::string s_dir;
++    unsigned s_field = 0;
++    unsigned long long s_frames = 0;
++    std::vector<uint8_t> s_buf;
++
++    bool enabledUnlocked()
++    {
++        if (s_state != 0)
++            return s_state > 0;
++        s_state = -1;
++#if defined(_WIN32)
++        char exe[MAX_PATH] = {};
++        GetModuleFileNameA(nullptr, exe, MAX_PATH);
++        std::string dir(exe);
++        dir = dir.substr(0, dir.find_last_of("\\/") + 1);
++        s_dir = dir;
++        bool on = false;
++        // The player's choice in the launcher (launcher.ini, passed at Play): "cpu", the port's own drawing as in
++        // 0.0.7, or "gpu <scale>", PCSX2's GS inside the game's window. It counts over the tests' gpu file.
++        if (const char *g = std::getenv("SOR_GRAPHICS"))
++        {
++            float up = 0.0f;
++            int api = 1; // optional: "gpu <scale> <api>", 1 DX11, 2 DX12, 3 Vulkan, 4 OpenGL
++            if (std::sscanf(g, "gpu %f %d", &up, &api) < 1 || up < 1.0f)
++            {
++                std::fprintf(stderr, "[gpu] graphics: the processor (SOR_GRAPHICS=%s)\n", g);
++                return false;
++            }
++            on = true;
++            s_upscale = up;
++            s_renderer = (api >= 1 && api <= 4) ? api : 1;
++            s_attach = 1;
++        }
++        else
++        {
++            if (const char *e = std::getenv("SOR_GPU"))
++                on = e[0] == '1';
++            if (FILE *f = std::fopen((dir + "gpu").c_str(), "rb"))
++            {
++                on = true;
++                char line[64] = {};
++                if (std::fgets(line, sizeof(line), f)) // optional: "<upscale> <renderer> <attach>"
++                    std::sscanf(line, "%f %d %d", &s_upscale, &s_renderer, &s_attach);
++                std::fclose(f);
++            }
++        }
++        if (!on)
++            return false;
++        HMODULE dll = LoadLibraryA((dir + "sor-gs.dll").c_str());
++        if (!dll)
++        {
++            std::fprintf(stderr, "[gpu] sor-gs.dll not found (%lu)\n", GetLastError());
++            return false;
++        }
++        s_open = reinterpret_cast<OpenFn>(GetProcAddress(dll, "sorgs_open"));
++        s_regs = reinterpret_cast<RegsFn>(GetProcAddress(dll, "sorgs_regs"));
++        s_gif = reinterpret_cast<GifFn>(GetProcAddress(dll, "sorgs_gif"));
++        s_vsync = reinterpret_cast<VsyncFn>(GetProcAddress(dll, "sorgs_vsync"));
++        s_snap = reinterpret_cast<SnapFn>(GetProcAddress(dll, "sorgs_snapshot"));
++        s_close = reinterpret_cast<CloseFn>(GetProcAddress(dll, "sorgs_close"));
++        s_shownFn = reinterpret_cast<ShownFn>(GetProcAddress(dll, "sorgs_frames_shown"));
++        s_wideFn = reinterpret_cast<void (*)(int)>(GetProcAddress(dll, "sorgs_wide"));
++        s_sorPaceFn.store(reinterpret_cast<long long (*)(unsigned int)>(GetProcAddress(dll, "sorgs_pace")));
++        if (!s_open || !s_regs || !s_gif || !s_vsync)
++            return false;
++        s_state = 1;
++        std::fprintf(stderr, "[gpu] sor-gs.dll loaded, upscale %.1f renderer %d\n", s_upscale, s_renderer);
++        return true;
++#else
++        return false;
++#endif
++    }
++
++    bool readyUnlocked()
++    {
++        if (!enabledUnlocked())
++            return false;
++        if (!s_opened)
++        {
++            void *hwnd = s_attach ? GetWindowHandle() : nullptr;
++            if (s_attach && !hwnd)
++            {
++                ++s_dropped;
++                return false;
++            }
++            if (!s_open(hwnd, s_upscale, s_renderer))
++            {
++                std::fprintf(stderr, "[gpu] sorgs_open failed, back to the CPU drawing\n");
++                s_state = -1;
++                return false;
++            }
++            s_opened = true;
++            s_drawsWindow.store(s_attach != 0 && !std::getenv("SOR_GPU_CPU_DRAW"), std::memory_order_release);
++            std::atexit(sorGpuMirrorClose);
++            std::fprintf(stderr, "[gpu] PCSX2 GS open (%llu packets before the window)\n", s_dropped);
++        }
++        return true;
++    }
++
++    void put64(uint64_t v) { const size_t n = s_buf.size(); s_buf.resize(n + 8); std::memcpy(&s_buf[n], &v, 8); }
++
++    // GIFtag: nloop, eop=1, flg, nreg, regs.
++    void tag(uint32_t nloop, uint32_t flg, uint32_t nreg, uint64_t regs)
++    {
++        put64(static_cast<uint64_t>(nloop & 0x7FFFu) | (1ull << 15) | (static_cast<uint64_t>(flg & 3u) << 58) |
++              (static_cast<uint64_t>(nreg & 15u) << 60));
++        put64(regs);
++    }
++}
++
++bool sorGpuMirrorOn()
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    return enabledUnlocked();
++}
++
++bool sorGpuDrawsWindow()
++{
++    return s_drawsWindow.load(std::memory_order_acquire);
++}
++
++bool sorGpuFramesShown(uint64_t &shown)
++{
++    if (!s_drawsWindow.load(std::memory_order_acquire) || !s_shownFn)
++        return false;
++    shown = s_shownFn();
++    return true;
++}
++
++void sorGpuMirrorGif(const uint8_t *data, uint32_t sizeBytes)
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    if (!data || sizeBytes < 16 || !readyUnlocked())
++        return;
++    s_gif(data, sizeBytes / 16u);
++}
++
++void sorGpuMirrorReg(uint8_t reg, uint64_t value)
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    if (!readyUnlocked())
++        return;
++    s_buf.clear();
++    tag(1, 0, 1, 0xE); // PACKED, A+D
++    put64(value);
++    put64(reg);
++    s_gif(s_buf.data(), static_cast<unsigned>(s_buf.size() / 16));
++}
++
++void sorGpuMirrorImage(uint64_t bitbltbuf, uint64_t trxpos, uint64_t trxreg, uint64_t trxdir, const uint8_t *data,
++                       uint32_t sizeBytes)
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    if (!data || !sizeBytes || !readyUnlocked())
++        return;
++    s_buf.clear();
++    tag(4, 0, 1, 0xE);
++    put64(bitbltbuf); put64(0x50);
++    put64(trxpos); put64(0x51);
++    put64(trxreg); put64(0x52);
++    put64(trxdir); put64(0x53);
++    const uint32_t qwc = (sizeBytes + 15u) / 16u;
++    tag(qwc, 2, 0, 0); // IMAGE
++    const size_t n = s_buf.size();
++    s_buf.resize(n + static_cast<size_t>(qwc) * 16u, 0);
++    std::memcpy(&s_buf[n], data, sizeBytes);
++    s_gif(s_buf.data(), static_cast<unsigned>(s_buf.size() / 16));
++}
++
++void sorGpuMirrorVblank(const GSRegisters *priv)
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    if (!priv || !readyUnlocked())
++        return;
++    uint8_t *r = static_cast<uint8_t *>(s_regs());
++    // SMODE1 and SYNCV are written by the PS2 BIOS (SetGsCrt), which the recompiled game never runs: without them
++    // PCSX2 takes the screen for a VESA mode and shows nothing. Same values as the BIOS: PAL 0x740836504,
++    // NTSC 0x740834504 (only CMOD, the colour standard, matters to PCSX2), VFP odd = interlaced.
++    const bool pal = g_sorVblankUs.load(std::memory_order_relaxed) == 20000u;
++    const uint64_t smode1 = priv->smode1 ? priv->smode1 : (pal ? 0x740836504ull : 0x740834504ull);
++    const uint64_t syncv = priv->syncv ? priv->syncv
++                                       : (pal ? (1ull | (5ull << 10) | (33ull << 20) | (5ull << 32) | (576ull << 42) | (5ull << 53))
++                                              : (1ull | (6ull << 10) | (26ull << 20) | (6ull << 32) | (480ull << 42) | (6ull << 53)));
++    // The game copies each finished frame into the display buffer with the alpha channel masked, so the display
++    // keeps the alpha left there before: on the PS2 the movies leave 0x80 (opaque, x2 = 1.0 with PMODE.MMOD 0).
++    // Here the movies are skipped and that alpha stays 0, which PCSX2 shows as a black screen (the CPU drawing
++    // ignores it). So with circuit 1 alone and MMOD 0, the same picture: constant alpha 1.0 (MMOD 1, ALP 0xFF).
++    uint64_t pmode = priv->pmode;
++    if ((pmode & 0x23ull) == 0x01ull)
++        pmode = (pmode & ~0xFF00ull) | 0x20ull | 0xFF00ull;
++    const uint64_t v[15] = {pmode, smode1, priv->smode2, priv->srfsh, priv->synch1, priv->synch2,
++                            syncv, priv->dispfb1, priv->display1, priv->dispfb2, priv->display2, priv->extbuf,
++                            priv->extdata, priv->extwrite, priv->bgcolor};
++    static bool s_told = false;
++    if (!s_told && priv->pmode)
++    {
++        s_told = true;
++        std::fprintf(stderr, "[gpu] display: pmode %llx smode2 %llx dispfb1 %llx display1 %llx dispfb2 %llx display2 %llx\n",
++                     (unsigned long long)priv->pmode, (unsigned long long)priv->smode2, (unsigned long long)priv->dispfb1,
++                     (unsigned long long)priv->display1, (unsigned long long)priv->dispfb2, (unsigned long long)priv->display2);
++    }
++    for (int i = 0; i < 15; ++i)
++        std::memcpy(r + i * 0x10, &v[i], 8);
++    const uint64_t csr = priv->csr.load(std::memory_order_relaxed);
++    std::memcpy(r + 0x1000, &csr, 8);
++    std::memcpy(r + 0x1010, &priv->imr, 8);
++    s_field ^= 1u;
++    // Widescreen: the films, the pause menu and the title menus stay 4:3 with black bars (they call sorFourThree(),
++    // pc/main_sor.cpp), and so do the game's own scenes (a camera view with no gameplay camera in it for a quarter
++    // of a second: sorCameraView without sorWideCamera). The rest is wide once the gameplay camera has made 8 views
++    // after them: talks and tutorial pages freeze the game with the wide view on screen and make no view, so they
++    // stay wide. Wide again a quarter of a second after the last 4:3 view, so that a menu does not flash.
++    {
++        extern bool sorWidescreenOn();
++        extern std::atomic<unsigned> g_sorWideCamera;
++        extern std::atomic<unsigned> g_sorFourThree;
++        extern std::atomic<unsigned> g_sorCameraAny;
++        static unsigned s_seen = 0, s_seen43 = 0, s_seenAny = 0, s_uses = 0;
++        static unsigned long long s_last43 = 0, s_lastGame = 0;
++        static int s_sent = -1;
++        static unsigned s_secGame = 0, s_secOther = 0, s_sec43 = 0;
++        const unsigned m = g_sorFourThree.load(std::memory_order_relaxed);
++        const unsigned n = g_sorWideCamera.load(std::memory_order_relaxed);
++        const unsigned a = g_sorCameraAny.load(std::memory_order_relaxed);
++        const bool four = m != s_seen43, game = n != s_seen, other = a != s_seenAny && !game;
++        s_seen43 = m;
++        s_seen = n;
++        s_seenAny = a;
++        if (four) { s_last43 = s_frames; s_uses = 0; ++s_sec43; }
++        else if (game) { s_lastGame = s_frames; if (s_uses < 1000u) ++s_uses; ++s_secGame; }
++        else if (other) { ++s_secOther; if (s_frames - s_lastGame >= 15) s_uses = 0; }
++        const int wide = sorWidescreenOn() && s_uses >= 8 && s_frames - s_last43 >= 15 ? 1 : 0;
++        static const bool s_tempi = std::getenv("SOR_TEMPI") != nullptr;
++        if (s_wideFn && sorWidescreenOn() && wide != s_sent)
++        {
++            s_sent = wide;
++            s_wideFn(wide);
++            if (s_tempi)
++            {
++                std::printf("[wide] frame %llu: %s\n", s_frames, wide ? "wide" : "4:3");
++                std::fflush(stdout);
++            }
++        }
++        if (s_tempi && sorWidescreenOn() && s_frames % 60 == 59)
++        {   // each second: frames with the gameplay camera, with another camera only, with a 4:3 view
++            std::printf("[wide] second %llu: game %u, other %u, 4:3 %u, %s\n", s_frames / 60, s_secGame, s_secOther, s_sec43, wide ? "wide" : "4:3");
++            s_secGame = s_secOther = s_sec43 = 0;
++        }
++    }
++    s_vsync(s_field);
++    ++s_frames; // the GS window pumps its own messages on its own thread (sor-gs.dll)
++    // test: SOR_GPU_SNAP_EVERY=300 -> gpu-300.png, gpu-600.png... next to sor.exe
++    static const unsigned long long s_every = std::getenv("SOR_GPU_SNAP_EVERY") ? std::strtoull(std::getenv("SOR_GPU_SNAP_EVERY"), nullptr, 10) : 0;
++    if (s_snap && s_every && s_frames % s_every == 0)
++        s_snap((s_dir + "gpu-" + std::to_string(s_frames) + ".png").c_str());
++}
++
++void sorGpuMirrorClose()
++{
++    std::lock_guard<std::recursive_mutex> lk(s_lock);
++    if (!s_opened || !s_close)
++        return;
++    s_opened = false;
++    s_drawsWindow.store(false, std::memory_order_release);
++    s_state = -1;
++    s_close();
++}
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index 8d13043..023177b 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1790,6 +1790,12 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+     return false;
+ }
+ 
++static bool sorSprInterleaveOn()
++{   // sor: SOR_SHADOWFIX=0 brings back the old (wrong) sceDmaSendI behaviour
++    static const bool on = [] { const char *e = std::getenv("SOR_SHADOWFIX"); return !(e && e[0] == '0'); }();
++    return on;
++}
++
+ bool PS2Memory::tryProcessScratchpadDma(uint32_t channelBase, uint32_t chcr)
+ {
+     static constexpr uint32_t kSprFromChannel = 0x1000D000u;
+@@ -1798,6 +1804,54 @@ bool PS2Memory::tryProcessScratchpadDma(uint32_t channelBase, uint32_t chcr)
+         return false;
+ 
+     const uint32_t mode = (chcr >> 2u) & 0x3u;
++    if (mode == 2u && sorSprInterleaveOn())
++    {   // sor: interleave mode. Copy TQWC qwords, then skip SQWC qwords on the main-memory side (D_SQWC).
++        uint32_t qwcLeft = m_ioRegisters[channelBase + 0x20u] & 0xFFFFu;
++        const uint32_t sqwcReg = m_ioRegisters.count(0x1000E030u) ? m_ioRegisters[0x1000E030u] : 0u;
++        uint32_t tqwc = (sqwcReg >> 16u) & 0xFFu;
++        const uint32_t skip = sqwcReg & 0xFFu;
++        if (tqwc == 0u)
++            tqwc = qwcLeft;
++        uint32_t madr = m_ioRegisters[channelBase + 0x10u] & 0x7FFFFFF0u;
++        uint32_t sadr = m_ioRegisters[channelBase + 0x80u] & 0x3FF0u;
++        const bool fromSpr = channelBase == kSprFromChannel;
++        while (qwcLeft != 0u)
++        {
++            const uint32_t n = std::min(tqwc, qwcLeft);
++            qwcLeft -= n;
++            for (uint32_t i = 0; i < n; ++i)
++            {
++                uint32_t mainOffset = 0u;
++                try
++                {
++                    mainOffset = translateAddress(madr + i * 16u);
++                }
++                catch (const std::exception &)
++                {
++                    return false;
++                }
++                if (mainOffset > PS2_RAM_SIZE - 16u)
++                    return false;
++                const uint32_t so = (sadr + i * 16u) & (PS2_SCRATCHPAD_SIZE - 16u);
++                if (fromSpr)
++                {
++                    std::memcpy(m_rdram + mainOffset, m_scratchpad + so, 16u);
++                    markModified(mainOffset, 16u);
++                }
++                else
++                {
++                    std::memcpy(m_scratchpad + so, m_rdram + mainOffset, 16u);
++                }
++            }
++            sadr = (sadr + n * 16u) & 0x3FF0u;
++            madr = (madr + (n + skip) * 16u) & 0x7FFFFFF0u;
++        }
++        m_ioRegisters[channelBase + 0x10u] = madr;
++        m_ioRegisters[channelBase + 0x20u] = 0u;
++        m_ioRegisters[channelBase + 0x80u] = sadr;
++        completeDmacChannel(channelBase, fromSpr ? 8u : 9u);
++        return true;
++    }
+     if (mode != 0u)
+         return false;
+ 
+diff --git a/ps2xRuntime/src/lib/ps2_pad.cpp b/ps2xRuntime/src/lib/ps2_pad.cpp
+index 923a4b7..c452cf9 100644
+--- a/ps2xRuntime/src/lib/ps2_pad.cpp
++++ b/ps2xRuntime/src/lib/ps2_pad.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "runtime/ps2_pad.h"
+ #include "ps2_host_backend.h"
+ #include <cstdio>
+@@ -64,6 +65,11 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+     auto clearBit = [&btns](uint16_t mask)
+     { btns &= ~mask; };
+ 
++    // sor: the launcher's CONTROLS page (controller only): SOR_PAD_SWAP=1 swaps the bottom and right buttons
++    // (✕ and ○), SOR_PAD_INVERT_X / SOR_PAD_INVERT_Y=1 invert the right stick (the camera).
++    static const bool s_swap = std::getenv("SOR_PAD_SWAP") && std::getenv("SOR_PAD_SWAP")[0] == '1';
++    static const float s_invX = std::getenv("SOR_PAD_INVERT_X") && std::getenv("SOR_PAD_INVERT_X")[0] == '1' ? -1.0f : 1.0f;
++    static const float s_invY = std::getenv("SOR_PAD_INVERT_Y") && std::getenv("SOR_PAD_INVERT_Y")[0] == '1' ? -1.0f : 1.0f;
+     if (useGamepad)
+     {
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_UP))
+@@ -75,9 +81,9 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_RIGHT))
+             clearBit(PAD_RIGHT);
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))
+-            clearBit(PAD_CROSS);
++            clearBit(s_swap ? PAD_CIRCLE : PAD_CROSS);
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+-            clearBit(PAD_CIRCLE);
++            clearBit(s_swap ? PAD_CROSS : PAD_CIRCLE);
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))
+             clearBit(PAD_SQUARE);
+         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_UP))
+@@ -101,8 +107,8 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+ 
+         float lx = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_X);
+         float ly = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_Y);
+-        float rx = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_X);
+-        float ry = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_Y);
++        float rx = s_invX * GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_X);
++        float ry = s_invY * GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_Y);
+         data[6] = static_cast<uint8_t>(128 + lx * 127);
+         data[7] = static_cast<uint8_t>(128 + ly * 127);
+         data[4] = static_cast<uint8_t>(128 + rx * 127);
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index 4ff6839..38e0a38 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -5,6 +5,7 @@
+ #include "game_overrides.h"
+ #include "ps2_runtime_macros.h"
+ #include "runtime/gs/gs_frontend.h"
++#include "runtime/gs/gs_pcsx2_mirror.h"
+ #include "runtime/ee_scheduler.h"
+ #include "ThreadNaming.h"
+ #include "Kernel/Stubs/Audio.h"
+@@ -380,6 +381,7 @@ void sorAlzaPrioritaThread(); // pc/sor_prove.cpp
+ static thread_local bool s_sorThreadGioco = false;
+ static bool sorSonoThreadGioco() { return s_sorThreadGioco; }
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n); // ps2xIOP/.../iop_spu2.cpp
++size_t sorSpu2Coda();
+ static uint64_t g_sorAudioVuoti = 0, g_sorAudioDati = 0;
+ static void sorAudioRichiesta(void *buffer, unsigned int frames)
+ {
+@@ -396,7 +398,7 @@ static void sorAudioRichiesta(void *buffer, unsigned int frames)
+     if (s_rapporto && g_sorAudioDati + g_sorAudioVuoti >= s_prossimo)
+     {
+         s_prossimo += 240000u;
+-        std::printf("[audio] consegnati alle casse %llu, mancati %llu\n", static_cast<unsigned long long>(g_sorAudioDati), static_cast<unsigned long long>(g_sorAudioVuoti));
++        std::printf("[audio] consegnati alle casse %llu, mancati %llu, in coda %.0f ms\n", static_cast<unsigned long long>(g_sorAudioDati), static_cast<unsigned long long>(g_sorAudioVuoti), sorSpu2Coda() / 48.0);
+         std::fflush(stdout);
+     }
+ }
+@@ -419,6 +421,9 @@ static void sorAvviaUscitaAudio()
+ uint64_t sorAudioConsegnati() { return g_sorAudioDati; }
+ uint64_t sorAudioVuoti() { return g_sorAudioVuoti; }
+ std::atomic<bool> g_sorFotoSubito{false};   // sor: comando "foto" del telecomando delle prove
++void sorMonitorFrame(const uint8_t *rgba, uint32_t width, uint32_t height); // sor: pc/sor_monitor.cpp
++void sorMonitorClosing();
++void sorGpuMirrorClose(); // gs_pcsx2_mirror.cpp
+ 
+ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint32_t &outHeight)
+ {
+@@ -434,6 +439,34 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+     static std::vector<uint8_t> s_uploadBuffer(DEFAULT_FB_SIZE, 0u);
+ 
+     const uint64_t currentTick = rt->eeScheduler().currentVSyncTick();
++    if (sorGpuDrawsWindow()) // sor: PCSX2's GS draws in this window; each frame still counts (tests)
++    {
++        static uint64_t s_gpuSeen = 0;
++        uint64_t shown = 0;
++        if (sorGpuFramesShown(shown))
++        {
++            if (shown > s_gpuSeen + 60u) // at most a second at once (start, long stops)
++                s_gpuSeen = shown - 60u;
++            for (; s_gpuSeen < shown; ++s_gpuSeen)
++            {
++                g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
++                sorMonitorFrame(nullptr, 0u, 0u);
++            }
++            outWidth = 0u;
++            outHeight = 0u;
++            return;
++        }
++        static uint64_t s_gpuTick = std::numeric_limits<uint64_t>::max();
++        if (currentTick != s_gpuTick) // older sor-gs.dll: one per vblank this loop sees
++        {
++            s_gpuTick = currentTick;
++            g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
++            sorMonitorFrame(nullptr, 0u, 0u);
++        }
++        outWidth = 0u;
++        outHeight = 0u;
++        return;
++    }
+     const bool needsLatch = !s_hasLatchedInitialFrame || currentTick != s_lastPresentationTick;
+     if (needsLatch)
+     {
+@@ -498,6 +531,8 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+     s_lastHeight = height;
+ 
+     g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
++    if (!s_scratch.empty() && s_scratch.size() >= static_cast<size_t>(width) * height * 4u) // sor: monitor
++        sorMonitorFrame(s_scratch.data(), width, height);
+     // sor: SOR_FOTO=<prefisso> salva il fotogramma presentato come <prefisso>_NN.png ogni
+     // SOR_FOTO_OGNI secondi (predefinito 5), con l'alfa a 255.
+     {
+@@ -821,6 +856,22 @@ bool PS2Runtime::initialize(const char *title)
+ #else
+         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+         InitWindow(HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT, title);
++        // sor: widescreen 16:9 (pc/main_sor.cpp): a 16:9 window, the picture fills it.
++        {
++            extern bool sorWidescreenOn();
++            extern bool sorUltrawideOn();
++            extern bool sorSuperwideOn();
++            if (sorWidescreenOn())
++                SetWindowSize(HOST_WINDOW_HEIGHT * (sorSuperwideOn() ? 96 : sorUltrawideOn() ? 64 : 48) / 27, HOST_WINDOW_HEIGHT);
++            // sor: full screen (SOR_FULLSCREEN=1, from the launcher's OPTIONS): a borderless window as big as the
++            // screen, the picture keeps its shape. F11 or Alt+Enter switch while playing.
++            const char *fs = std::getenv("SOR_FULLSCREEN");
++            if (fs && fs[0] == '1' && !IsWindowState(FLAG_WINDOW_HIDDEN))
++            {
++                extern void sorSchermoIntero(void *);
++                sorSchermoIntero(GetWindowHandle());
++            }
++        }
+         // sor: SOR_MUTO=1 (prove): il suono si calcola lo stesso ma non esce dalle casse.
+         if (!std::getenv("SOR_MUTO"))
+         {
+@@ -2541,6 +2592,30 @@ void PS2Runtime::run()
+         });
+         uint32_t presentWidth = FB_WIDTH;
+         uint32_t presentHeight = DEFAULT_DISPLAY_HEIGHT;
++        {
++            // sor: SOR_TEMPI=1 (tests): how often this window loop runs (keys and window events go through it)
++            static const bool s_misura = std::getenv("SOR_TEMPI") != nullptr;
++            if (s_misura)
++            {
++                static auto s_inizio = std::chrono::steady_clock::now();
++                static auto s_prima = s_inizio;
++                static double s_peggio = 0.0;
++                static int s_giri = 0;
++                const auto ora = std::chrono::steady_clock::now();
++                s_peggio = std::max(s_peggio, std::chrono::duration<double, std::milli>(ora - s_prima).count());
++                s_prima = ora;
++                ++s_giri;
++                const double sec = std::chrono::duration<double>(ora - s_inizio).count();
++                if (sec >= 5.0)
++                {
++                    std::fprintf(stderr, "[window] %.1f turns/s, longest %.0f ms, %s%s\n", s_giri / sec, s_peggio,
++                                 IsWindowFocused() ? "focused" : "not focused", IsWindowMinimized() ? ", minimized" : "");
++                    s_inizio = ora;
++                    s_giri = 0;
++                    s_peggio = 0.0;
++                }
++            }
++        }
+         UploadFrame(frameTex, this, presentWidth, presentHeight);
+ 
+         BeginDrawing();
+@@ -2558,15 +2633,22 @@ void PS2Runtime::run()
+             (screenHeight - dstHeight) * 0.5f,
+             dstWidth,
+             dstHeight};
+-        DrawTexturePro(frameTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
++        if (presentWidth != 0u) // sor: 0 while PCSX2's GS draws in this window
++            DrawTexturePro(frameTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+         if (m_debugUiInitialized && m_debugUiDrawCallback)
+         {
+             m_debugUiDrawCallback(*this, m_debugUiUserData);
+         }
+         EndDrawing();
+ 
++        if (IsKeyPressed(KEY_F11) || ((IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_ENTER)))
++        {
++            extern void sorSchermoIntero(void *);
++            sorSchermoIntero(GetWindowHandle()); // sor: full screen / window (pc/sor_profilo.cpp)
++        }
+         if (WindowShouldClose())
+         {
++            sorMonitorClosing();
+             RUNTIME_LOG("[run] window close requested, breaking out of loop");
+             requestStop();
+             break;
+@@ -2578,6 +2660,9 @@ void PS2Runtime::run()
+     {
+         gameThread.join();
+     }
++    // PCSX2's GS (sor-gs.dll) may draw inside this window: close it while the window still exists,
++    // and before the process exit kills its thread in the middle of a frame (crash at exit).
++    sorGpuMirrorClose();
+ 
+     if (m_debugUiInitialized && m_debugUiShutdownCallback)
+     {

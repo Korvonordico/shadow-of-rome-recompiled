@@ -4,70 +4,97 @@
 
 <h1 align="center">Shadow of Rome Recompiled</h1>
 
-<p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program.</p>
+<p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. Since 1.9 the video card draws it: up to 4 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9.</p>
 
-<p align="center">Version 0.0.7 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 1.9 · <a href="CHANGELOG.md">What changed</a></p>
 
-<p align="center"><b>The game is being tested now.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
+<p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
 <p align="center">
-  <img src="docs/first-arena-by-hand.gif" width="70%" alt="Agrippa fighting in the first arena, played by hand on this build">
+  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the forest camp, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
 </p>
-<p align="center">
-  <a href="docs/first-arena-by-hand.mp4">Watch one minute of the first arena, played by hand</a> (MP4, 9 MB, no sound)
-</p>
-<p align="center"><b>This is only a sample to show that the game starts and runs.</b> It is not fully playable yet: it still has many problems. The video was recorded before the camera fix, so in it the camera moves in close behind the shoulder, which it no longer does. See <a href="#status">Status</a> below.</p>
+<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
 
 ## What this is
 
 [Shadow of Rome](https://en.wikipedia.org/wiki/Shadow_of_Rome) is an action game made by Capcom for the PlayStation 2 in 2005. Agrippa's father is accused of murdering Caesar: Agrippa is forced to fight as a gladiator in the arenas, and his friend Octavianus sneaks through Rome to find out who really killed Caesar.
 
-This project makes it run on a Windows PC as a normal program. It is not an emulator. A tool called [PS2Recomp](https://github.com/ran-j/PS2Recomp) reads the game's program from the disc and rewrites every one of its instructions as C++ code, which is then built for Windows. This is called static recompilation. The parts of the PS2 that the game talks to (the graphics chip, the sound chip, the memory card, the disc drive) are played by a runtime that comes with PS2Recomp, with many fixes of mine (see [patches](patches/README.md)).
+This project makes it run on a Windows PC as a normal program. It is not an emulator. A tool called [PS2Recomp](https://github.com/ran-j/PS2Recomp) reads the game's program from the disc and rewrites every one of its instructions as C++ code, which is then built for Windows. This is called static recompilation. The parts of the PS2 that the game talks to (the graphics chip, the sound chip, the memory card, the disc drive) are played by a runtime that comes with PS2Recomp, with many fixes of mine (see [patches](patches/README.md)). The picture is drawn by the graphics chip of the PS2 emulator [PCSX2](https://github.com/PCSX2/pcsx2), on the video card.
 
-**You need your own copy of the game** (the European disc, PAL, SLES-52950), as an `.iso` file. No game data is included. The ready-made package on the [Releases](../../releases) page holds only the program: the game's code translated to C++ and built for Windows, and the launcher. The first time you press Play, the launcher reads the rest from your own disc image. You can also build the program yourself from your disc: see [How to get it running](#how-to-get-it-running).
+**You need your own copy of the game** (the European disc, PAL, SLES-52950), as an `.iso` file. No game data is included. The ready-made package on the [Releases](../../releases) page holds only the program: the game's code translated to C++ and built for Windows, the video card part and the launcher. The first time you press Play, the launcher reads the rest from your own disc image. You can also build the program yourself from your disc: see [How to get it running](#how-to-get-it-running).
 
 This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
-## The launcher
+## What's new in 1.9
 
-`ShadowOfRome.exe` starts the game in a window. **Play** starts it, **Quit** closes it. The first time, Play asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Options, Graphics, Controls, Mods and Credits are shown greyed out as "coming soon". The version is in the bottom right corner.
+- **The video card draws the picture**, with DirectX 11, DirectX 12 or Vulkan, at 1x to 4x the PS2's resolution. The drawing on the processor of 0.0.7 can still be chosen.
+- **60 frames per second**, with **VSYNC** on by default: every picture stays on screen for the same time, so the movement is steady.
+- **A steady and sharper picture:** the picture no longer shakes half a line at every frame, and **SHARPNESS** (off, low, high) makes textures and edges crisper.
+- **Wider screens, 16:9 and 21:9:** you see more of the scene at the sides while you play and when you talk to someone; the movies, the game's own scenes, the pause menu and the title menus stay 4:3. 21:9 was not made for this game: some views may show flaws.
+- **Full screen** (F11), the **OSD** (frames per second on screen) and **texture packs**, as in PCSX2.
+- **Fixed: long dark stripes on the floor** between the characters: they were their shadows, with the corners shifted.
+- **Fixed: the voices running ahead of the lips** in the movies, a little more every time the game stopped for a moment.
+- **CONTROLS** in the launcher: swap ✕ and ○, and invert the camera, for the controller.
 
 <p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher: Play and Quit, the other entries greyed out as coming soon, the project's logo and the version number">
+  <img src="docs/compare-wide.svg" width="100%" alt="The same moment in 4:3 on the left and in 21:9 on the right, with more of the camp at the sides">
 </p>
+<p align="center"><sub>4:3 on the left, 21:9 on the right: the same moment, with more of the camp at the sides. Real pictures from this port; the line moves by itself.</sub></p>
+
+All the changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-In the order you meet them in the game: the title screen and the menus, two movies, the first arena, the cells under it and a fight.
+In the order you meet them in the game, drawn by the video card at 4x in 16:9: the opening movie, the first chapter's title card, the game's own scenes in the Roman camp, and playing. The movies and the game's own scenes are shown 4:3, with black bars at the sides.
 
 <p align="center">
-  <img src="docs/titolo-press-start.png" width="24%" alt="The title screen">
-  <img src="docs/menu-principale.png" width="24%" alt="The main menu">
-  <img src="docs/options-sound.png" width="24%" alt="Options, Sound">
-  <img src="docs/options-controls.png" width="24%" alt="Options, Control Explanation">
+  <img src="docs/shot-1.jpg" width="24%" alt="The opening movie: the Senate">
+  <img src="docs/shot-2.jpg" width="24%" alt="The opening movie: the people of Rome">
+  <img src="docs/shot-3.jpg" width="24%" alt="The opening movie: the crowd in the arena">
+  <img src="docs/shot-4.jpg" width="24%" alt="Chapter 1: The Wickedness of Men">
 </p>
 <p align="center">
-  <img src="docs/movie-city-arena.png" width="24%" alt="Movie: the crowd in the City Arena">
-  <img src="docs/movie-gladiator.png" width="24%" alt="Movie: a gladiator">
-  <img src="docs/first-arena-lanista.png" width="24%" alt="The first arena: the trainer's briefing">
-  <img src="docs/first-arena.png" width="24%" alt="The first arena: Agrippa in front of the trainer and the gate">
+  <img src="docs/shot-5.jpg" width="24%" alt="A scene in the Roman camp: a wolf">
+  <img src="docs/shot-6.jpg" width="24%" alt="A scene in the Roman camp: a centurion">
+  <img src="docs/shot-7.jpg" width="24%" alt="A scene in the Roman camp: the soldiers by the fire">
+  <img src="docs/shot-8.jpg" width="24%" alt="Playing in the Roman camp, in 16:9">
+</p>
+
+## The launcher
+
+`ShadowOfRome.exe` starts the game. **Play** starts it: the first time, it asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Arrows and Enter, or the mouse.
+
+<p align="center">
+  <img src="docs/launcher.png" width="70%" alt="The launcher: Play, Options, Graphics, Controls, Mods and Quit, the line that says the game still needs full testing, and the version number">
+</p>
+
+- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x to 4x the PS2's), SHARPNESS (off, low, high), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC and OSD.
+- **OPTIONS:** the game in a window or in full screen. F11 switches while you play.
+- **CONTROLS**, for the controller: swap ✕ and ○, and invert the camera (the right stick) up and down or left and right. The keyboard keys are in [Keys](#keys).
+- **MODS:** texture packs on or off, and a button that opens their folder.
+
+Each page saves only with **APPLY**; BACK leaves without saving.
+
+<p align="center">
+  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page, with the default choices: the video card with DirectX 11 at 3x, sharpness low, 4:3, 60 frames per second, VSYNC on, OSD off">
 </p>
 <p align="center">
-  <img src="docs/first-arena-walking.png" width="24%" alt="The first arena: Agrippa after walking, with the City Arena sign">
-  <img src="docs/cells-guard.png" width="24%" alt="Under the arena: Agrippa and a guard">
-  <img src="docs/cells-agrippa.png" width="24%" alt="Under the arena: Agrippa">
-  <img src="docs/first-arena-fight.png" width="24%" alt="The arena: Agrippa and the gladiators fighting">
+  <img src="docs/launcher-options.png" width="32%" alt="The launcher's OPTIONS page: the game in a window or in full screen">
+  <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: swap cross and circle, invert the camera up and down, invert it left and right">
+  <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, and their folder">
 </p>
 
 ## Status
 
-**In short:** the game starts, every menu works, the movies play, and the first arena can be played at full speed in a window. My test scripts have played on into Chapter 1, as far as the Germanian Forest. Nobody has played the whole game, and most of it has only been reached by test tricks.
+**In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played it by hand through the Germanian Forest up to Chapter 3. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
 
 ### How far the game goes
+
+With the video card I have played by hand through the Germanian Forest on to Chapter 3 (Octavianus in front of the procession), with no freeze. The table says how each part was checked.
 
 | Part of the game | State | How it was checked |
 |---|---|---|
@@ -78,45 +105,45 @@ Most checks below were done by **test scripts**: small programs that press the k
 | The movies after the first arena, and the "City Arena" title card | Work | By hand, from my own save |
 | Chapter 1: the Roman camp in a forest | Can be finished | Script, with help |
 | The Forum in Rome (Octavianus), then a street | Reached by walking | Script |
-| The Germanian Forest (Agrippa) | Partly played. It froze once, after about 95 minutes. Two later runs, of 46 and 108 minutes, did not freeze | Script |
+| The Germanian Forest (Agrippa) | Played to its end, with no freeze. In a scripted test it froze once, after about 95 minutes; two later runs, of 46 and 108 minutes, did not freeze | By hand, with the video card (6 November). Script before |
 | The next areas: the fort key, the inside of the fort (053) | Played: the enemies die, and the game goes by itself to the next area (054) | Script, starting from a forced jump |
 | The fort wall (054) | Loads and runs. The enemies on the ground die, but the big door does not open: two archers on the wall are left, and the script cannot reach them | Script |
 | The two areas after it (055, 056) | Load and run | Script, each one reached by a forced jump |
 | City Arena Rounds II and III, the first Octavianus stage | Load and run | Script, with each win forced |
+| On to Chapter 3 (Octavianus in front of the procession) | Reached by playing | By hand, with the video card (6 November) |
 | The rest of the story | Not played. Of 31 later stages tried, 30 load and run | Script, each one reached by a forced ending |
-
-### What's new in 0.0.7
-
-- **A ready-made package:** download it from [Releases](../../releases), unpack it, open `ShadowOfRome.exe`, press Play and choose your `.iso` file. No WSL, no tools, no build. The game itself is the same as in 0.0.6.
-
-### What's new in 0.0.6
-
-- **Fixed: a flat grey shape on the sand near the camera, in the arenas.** It was a hole in the floor: the game draws the parts closest to the camera in a separate way, and the translated code never told it which parts needed it. Patch `0017` in [patches/README.md](patches/README.md). Checked by script on screenshots: the shape is gone, and the speed is about the same (about 1 frame per second less, because more floor is drawn).
-- **The launcher works from a fresh copy of the repository** (its build script was broken), shows its version, and says what is missing. The build now makes it by itself.
-- All the changes: [CHANGELOG.md](CHANGELOG.md).
 
 ### Tested by hand
 
 | When, which build | What I did | Result |
 |---|---|---|
 | 31 October 2026, before the speed work | From the desktop shortcut: menu, New Game, into the first arena | Works, but extremely slow |
-| 31 October 2026, after the speed work | About three minutes in the first arena with a PS4 controller: walking and fighting (the video above) | Works |
+| 31 October 2026, after the speed work | About three minutes in the first arena with a PS4 controller: walking and fighting ([one minute of it, MP4](docs/first-arena-by-hand.mp4), 9 MB, no sound, recorded before the camera fix and with the processor drawing) | Works |
 | 2 November 2026, with patch `0016` | From my own save, past the "City Arena" title card, watched the movie and played on | Works. Seen, not fixed: glitches on the floor, and the speed is not steady (short slowdowns) |
 | 0.0.6 | Not tested by hand yet | |
+| 0.0.7 | The game started from the ready-made package | Works |
+| 6 November 2026, the video card at 3x, from the launcher | Played on through the Germanian Forest up to Chapter 3 | Works, no freeze |
+| 6 November 2026, the shadows fix | The room where long dark stripes joined the characters | Fixed: the shadows look right |
+| 6 November 2026, 1.9 | 60 frames per second with VSYNC on DirectX 12 (180 Hz screen), SHARPNESS low and high, full screen | Works: smooth, sharp |
+| 6 November 2026, 1.9 in 16:9 | Played with movies and talks, before and after the sound fix | Works: the voices are now in time with the lips. The talks were shown 4:3: changed after this test, so that they stay wide |
+| 1.9 | Not tested by hand yet: 21:9, the talks shown wide, CONTROLS, texture packs, DirectX 11 and Vulkan in 1.9, 50 frames per second | Checked by script only, or not at all |
 
 ### What does not work yet
 
-- **It is not playable from start to end.** Nobody has finished the game on it, and from the Germanian Forest on, nothing has been played without forcing.
-- **A freeze in the Germanian Forest,** seen once, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory. The cause is not known. A later test spent 108 minutes in the same stage without freezing, but its script fought only in the first 15 minutes or so, and then walked back and forth.
-- **Speed:** full speed (50 frames per second) in the first arena on my PC, but some later places are slower: in the next arena, a median of 32 frames per second. The drawing runs on the processor and needs its cores: with other programs busy, the game slows down. The game's 60 Hz mode can be chosen, but it does not hold 60 yet. Moving the drawing to the graphics card has not been started.
-- **The picture:** the forests are very dark, and nobody has compared them with the real console. The glitches on the floor I saw by hand may be the grey shape fixed in 0.0.6: not checked by hand yet.
-- **The sound** was listened to by hand only on an older build. The music and the movies' sound were checked as numbers on a recording, not by ear.
-- **The launcher** has only Play and Quit.
-- **The fights** were checked by a script that fights badly, not by a good player: whether they feel right can only be judged by playing.
-- **It has run on one PC only** (Windows 11, Intel i5-8600K, 6 cores), with the keyboard and a PS4 controller.
+- **It is not playable from start to end.** Nobody has finished the game on it. I played by hand up to Chapter 3; after that, nothing has been played without forcing.
+- **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
+- **Short pauses:** in the Roman camp of Chapter 1, the game sometimes hands a picture to the video card 30 to 49 milliseconds late, and VSYNC can then lose its step for a moment. Seen in a scripted test, not fixed yet.
+- **FRAME RATE 50** in the launcher does nothing when the game's own `settings.ini` says `video=60` (see [Settings](#settings)).
+- **The wide screens:** the life bar is stretched, and 21:9 was not made for this game, so some views may show flaws. With the processor drawing only 4:3 and 16:9 can be chosen, and the 4:3 menus and scenes were not checked there.
+- **The video card part needs the Microsoft Visual C++ Redistributable** (x64), which most PCs already have. Without it the game draws on the processor, even if the launcher says video card.
+- **The sound** has not been compared with the console.
+- **The fights** were checked by a script that fights badly and by my own play, not by a good player.
+- **It has run on one PC only** (Windows 11, Intel i5-8600K with 6 cores, NVIDIA GeForce RTX 3070 Ti), with the keyboard and a PS4 controller.
 
 <details>
 <summary><b>All the test details</b></summary>
+
+The details below were written up to 0.0.7, when the processor drew the picture. The video card changes how the picture is drawn, not the game's logic.
 
 **What works**
 
@@ -164,7 +191,7 @@ Most checks below were done by **test scripts**: small programs that press the k
 
 **What does not work, or is not checked**
 
-- **60 frames per second is not steady yet.** The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needs the drawing moved to the graphics card, which has not been started.
+- **60 frames per second with the processor drawing is not steady.** (The video card, in 1.9, holds 60.) The game's own 60 Hz mode (Change video mode, the NTSC test) can be chosen and works. Two runs on the test PC: menu 60 and 60, trainer's briefing 59.9 and 57.9, first room 59 and 58, arena 43.9 and 50.9, fight 51.9 and 54.9. With the drawing switched off, every part holds about 60, so the drawing is what is missing: it runs on the processor and fills about 15 screens of pixels per frame. Steady 60 needed the drawing moved to the video card: that is 1.9.
 - **Speed needs the cores:** in the arena the drawing threads use 70-87% of their cores at 50 Hz. If other programs keep the processor busy, it will slow down. It has been measured on one PC only.
 - **The camera:** it no longer jumps in close behind the shoulder, and the first scene, the first room and the arena now show the wider view. The cause was a wrong square root in PS2Recomp (see `0010` in [patches/README.md](patches/README.md)). The same scripted test, pressing ✕ in the first room: before, the camera moved from distance 101 to 526; now from 94 to 121. A second fix (`0011`, float to integer conversion that rounded instead of truncating) removed the bars that stood in front of the view in the arena. With both fixes, short drops appear in the first room and on the way to the arena (35 to 39 frames per second for 1 to 6 seconds): the cause has not been looked for. Tested with scripted keys and compared with the old build on screenshots, not against the original game on a PS2. The same fix changes every distance the game computes this way, so enemies may behave differently too: this has not been checked one by one.
 - **Fighting is checked by a script, not by a skilled player:** a test script steers Agrippa with key presses and fights the whole First Match. Agrippa's life bar goes down when he is hit, enemies lose life and die, and weapons and shields can be picked up (seen on pictures and in the game's memory). Whether the fights feel right, and whether the timing is fair, can only be judged by someone playing. After the First Match the game used to freeze sometimes while loading the next round: garbage read as a position by the lock-on code made the wall check write outside its grid. That is fixed (see `0013` in [patches/README.md](patches/README.md)).
@@ -178,10 +205,11 @@ Most checks below were done by **test scripts**: small programs that press the k
 ### The easy way: the ready-made package
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
-2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009). A processor with 6 cores or more is best: the game needs them to run at full speed.
-3. Download `ShadowOfRome-0.0.7-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
+3. Download `ShadowOfRome-1.9-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
+6. If you like, change the picture in **GRAPHICS** first: the video card at 3x with DirectX 11 is the default.
 
 Saves and the files read from your disc stay in that folder. Close the game with the X of its window.
 
@@ -261,6 +289,10 @@ Nothing it creates is uploaded anywhere or committed to Git: `disco/`, `mappa/`,
 
 Close the game with the X of its window.
 
+#### Step 4: the video card part
+
+`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor.
+
 ### From the start to the first arena
 
 1. Press Enter, then X to choose the language, then X on Start Game.
@@ -286,6 +318,7 @@ The keyboard always works, with or without a controller connected:
 | L2 / R2 | Left Shift / Right Shift |
 | Start | Enter |
 | Select | Tab |
+| Full screen on and off | F11, or Alt+Enter |
 
 In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
 
@@ -303,6 +336,9 @@ video=60
 - The game writes this file by itself when you choose a mode in Change video mode and press Start Game. You don't need to edit it.
 - With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
 - To go back to the original behaviour, delete the file.
+- The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
+
+The launcher keeps its own choices (your disc image and the GRAPHICS, OPTIONS and MODS pages) in `launcher.ini`, next to it. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
 
 ## Made with AI
 
@@ -312,7 +348,7 @@ It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousR
 
 - a skill for PS2 game porting, written from my earlier port attempts, so the agent follows tested steps instead of guessing;
 - [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: reaching the menu took 4 planned sessions, about 15 million weighted tokens;
-- [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. It ran in my local test builds (it is not part of this repository) and caught the freeze in the Germanian Forest by itself;
+- [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. It runs in my local test builds only: its licence is not the GPL, so it is not in this repository or in the ready-made package (0.0.7 had it inside by mistake). It caught the freeze in the Germanian Forest by itself;
 - written handoff notes after every session, so each one starts from where the last one stopped.
 
 Quotient and Iris Insight are modules of [F-AGI](https://github.com/Korvonordico/f-agi), the set of tools I am building (under construction).
@@ -381,6 +417,15 @@ Added for the grey shape on the floor (0.0.6):
 
 Another example: the grey shape on the sand looked like a drawing difference, to be left for later. Writing out every primitive, the thrown-away ones too, showed it was a hole instead: the triangles of the floor near the camera were thrown away, because they reach behind the camera. The game has a separate way to draw those, and it chooses it from a flag of the vector unit that no translated instruction wrote. Setting that flag made the floor appear, and dropped the game to 4 frames per second, because the separate way uses jumps the fast vector unit code could not follow yet. Teaching it those jumps brought the speed back.
 
+Added for the video card (1.9):
+
+- a copy of everything the game sends to the graphics chip, handed to PCSX2's graphics chip in a library of its own (`sor-gs/`), with pictures saved every so many frames, so that the two drawings can be compared on the same moment;
+- a report, every 250 pictures, of how long each picture stayed on screen and of every long pause, saying whether the game handed the picture late or the video card drew it slowly (`SORGS_PACING`).
+
+Another example: long dark stripes joined the characters on the floor, and they looked like a fault of the new drawing. They were the same with the processor drawing, so the fault was in what the game sends. Writing out every drawing primitive showed the shadows' corners shifted by two places: the game sends its shadows with `sceDmaSendI`, which copies some words and skips others (interleave mode), and PS2Recomp copied them all.
+
+Another example: at 60 frames per second there were short pauses. A first cause, found in the tests, which run with the window hidden, was Windows 11 itself: it slows down the timers of a program whose window is hidden or covered, so the game's clock woke up to 15 milliseconds late. The game now asks Windows not to slow it down. The rest came from the screen: at 180 Hz each picture should stay on screen for 3 refreshes, and only about half of them did; the others stayed 2 or 4. VSYNC now keeps them even.
+
 </details>
 
 ## How it works
@@ -388,9 +433,10 @@ Another example: the grey shape on the sand looked like a drawing difference, to
 [PS2Recomp](https://github.com/ran-j/PS2Recomp) rewrites each instruction of the PS2 executable as C++. That C++ is then built for Windows together with a runtime that plays the part of the rest of the console: memory, operating system, disc reader, graphics, sound and I/O processor. The game's original code runs, translated; it is not rewritten by hand.
 
 - `pc/`: our part of the program, and the build files.
+- `sor-gs/`: the video card part, PCSX2's graphics chip in a library of its own ([sor-gs/README.md](sor-gs/README.md)).
 - `launcher/`: the launcher, `ShadowOfRome.exe` (C#, built with the compiler that ships with Windows, so nothing has to be installed for it).
 - `strumenti/` ("tools"): Python scripts that read the disc and make the function map.
-- `patches/`: our changes to PS2Recomp, each one explained in [patches/README.md](patches/README.md).
+- `patches/`: our changes to PS2Recomp, and the small change to PCSX2 for the video card part, each one explained in [patches/README.md](patches/README.md).
 - `thirdparty/PS2Recomp`: the PS2Recomp submodule, at the commit we use.
 - `scripts/`: the scripts to build and start the game.
 
@@ -402,13 +448,15 @@ Many names and comments in the code are in Italian. `pc/prova.sh` is the quick r
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
 - [FFmpeg](https://ffmpeg.org) (LGPL), the MPEG-2 decoder for the movies. It is downloaded and built by `pc/compila_ffmpeg.sh`: no part of it is in this repository.
-- [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator: the reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
+- [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator. Its graphics chip draws the picture on the video card (`sor-gs.dll`, built from its source), with its fixes for this game from its GameIndex. The reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
+- [pcsx2_patches](https://github.com/PCSX2/pcsx2_patches): the widescreen patch for this disc by sergx12, whose values the wide camera uses, and the No-Interlacing patch.
+- The libraries in the ready-made package, each under its own licence (in its `licenses` folder): SDL3, FreeType, libpng, zlib, Zstandard, LZ4, libwebp, libjpeg-turbo, PlutoSVG and PlutoVG, rapidyaml, the DirectX Shader Compiler, shaderc, and raylib in `sor.exe`.
 
 Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. This project is not connected to Capcom or Sony.
 
 ## License
 
-GPL-3.0, the same as PS2Recomp, which the built program links. See [LICENSE](LICENSE).
+GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LICENSE](LICENSE). The libraries in the ready-made package keep their own licences, in its `licenses` folder.
 
 ---
 

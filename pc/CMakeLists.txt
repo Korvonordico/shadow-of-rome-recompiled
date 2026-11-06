@@ -50,5 +50,15 @@ set_source_files_properties("${SOR_GENERATED_DIR}/register_functions.cpp" PROPER
     SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON COMPILE_OPTIONS "-O0")
 
 add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_hle.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_profilo.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_prove.cpp")
+# The monitor (a picture and a short report when the game freezes, crashes or slows down) is
+# built only into my local test builds: its licence is not the GPL, so it is not in this repository. Without
+# it, or with -DSOR_NO_MONITOR=ON (the published package), sor_monitor_off.cpp stands in and does nothing.
+option(SOR_NO_MONITOR "Build without the monitor, as the published package" OFF)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/monitor/monitor.cpp" AND NOT SOR_NO_MONITOR)
+    target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_monitor.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/monitor/monitor.cpp")
+    target_include_directories(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+else()
+    target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_monitor_off.cpp")
+endif()
 target_link_libraries(sor PRIVATE sor_generated ps2_runtime)
 target_link_options(sor PRIVATE -static -Wl,--allow-multiple-definition -Wl,-Map=sor.map)

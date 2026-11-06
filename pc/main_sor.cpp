@@ -13,6 +13,10 @@
 // stare insieme a raylib.h: qui bastano queste due dichiarazioni).
 extern "C" __declspec(dllimport) void *__stdcall GetCurrentProcess();
 extern "C" __declspec(dllimport) int __stdcall SetPriorityClass(void *processo, unsigned long classe);
+// sor: Windows 11 slows down the timers of a program whose window is hidden, covered or silent: the 1 ms clock
+// raylib asks for is then ignored, the game's clock wakes up to 15 ms late and pictures come late (small pauses).
+// The game asks not to be slowed down (ProcessPowerThrottling: full speed, its timer resolution always honoured).
+extern "C" __declspec(dllimport) int __stdcall SetProcessInformation(void *processo, int classe, void *dati, unsigned long misura);
 
 #include <atomic>
 #include <chrono>
@@ -23,6 +27,7 @@ extern "C" __declspec(dllimport) int __stdcall SetPriorityClass(void *processo, 
 #include <iostream>
 #include <string>
 #include <thread>
+void sorGpuMirrorClose(); // ps2xRuntime gs_pcsx2_mirror.cpp
 
 void sorInstallaSostituzioni(PS2Runtime &rt); // sor_hle.cpp
 void sorStampaTraccia();                       // sor_hle.cpp (con SOR_TRACCIA)
@@ -31,6 +36,72 @@ void sorProfiloScrivi();
 void sorAlzaPrioritaThread();                   // sor_prove.cpp
 void sorProveAvvia(PS2Runtime *rt);             // sor_prove.cpp (SOR_TEMPI, SOR_TELECOMANDO)
 void sorGsRapporto();                          // gs_frontend.cpp (conteggi dei disegni)
+void sorMonitorStart();                       // sor_monitor.cpp
+void sorMonitorSetRuntime(PS2Runtime *rt);
+void sorMonitorInstall(PS2Runtime &rt);
+void sorMonitorFatal(const char *reason, const char *message);
+bool sorMonitorClosedByUser();
+
+// Widescreen 16:9 (SOR_WIDESCREEN=1, from the launcher): read by the translated camera code
+// (pc/widescreen_gen.py), by the window size and by sor-gs.dll.
+bool sorWidescreenOn()
+{
+    static const bool on = [] { const char *e = std::getenv("SOR_WIDESCREEN"); return e && e[0] >= '1' && e[0] <= '3'; }();
+    return on;
+}
+
+// Widescreen 21:9 (SOR_WIDESCREEN=2): the same constants, wider (pc/widescreen_gen.py).
+bool sorUltrawideOn()
+{
+    static const bool on = [] { const char *e = std::getenv("SOR_WIDESCREEN"); return e && (e[0] == '2' || e[0] == '3'); }();
+    return on;
+}
+
+// The gameplay camera's widened constants were just read (pc/widescreen_gen.py): counted, so that the GS shows
+// the wide picture only while the game is played (gs_pcsx2_mirror.cpp, sorWideCameraRecent).
+std::atomic<unsigned> g_sorWideCamera{0};
+bool sorWideCamera()
+{
+    g_sorWideCamera.fetch_add(1, std::memory_order_relaxed);
+    return sorWidescreenOn();
+}
+
+// A view that stays 4:3 on a wide screen: the films (MPEG.cpp, classMOVIE_TASK), the pause menu and the title
+// menus (pc/widescreen_gen.py) call this. The GS shows them 4:3 and the rest wide (gs_pcsx2_mirror.cpp).
+std::atomic<unsigned> g_sorFourThree{0};
+void sorFourThree()
+{
+    g_sorFourThree.fetch_add(1, std::memory_order_relaxed);
+}
+
+// The camera makes a view (classCAMERA::make_view_mat and make_view_matF, pc/widescreen_gen.py): with no
+// sorWideCamera() in it for a quarter of a second, it is one of the game's own scenes, shown 4:3.
+std::atomic<unsigned> g_sorCameraAny{0};
+void sorCameraView()
+{
+    g_sorCameraAny.fetch_add(1, std::memory_order_relaxed);
+}
+
+// Widescreen 32:9 (SOR_WIDESCREEN=3), for super-wide monitors.
+bool sorSuperwideOn()
+{
+    static const bool on = [] { const char *e = std::getenv("SOR_WIDESCREEN"); return e && e[0] == '3'; }();
+    return on;
+}
+
+// 60 Hz (SOR_60HZ, from the launcher): the game's video mode byte to start with, 0 = leave it to the game.
+int sorVideoMode()
+{
+    static const int m = [] { const char *e = std::getenv("SOR_60HZ"); return e ? std::atoi(e) : 0; }();
+    return m;
+}
+
+// Interlacing as on the PS2 (SOR_INTERLACE=1); off by default: the picture no longer shakes half a line.
+bool sorInterlaceOn()
+{
+    static const bool on = [] { const char *e = std::getenv("SOR_INTERLACE"); return e && e[0] == '1'; }();
+    return on;
+}
 
 namespace
 {
@@ -108,6 +179,7 @@ int main(int argc, char *argv[])
         std::cerr << "uso: sor.exe <SLES_529.50> [immagine.iso] [secondi]" << std::endl;
         return 2;
     }
+    sorMonitorStart();
     sorProfiloAvvia();
     // Solo il thread del gioco (vedi ps2_runtime.cpp) e questo, che mostra le immagini, stanno sopra il normale:
     // con tutto il processo sopra il normale gli altri programmi del PC restavano fermi anche per decine di secondi.
@@ -115,6 +187,12 @@ int main(int argc, char *argv[])
     sorAlzaPrioritaThread();
     if (std::getenv("SOR_PRIORITA_ALTA"))
         SetPriorityClass(GetCurrentProcess(), 0x00008000ul); // ABOVE_NORMAL_PRIORITY_CLASS
+    {
+        // Not slowed down by Windows when hidden or silent (see SetProcessInformation above): Version 1,
+        // ControlMask EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION, StateMask 0 = neither of the two.
+        unsigned long stato[3] = {1ul, 0x1ul | 0x4ul, 0ul};
+        SetProcessInformation(GetCurrentProcess(), 4 /* ProcessPowerThrottling */, stato, sizeof(stato));
+    }
     const int secondi = argc >= 4 ? std::atoi(argv[3]) : 60;
     if (secondi > 0)
     {
@@ -132,6 +210,7 @@ int main(int argc, char *argv[])
                         std::cout << "\n[sor] tempo massimo di " << secondi << " s raggiunto: chiudo" << std::endl;
                         std::cout.flush();
                         std::cerr.flush();
+                        sorGpuMirrorClose();
                         std::_Exit(3); })
             .detach();
     }
@@ -144,10 +223,12 @@ int main(int argc, char *argv[])
     {
         PS2Runtime runtime;
         g_runtime.store(&runtime);
+        sorMonitorSetRuntime(&runtime);
         sorProveAvvia(&runtime);
         if (!runtime.initialize("Shadow of Rome"))
         {
             std::cerr << "[sor] runtime non inizializzato" << std::endl;
+            sorMonitorFatal("fatal", "the runtime did not start");
             return 1;
         }
         // Esc e' il tasto cerchio (ps2_pad.cpp): non deve chiudere la finestra.
@@ -155,6 +236,7 @@ int main(int argc, char *argv[])
         if (!runtime.loadELF(argv[1]))
         {
             std::cerr << "[sor] ELF non caricato: " << argv[1] << std::endl;
+            sorMonitorFatal("fatal", "the game file did not load");
             return 1;
         }
         // Il gioco tiene lo stack del thread principale in 0x1FF8000..0x2000000 e altri
@@ -166,6 +248,7 @@ int main(int argc, char *argv[])
         // del gioco lo metterebbe subito dopo il programma, dove il gioco tiene i suoi dati.
         runtime.pinGuestHeap(0x00010000u, 0x00080000u);
         sorInstallaSostituzioni(runtime);
+        sorMonitorInstall(runtime);
         if (argc >= 3 && argv[2][0] != '\0')
         {
             PS2Runtime::IoPaths paths = PS2Runtime::getIoPaths();
@@ -175,21 +258,27 @@ int main(int argc, char *argv[])
         }
         runtime.run();
         std::cout << "[sor] run() finito" << std::endl;
+        if (!sorMonitorClosedByUser())
+            sorMonitorFatal("stopped", "the game stopped by itself, the window was not closed");
         rapporto(-1);
         sorStampaTraccia();
         std::cout.flush();
         std::cerr.flush();
+        sorGpuMirrorClose();
         std::_Exit(0);
     }
     catch (const std::exception &e)
     {
         std::cerr << "[sor] eccezione: " << e.what() << std::endl;
+        sorMonitorFatal("fatal", e.what());
     }
     catch (...)
     {
         std::cerr << "[sor] eccezione sconosciuta" << std::endl;
+        sorMonitorFatal("fatal", "unknown C++ exception");
     }
     std::cout.flush();
     std::cerr.flush();
+    sorGpuMirrorClose();
     std::_Exit(1);
 }

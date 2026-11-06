@@ -109,3 +109,33 @@ void sorProfiloAzzera()
     std::lock_guard<std::mutex> lock(g_mutex);
     g_campioni.clear();
 }
+
+// Full screen (SOR_FULLSCREEN=1 and F11 / Alt+Enter, called from ps2_runtime.cpp): a borderless window over the
+// whole monitor, made one pixel taller than the screen. A window exactly the size of the screen is taken by the
+// driver as exclusive full screen and covers sor-gs.dll's picture (black screen); one pixel more avoids that.
+void sorSchermoIntero(void *finestra)
+{
+    static bool pieno = false;
+    static LONG_PTR stileVecchio = 0;
+    static RECT vecchio = {};
+    HWND h = static_cast<HWND>(finestra);
+    if (!h)
+        return;
+    if (!pieno)
+    {
+        stileVecchio = GetWindowLongPtrW(h, GWL_STYLE);
+        GetWindowRect(h, &vecchio);
+        MONITORINFO mi = {sizeof(mi)};
+        GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi);
+        const RECT &m = mi.rcMonitor;
+        SetWindowLongPtrW(h, GWL_STYLE, (stileVecchio & ~WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_VISIBLE);
+        SetWindowPos(h, HWND_TOP, m.left, m.top, m.right - m.left, m.bottom - m.top + 1, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    }
+    else
+    {
+        SetWindowLongPtrW(h, GWL_STYLE, stileVecchio);
+        SetWindowPos(h, nullptr, vecchio.left, vecchio.top, vecchio.right - vecchio.left, vecchio.bottom - vecchio.top,
+                     SWP_FRAMECHANGED | SWP_NOZORDER | SWP_SHOWWINDOW);
+    }
+    pieno = !pieno;
+}

@@ -1,0 +1,46 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b0c3945..b596ac3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -47,6 +47,7 @@ add_subdirectory(common)
+ 
+ # make pcsx2
+ add_subdirectory(pcsx2)
++add_subdirectory(sor-gs)
+ 
+ if(ENABLE_QT_UI)
+ 	add_subdirectory(pcsx2-qt)
+diff --git a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp b/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
+index 77a28df..0269e75 100644
+--- a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
++++ b/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
+@@ -337,9 +337,19 @@ std::string GSTextureReplacements::GetDumpFilename(const TextureName& name, u32
+ 	return ret;
+ }
+ 
++// Shadow of Rome port (sor-gs.dll): there is no VM, so no disc serial; the DLL names the game in SORGS_SERIAL.
++static std::string SorSerial()
++{
++	std::string s = VMManager::GetDiscSerial();
++	if (s.empty())
++		if (const char* e = std::getenv("SORGS_SERIAL"))
++			s = e;
++	return s;
++}
++
+ void GSTextureReplacements::Initialize()
+ {
+-	s_current_serial = VMManager::GetDiscSerial();
++	s_current_serial = SorSerial();
+ 
+ 	if (GSConfig.DumpReplaceableTextures || GSConfig.LoadTextureReplacements)
+ 		StartWorkerThread();
+@@ -349,7 +359,7 @@ void GSTextureReplacements::Initialize()
+ 
+ void GSTextureReplacements::GameChanged()
+ {
+-	std::string new_serial = VMManager::GetDiscSerial();
++	std::string new_serial = SorSerial();
+ 	if (s_current_serial == new_serial)
+ 		return;
+ 

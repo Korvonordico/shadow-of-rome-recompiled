@@ -30,6 +30,7 @@
 extern std::atomic<uint64_t> g_sorContaPad;     // Stubs/Pad.cpp
 extern std::atomic<uint64_t> g_sorContaPresent; // ps2_runtime.cpp
 extern std::atomic<bool> g_sorFotoSubito;       // ps2_runtime.cpp
+void sorGpuMirrorClose();                       // gs_pcsx2_mirror.cpp
 extern uint64_t g_sorGsTipi[10], g_sorGsTipiUs[10], g_sorTrasferimenti[2], g_sorEeFermoUs, g_sorEeRitmoUs;
 extern uint64_t g_sorBandaAttesa[8], g_sorBandaVuoto[8], g_sorBandaPixel[8];
 extern uint64_t g_sorVu1Cicli, g_sorVu1Run, g_sorVu1Lenti, g_sorGsPrim, g_sorGsBarriere, g_sorGsSvuota, g_sorGsAttesaUs, g_sorGsVblankUs, g_sorMpg;
@@ -44,6 +45,7 @@ void sorAlzaPrioritaThread()
 }
 void sorProfiloAzzera();                        // sor_profilo.cpp
 void sorProfiloScrivi();
+void sorMonitorCommand(const char *line);       // sor_monitor.cpp
 
 extern std::atomic<bool> g_sorGsTuttiChiesto; // gs_bande.cpp
 namespace
@@ -159,10 +161,13 @@ namespace
                 {
                     sorProfiloScrivi();
                 }
+                else if (campi >= 1 && (!std::strcmp(cmd, "monitor") || !std::strcmp(cmd, "bbtest")))
+                    sorMonitorCommand(riga.c_str());
                 else if (campi >= 1 && !std::strcmp(cmd, "esci"))
                 {
                     std::printf("[sor] telecomando: esci\n");
                     std::fflush(stdout);
+                    sorGpuMirrorClose();
                     std::_Exit(0);
                 }
             }

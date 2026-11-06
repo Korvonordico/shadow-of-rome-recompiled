@@ -516,8 +516,13 @@ namespace
         const int scelta = rdram[kByteFrequenza];
         if ((scelta != 1 && scelta != 2) || scelta == g_videoNelFile || (scelta == 2 && g_videoNelFile == 0))
             return;
+        std::string monitorAltre, monitorRiga; // monitor: keeps the other settings of the file (the monitor's lines)
+        for (std::ifstream monitorVecchio(fileImpostazioni()); std::getline(monitorVecchio, monitorRiga);) // monitor
+            if (monitorRiga.rfind("video=", 0) != 0) // monitor
+                monitorAltre += monitorRiga + "\n"; // monitor
         std::ofstream f(fileImpostazioni(), std::ios::trunc);
         f << "video=" << (scelta == 1 ? 60 : 50) << "\n";
+        f << monitorAltre; // monitor
         std::printf("[sor] impostazioni: scelta ricordata, %d Hz\n", scelta == 1 ? 60 : 50);
         std::fflush(stdout);
     }
