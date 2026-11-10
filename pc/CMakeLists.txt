@@ -51,13 +51,25 @@ target_precompile_headers(sor_generated PRIVATE
 set_source_files_properties("${SOR_GENERATED_DIR}/register_functions.cpp" PROPERTIES
     SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON COMPILE_OPTIONS "-O0")
 
+# SoundTouch 2.4.1 (Olli Parviainen, LGPL-2.1: pc/soundtouch/COPYING.TXT), the time stretcher PCSX2 uses too, copied
+# unchanged from PCSX2's 3rdparty/soundtouch and built with PCSX2's settings. The smooth audio (sor_audio.cpp) plays
+# the sound through it.
+file(GLOB soundtouch_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/soundtouch/source/SoundTouch/*.cpp")
+add_library(soundtouch STATIC ${soundtouch_sources})
+target_include_directories(soundtouch PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/soundtouch/soundtouch")
+target_compile_definitions(soundtouch PUBLIC SOUNDTOUCH_FLOAT_SAMPLES ST_NO_EXCEPTION_HANDLING)
+set_target_properties(soundtouch PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_compile_options(soundtouch PRIVATE -O3 -ffast-math)
+
 add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_hle.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_profilo.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/sor_prove.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_tasti.cpp"    # the keyboard and controller mapping (launcher: CONTROLS > KEYBOARD / CONTROLLER), read by ps2_pad.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_mouse.cpp"    # mouse look (launcher: CONTROLS > MOUSE LOOK), the pointer, the picture after Alt+Tab
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_film_hd.cpp"  # HD replacement films from the mods folder (a mod: no film is shipped)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_trucchi.cpp"  # debug cheats, only with SOR_CHEATS (the launcher's hidden DEBUG page)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_camera.cpp"   # debug free camera, only with SOR_FREECAM=1 (same page)
-    "${CMAKE_CURRENT_SOURCE_DIR}/sor_vignetta.cpp")  # screen veil off, only with SOR_NO_VIGNETTE=1 (GRAPHICS page, VIGNETTE)
+    "${CMAKE_CURRENT_SOURCE_DIR}/sor_vignetta.cpp"   # screen veil off, only with SOR_NO_VIGNETTE=1 (GRAPHICS page, VIGNETTE)
+    "${CMAKE_CURRENT_SOURCE_DIR}/sor_vu1.cpp"        # SOR_VU1: PCSX2's microVU from sor-vu.dll (loaded at run time), or both VU1s compared
+    "${CMAKE_CURRENT_SOURCE_DIR}/sor_audio.cpp")     # smooth audio through SoundTouch (OPTIONS page, SMOOTH AUDIO; SOR_AUDIO_STRETCH=0 = off)
 # The black box (Iris Insight: a picture and a short report when the game freezes, crashes or slows down) is
 # built only into my local test builds: its licence is not the GPL, so it is not in this repository. Without
 # it, or with -DSOR_NO_BLACKBOX=ON (the published package), sor_blackbox_off.cpp stands in and does nothing.
@@ -70,7 +82,7 @@ else()
 endif()
 # ffmpeg: headers and libraries for sor_film_hd.cpp. user32/gdi32 come from the toolchain's defaults and raylib: named
 # here they would come before raylib, and Windows' CloseWindow would win over raylib's (lld warns "duplicate symbol").
-target_link_libraries(sor PRIVATE sor_generated ps2_runtime ffmpeg)
+target_link_libraries(sor PRIVATE sor_generated ps2_runtime ffmpeg soundtouch)
 # Engine panel (F12, only with SOR_DEBUG_PANEL=1): PS2Recomp's "Runtime Debugger", ImGui drawn with raylib.
 if(PS2X_ENABLE_DEBUG_UI AND TARGET rlImGui)
     target_sources(sor PRIVATE "${SOR_PS2RECOMP}/ps2xRuntime/src/lib/ps2_debug_panel.cpp")

@@ -45,6 +45,7 @@ void sorProfiloScrivi();
 void sorAlzaPrioritaThread();                   // sor_prove.cpp
 void sorProveAvvia(PS2Runtime *rt);             // sor_prove.cpp (SOR_TEMPI, SOR_TELECOMANDO)
 void sorGsRapporto();                          // gs_frontend.cpp (conteggi dei disegni)
+void sorVu1Installa(PS2Memory &memoria);        // sor_vu1.cpp (SOR_VU1: PCSX2's microVU, or both VU1s compared)
 void sorBlackboxStart();                       // sor_blackbox.cpp
 void sorBlackboxSetRuntime(PS2Runtime *rt);
 void sorBlackboxInstall(PS2Runtime &rt);
@@ -96,6 +97,23 @@ std::atomic<unsigned> g_sorCameraAny{0};
 void sorCameraView()
 {
     g_sorCameraAny.fetch_add(1, std::memory_order_relaxed);
+}
+
+// FIELD OF VIEW (SOR_FOV=<percent>, from the launcher's GRAPHICS > FIELD OF VIEW; the author, 10/11/2026): the
+// gameplay camera's view that much wider (100 = as on the PS2, at most 150). Used by the translated code
+// (pc/widescreen_gen.py): the camera's screen distance in classCAMERA::make_view_mat (camera+0x3C, which makes both
+// the view and the clip matrices, so the edges are clipped for the wider view) and the area's screen distance in
+// classAREA::area_init (224 / tan) are multiplied by this (100 / percent). make_view_matF, used by the game's own
+// scenes, keeps the original view, as the widescreen does.
+float sorFovScale()
+{
+    static const float k = []
+    {
+        const char *e = std::getenv("SOR_FOV");
+        const int p = e ? std::atoi(e) : 100;
+        return p > 100 && p <= 150 ? 100.0f / static_cast<float>(p) : 1.0f;
+    }();
+    return k;
 }
 
 // Widescreen 32:9 (SOR_WIDESCREEN=3), for super-wide monitors.
@@ -249,6 +267,9 @@ int main(int argc, char *argv[])
         PS2DebugPanel debugPanel; // before runtime: the runtime's destructor may still call its shutdown
 #endif
         PS2Runtime runtime;
+        // SOR_VU1 (launcher: CHEATS AND TOOLS FOR TESTS > VU1 ENGINE): PCSX2's microVU instead of our VU1, or both
+        // compared (pc/sor_vu1.cpp). Before runtime.initialize(): VU1 memory may be sor-vu.dll's.
+        sorVu1Installa(runtime.memory());
         g_runtime.store(&runtime);
         sorBlackboxSetRuntime(&runtime);
         sorProveAvvia(&runtime);

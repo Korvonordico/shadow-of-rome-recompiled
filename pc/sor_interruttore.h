@@ -1,6 +1,6 @@
 // Shadow of Rome PC port - TOGGLE: one PS2 button held down with one press (the launcher's CONTROLS > TOGGLE).
 //
-// the author, 9/11/2026: "a key you click once and it counts as held", to stay crouched without
+// the author, 9/11/2026: "il tasto che lo clicchi una volta e viene considerato premuto", to stay crouched without
 // holding the key. One press holds the button down, the next press lets it go.
 //
 // pc/sor_tasti.cpp (sorTastiLeggi) runs it on the final buttons, after the keyboard, the mouse buttons and the

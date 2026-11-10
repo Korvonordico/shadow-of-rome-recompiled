@@ -26,6 +26,8 @@ per_thread = {}
 cur = None
 for l in open(sys.argv[1]):
     p = l.split()
+    if not p or p[0] == 'module':
+        continue
     if p[0] == 'base':
         base = int(p[1], 16)
     elif p[0] == 'thread':

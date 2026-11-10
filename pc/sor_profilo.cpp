@@ -1,6 +1,10 @@
 // Profilo a campioni (solo per le prove): con SOR_PROFILO=<file> un thread ferma per un
 // istante tutti gli altri ogni 2 ms e annota dove sono. sorProfiloScrivi() scrive il file;
 // strumenti/profilo.py lo legge insieme a _build/sor.map.
+// Light mode (10/11/2026, with SOR_TEMPI and no SOR_PROFILO: launcher SPEED TESTS > TIMINGS): only the 3 threads that
+// used the most CPU in the last second (at least 25%), stopped for an instant every 2 ms, and the profile written by
+// itself every 10 s to logs/profile-last.txt, with the loaded modules (code in the DLLs) at the top. To find what
+// the game's busiest thread (about 98% of a core in heavy scenes) spends its time on.
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -8,15 +12,30 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <thread>
 
+void scriviSu(const char *nome);
 namespace
 {
     std::mutex g_mutex;
     std::map<DWORD, std::map<uint64_t, uint32_t>> g_campioni;
+    // light mode: a sample outside sor.exe (Windows, the C library, a DLL) is also counted at the first return
+    // address into sor.exe found on its stack, to see which part of the game was waiting or calling there.
+    std::map<DWORD, std::map<uint64_t, uint32_t>> g_chiamanti;
     std::atomic<bool> g_acceso{false};
+    bool g_leggero = false;
+
+    uint64_t cpuThread(HANDLE h)
+    {
+        FILETIME a, b, k, u;
+        if (!GetThreadTimes(h, &a, &b, &k, &u))
+            return 0;
+        return ((static_cast<uint64_t>(k.dwHighDateTime) << 32) | k.dwLowDateTime) +
+               ((static_cast<uint64_t>(u.dwHighDateTime) << 32) | u.dwLowDateTime);
+    }
 
     struct Bersaglio
     {
@@ -24,12 +43,23 @@ namespace
         HANDLE h;
     };
 
+    uint64_t g_exeDa = 0, g_exeA = 0; // sor.exe in memory
     void giro()
     {
+        {
+            const auto *base = reinterpret_cast<const uint8_t *>(GetModuleHandleA(nullptr));
+            const auto *dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(base);
+            const auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(base + dos->e_lfanew);
+            g_exeDa = reinterpret_cast<uint64_t>(base);
+            g_exeA = g_exeDa + nt->OptionalHeader.SizeOfImage;
+        }
         const DWORD io = GetCurrentThreadId();
         const DWORD pid = GetCurrentProcessId();
-        std::map<DWORD, HANDLE> bersagli;
-        DWORD ultimoElenco = 0;
+        std::map<DWORD, HANDLE> bersagli, tutti;
+        std::map<DWORD, uint64_t> cpuPrima;
+        DWORD ultimoElenco = 0, ultimoScritto = GetTickCount();
+        if (g_leggero)
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
         while (g_acceso.load())
         {
             // L'istantanea di sistema e' lenta: l'elenco dei thread si aggiorna una volta al secondo.
@@ -45,14 +75,41 @@ namespace
                     {
                         do
                         {
-                            if (te.th32OwnerProcessID != pid || te.th32ThreadID == io || bersagli.count(te.th32ThreadID))
+                            if (te.th32OwnerProcessID != pid || te.th32ThreadID == io || tutti.count(te.th32ThreadID))
                                 continue;
                             if (HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID))
-                                bersagli[te.th32ThreadID] = h;
+                                tutti[te.th32ThreadID] = h;
                         } while (Thread32Next(snap, &te));
                     }
                     CloseHandle(snap);
                 }
+                if (!g_leggero)
+                    bersagli = tutti;
+                else
+                {
+                    // the 3 threads that used the most CPU in the last second, at least 25% of a core
+                    std::multimap<uint64_t, DWORD, std::greater<uint64_t>> uso;
+                    for (const auto &b : tutti)
+                    {
+                        const uint64_t c = cpuThread(b.second);
+                        const auto p = cpuPrima.find(b.first);
+                        if (p != cpuPrima.end() && c > p->second)
+                            uso.emplace(c - p->second, b.first);
+                        cpuPrima[b.first] = c;
+                    }
+                    bersagli.clear();
+                    for (const auto &u : uso)
+                    {
+                        if (bersagli.size() >= 3 || u.first < 2500000) // 100 ns units: 250 ms in a second
+                            break;
+                        bersagli[u.second] = tutti[u.second];
+                    }
+                }
+            }
+            if (g_leggero && GetTickCount() - ultimoScritto > 10000)
+            {
+                ultimoScritto = GetTickCount();
+                scriviSu("logs/profile-last.txt");
             }
             for (const auto &b : bersagli)
             {
@@ -61,6 +118,20 @@ namespace
                     CONTEXT c{};
                     c.ContextFlags = CONTEXT_CONTROL;
                     const bool ok = GetThreadContext(b.second, &c) != 0;
+                    // While it is stopped: only a raw read of its stack (no loader, no allocation).
+                    uint64_t chiamante = 0;
+                    if (ok && g_leggero && (c.Rip < g_exeDa || c.Rip >= g_exeA))
+                    {
+                        uint64_t pila[256];
+                        SIZE_T letti = 0;
+                        ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<LPCVOID>(c.Rsp), pila, sizeof(pila), &letti);
+                        for (SIZE_T i = 0; i < letti / 8; ++i)
+                            if (pila[i] >= g_exeDa && pila[i] < g_exeA)
+                            {
+                                chiamante = pila[i];
+                                break;
+                            }
+                    }
                     ResumeThread(b.second);
                     // Solo dopo aver fatto ripartire il thread: se e' fermo mentre tiene il blocco
                     // della memoria, allocare qui bloccherebbe tutto il programma.
@@ -68,10 +139,12 @@ namespace
                     {
                         std::lock_guard<std::mutex> lock(g_mutex);
                         ++g_campioni[b.first][c.Rip];
+                        if (chiamante)
+                            ++g_chiamanti[b.first][chiamante];
                     }
                 }
             }
-            Sleep(1);
+            Sleep(g_leggero ? 2 : 1);
         }
     }
 }
@@ -79,24 +152,48 @@ namespace
 void sorProfiloAvvia()
 {
     if (!std::getenv("SOR_PROFILO"))
-        return;
+    {
+        if (!std::getenv("SOR_TEMPI"))
+            return;
+        g_leggero = true;
+    }
     g_acceso.store(true);
     std::thread(giro).detach();
 }
 
 void sorProfiloScrivi()
 {
-    const char *nome = std::getenv("SOR_PROFILO");
-    if (!nome)
-        return;
+    if (const char *nome = std::getenv("SOR_PROFILO"))
+        scriviSu(nome);
+}
+void scriviSu(const char *nome)
+{
     FILE *f = std::fopen(nome, "w");
     if (!f)
         return;
     std::fprintf(f, "base %llx\n", (unsigned long long)(uintptr_t)GetModuleHandleA(nullptr));
+    // the loaded modules: code of the DLLs (sor-gs.dll, sor-vu.dll...) is read with their base and size
+    HANDLE snapM = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+    if (snapM != INVALID_HANDLE_VALUE)
+    {
+        MODULEENTRY32W me{};
+        me.dwSize = sizeof(me);
+        if (Module32FirstW(snapM, &me))
+            do
+                std::fprintf(f, "module %ls %llx %lx\n", me.szModule, (unsigned long long)(uintptr_t)me.modBaseAddr, (unsigned long)me.modBaseSize);
+            while (Module32NextW(snapM, &me));
+        CloseHandle(snapM);
+    }
     std::lock_guard<std::mutex> lock(g_mutex);
     for (const auto &t : g_campioni)
     {
         std::fprintf(f, "thread %lu\n", (unsigned long)t.first);
+        for (const auto &c : t.second)
+            std::fprintf(f, "%llx %u\n", (unsigned long long)c.first, c.second);
+    }
+    for (const auto &t : g_chiamanti)
+    {
+        std::fprintf(f, "thread %lu-outside-sor.exe-by-caller\n", (unsigned long)t.first);
         for (const auto &c : t.second)
             std::fprintf(f, "%llx %u\n", (unsigned long long)c.first, c.second);
     }
@@ -108,6 +205,7 @@ void sorProfiloAzzera()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_campioni.clear();
+    g_chiamanti.clear();
 }
 
 // Engine panel (SOR_DEBUG_PANEL=1, F12; pc/main_sor.cpp): with the video card picture (graphics=gpu) sor-gs.dll draws

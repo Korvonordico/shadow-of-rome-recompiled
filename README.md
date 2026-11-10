@@ -6,7 +6,7 @@
 
 <p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. The video card draws it: up to 8 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9, with the mouse and every key your own.</p>
 
-<p align="center">Version 2.5 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.6 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
@@ -27,29 +27,18 @@ This is an experiment. I can't promise I'll finish it, for personal reasons, and
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
-## What's new in 2.5
+## What's new in 2.6
 
-- **Change every key and button:** the launcher's CONTROLS has a KEYBOARD page and a CONTROLLER page. Choose a row and press the new key; mouse buttons and the wheel can be used too.
-- **TOGGLE:** one button can be held down with one press and let go with the next, for example to stay crouched without holding the key (CONTROLS, TOGGLE; off at first).
-- **Play with the mouse:** the mouse turns the camera directly, like in a PC game, and the camera stays where you leave it. MOUSE SPEED and MOUSE Y in CONTROLS.
-- **The movies stay in time with their sound** at 60 frames per second, to the end, and **Start skips every movie**, also the first time you see it. Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report.
-- **Wide screens:** only the movies stay 4:3 now. The menus, the pause menu and the game's own scenes fill the screen, stretched.
-- **VIGNETTE:** the grain and haze the game puts over the picture can be turned off. Off by default.
-- **Smoother edges:** ANTIALIASING (FXAA, on by default) and RESOLUTION up to 6x and 8x, which draws the game larger and shrinks it to your screen. Both work with DirectX 11, DirectX 12 and Vulkan. Thanks to [@n0l4n666](https://github.com/n0l4n666) for asking.
-- **Music and effects volume** in OPTIONS (BGM VOLUME, SE VOLUME), the same values as in the game's own options.
-- **A DEBUG page** in OPTIONS, for testing: invincible, all weapons, one hit kills, money, unlock everything, no movies, a free camera (F8), the polygons drawn as wires (F7, DirectX 11 only) and the engine panel (F12). **Use a separate save:** some of them change it for good.
-- **A new launcher:** a new look with Rome in the background, menu sounds, falling ash (both can be turned off), UPDATES to check for a newer version, and error messages that say what to do.
-- **New first-time settings:** DirectX 12 at 4x with sharpness high and FXAA, 16:9, 60 frames per second, full screen, the mouse turning the camera, and new standard keys (see [Keys](#keys)). Your own choices stay as they are.
-- **A log of each game** in the `logs` folder, with your Windows user name taken out. If you report a problem, attach `logs\run-1.txt`.
-- **A black box** for bug reports: when the game freezes, crashes, shows a black screen or slows down, it saves the last pictures and a short report in the `blackbox` folder. F9 saves one by hand. If you report a problem, attach the newest folder too.
-- **Fixed:** after Alt+Tab the picture stayed black until the window was moved.
+- **Smoother play at 60 frames per second.** The PS2's VU1 programs, which turn the models into triangles, now run in PCSX2's recompiler (microVU), through the kzvu library of the [Killzone port](https://github.com/drakolordx7/KillzoneRecomp): 2.7 times faster than before. Compared program by program on 389,737 programs: no difference in the pictures.
+- **Fewer stutters:** the pictures keep in step with the screen without waiting one refresh too many, G-SYNC and FreeSync screens are recognised by themselves, and the video card's effects are made at the start instead of in the middle of play. In my tests on a FreeSync screen, 98 to 99% of the pictures came on time.
+- **FIELD OF VIEW** (GRAPHICS): the playing camera sees wider, up to +30%. The movies and the game's own scenes stay as they are.
+- **SMOOTH AUDIO** (OPTIONS): when the game is late, the sound stretches a little instead of crackling, with SoundTouch. The sound no longer slows down in the pause menu.
+- **Crouching (L2), the mouse turns the view** as when standing.
+- **A sharper picture:** a soft double outline seen at 4x and 8x on the characters and on far trees is gone (UPSCALE FIX "special", in SPEED TESTS).
+- **Running in a diagonal** with a controller no longer turns into a slow walk. Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report.
+- **The OSD now shows** the frames a second and the video card's statistics (it never did, 2.5 included).
 
-<p align="center">
-  <img src="docs/compare-wide.svg" width="100%" alt="The same moment in 4:3 on the left and in 21:9 on the right, with more of the camp at the sides">
-</p>
-<p align="center"><sub>4:3 on the left, 21:9 on the right: the same moment, with more of the camp at the sides. Real pictures from this port; the line moves by itself.</sub></p>
-
-All the changes: [CHANGELOG.md](CHANGELOG.md).
+All the details, and what came in 2.5: [CHANGELOG](CHANGELOG.md).
 
 ## Screenshots
 
@@ -77,13 +66,13 @@ In the order you meet them in the game, drawn by the video card at 4x in 16:9: t
 
 `ShadowOfRome.exe` starts the game. **Play** starts it: the first time, it asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Arrows and Enter, or the mouse.
 
-- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD and VIGNETTE.
-- **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, MENU SOUNDS, BACKGROUND (the falling ash), UPDATES and DEBUG.
+- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD, VIGNETTE and FIELD OF VIEW (the playing camera wider: +10%, +20% or +30%).
+- **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, MENU SOUNDS, SMOOTH AUDIO (when the game slows down, the sound stretches a little instead of crackling), BACKGROUND (the falling ash), UPDATES, DEBUG and SPEED TESTS (the VU1 engine, TIMINGS for the log, and UPSCALE FIX, PCSX2's other fixes for the edges of the picture; leave TIMINGS off to play).
 - **CONTROLS:** for the controller, swap ✕ and ○ and invert the camera; for the mouse, MOUSE LOOK, MOUSE SPEED and MOUSE Y; TOGGLE, to hold one button down with one press and let it go with the next; and the KEYBOARD and CONTROLLER pages, to change every key and button (see [Keys](#keys)).
 - **MODS:** texture packs on or off, and a button that opens their folder.
 - **DEBUG** (in OPTIONS), for testing: see [Keys](#keys). Use a separate save.
 
-The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, full screen, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
+The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, FIELD OF VIEW +30%, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), in a window, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
 
 Each page saves only with **APPLY**; BACK leaves without saving.
 
@@ -102,9 +91,25 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 
 ## Status
 
-**In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played it by hand through the Germanian Forest up to Chapter 3. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
+**In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played Chapter 1 by hand, from the start to its end. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
+
+### What was tested in 2.6
+
+| What | By hand | Script or picture only | Not tested yet |
+|---|---|---|---|
+| PCSX2's VU1 against the old one, program by program (389,737 programs, no difference) | | ✅ | |
+| 60 frames per second with VSYNC, DirectX 12 at 8x, FreeSync screen (180 Hz): 98 to 99% of the pictures on time, read from the log | ✅ | | |
+| The effects made at the start: none made in the middle of play | ✅ | | |
+| FIELD OF VIEW at +30% | ✅ | | |
+| SMOOTH AUDIO, and the sound in the pause menu | ✅ | | |
+| Running in a diagonal with a controller (better; my own controller is not reliable) | ✅ | | |
+| Crouching (L2): the mouse turns the view in every direction | ✅ | | |
+| UPSCALE FIX "special" at 4x and 8x: no double outline on the characters and on far trees | ✅ | | |
+| The whole game in 2.6, chapter by chapter (see below) | 🟡 | | |
+| A processor without AVX2 (the old VU1 by itself), a G-SYNC screen, a screen without G-SYNC or FreeSync, DirectX 11 and Vulkan in 2.6 | | | ⬜ |
+| The final 2.6 package, unpacked into an empty folder | ✅ | | |
 
 ### What was tested in 2.5
 
@@ -142,14 +147,14 @@ The game has four chapters. I will play them one by one and update this table.
 <!-- Update when a chapter is played: ✅ played by hand to the end, 🟡 reached or partly played, ⬜ not tested yet -->
 | Chapter | State | Notes |
 |---|:---:|---|
-| 1. The Wickedness of Men | ✅ | Played by hand to the end, no problems |
-| 2. Baptism by Fire | ✅ | Played by hand to the end, no problems |
-| 3. Wrath of the Gods | ✅ | Played by hand to the end, no problems |
-| 4. Restoration to Glory | 🟡 | Being played. In the forest where you sneak past the guards, the water does not look right yet |
+| 1. The Wickedness of Men | ✅ | Played by hand to the end in 2.6 (in 2.5 up to the Germanian Forest), no problems except the water in the Germanian Forest (see Known problems) |
+| 2. Baptism by Fire | ⬜ | Not played by hand yet |
+| 3. Wrath of the Gods | ⬜ | Not played by hand yet |
+| 4. Restoration to Glory | ⬜ | Not played by hand yet |
 
 ### How far the game goes
 
-With the video card I have played by hand through the Germanian Forest on to Chapter 3 (Octavianus in front of the procession), with no freeze. The table says how each part was checked.
+With the video card I have played by hand through the Germanian Forest on to Octavianus in front of the procession (6 November), and in 2.6 the whole of Chapter 1, with no freeze. The table says how each part was checked.
 
 | Part of the game | State | How it was checked |
 |---|---|---|
@@ -165,7 +170,7 @@ With the video card I have played by hand through the Germanian Forest on to Cha
 | The fort wall (054) | Loads and runs. The enemies on the ground die, but the big door does not open: two archers on the wall are left, and the script cannot reach them | Script |
 | The two areas after it (055, 056) | Load and run | Script, each one reached by a forced jump |
 | City Arena Rounds II and III, the first Octavianus stage | Load and run | Script, with each win forced |
-| On to Chapter 3 (Octavianus in front of the procession) | Reached by playing | By hand, with the video card (6 November) |
+| On to Octavianus in front of the procession | Reached by playing | By hand, with the video card (6 November) |
 | The rest of the story | Not played. Of 31 later stages tried, 30 load and run | Script, each one reached by a forced ending |
 
 ### Tested by hand
@@ -177,21 +182,22 @@ With the video card I have played by hand through the Germanian Forest on to Cha
 | 2 November 2026, with patch `0016` | From my own save, past the "City Arena" title card, watched the movie and played on | Works. Seen, not fixed: glitches on the floor, and the speed is not steady (short slowdowns) |
 | 0.0.6 | Not tested by hand yet | |
 | 0.0.7 | The game started from the ready-made package | Works |
-| 6 November 2026, the video card at 3x, from the launcher | Played on through the Germanian Forest up to Chapter 3 | Works, no freeze |
+| 6 November 2026, the video card at 3x, from the launcher | Played on through the Germanian Forest up to Octavianus in front of the procession | Works, no freeze |
 | 6 November 2026, the shadows fix | The room where long dark stripes joined the characters | Fixed: the shadows look right |
 | 6 November 2026, 1.9 | 60 frames per second with VSYNC on DirectX 12 (180 Hz screen), SHARPNESS low and high, full screen | Works: smooth, sharp |
 | 6 November 2026, 1.9 in 16:9 | Played with movies and talks, before and after the sound fix | Works: the voices are now in time with the lips. The talks were shown 4:3: changed after this test, so that they stay wide |
 | 1.9 | Not tested by hand yet: 21:9, the talks shown wide, CONTROLS, texture packs, DirectX 11 and Vulkan in 1.9, 50 frames per second | Checked by script only, or not at all |
 | 9 November 2026, 2.5 | Long movies at 60 frames per second to the end (180 Hz screen), Start on story movies; changing keys, buttons and mouse buttons; the mouse camera and the free camera; every DEBUG option; VIGNETTE off; menus and movies in 16:9 and 21:9; BGM and SE VOLUME; Alt+Tab | Works |
-| 10 November 2026, 2.5 | TOGGLE; the final package unpacked into an empty folder; chapters 1 to 3 | Works. In chapter 4 the water in the forest shows a blurred, slightly magnified copy of the screen instead of the forest's reflection (see Known problems) |
+| 10 November 2026, 2.5 | TOGGLE; the final package unpacked into an empty folder; Chapter 1 up to the Germanian Forest | Works. In the Germanian Forest the water shows a blurred, slightly magnified copy of the screen instead of the forest's reflection (see Known problems) |
 | 2.5 | Not tested by hand yet: the first start on another PC with the new default settings | |
+| 10 November 2026, 2.6 | PCSX2's VU1, 60 frames per second on a FreeSync screen, FIELD OF VIEW +30%, SMOOTH AUDIO, UPSCALE FIX "special", the mouse while crouching, the final package unpacked into an empty folder; Chapter 1 to the end, with the DEBUG cheats and the highest settings: DirectX 12 at 8x, 21:9, sharpness high, FXAA, VSYNC, FIELD OF VIEW +30% | Works; the water in the Germanian Forest is still wrong |
 
 ### What does not work yet
 
-- **It is not playable from start to end.** Nobody has finished the game on it. I played by hand up to Chapter 3; after that, nothing has been played without forcing.
-- **The water in chapter 4 (the forest, the stealth part)** shows a blurred, slightly magnified copy of the screen, and not the forest reflected. It is the same with the video card and the processor, at 1x and 4x, in 4:3 and 16:9. The game's drawing commands were captured (F3) and look consistent: it is not known yet whether the original game shows a real reflection there.
+- **It is not playable from start to end.** Nobody has finished the game on it. I played Chapter 1 by hand to its end; after that, nothing has been played without forcing.
+- **The water in the Germanian Forest (Chapter 1, the stealth part)** shows a blurred, slightly magnified copy of the screen, and not the forest reflected. It is the same with the video card and the processor, at 1x and 4x, in 4:3 and 16:9. The game's drawing commands were captured (F3) and look consistent: it is not known yet whether the original game shows a real reflection there.
 - **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
-- **Short pauses:** in the Roman camp of Chapter 1, the game sometimes hands a picture to the video card 30 to 49 milliseconds late, and VSYNC can then lose its step for a moment. Seen in a scripted test, not fixed yet.
+- **Short pauses:** a picture can still come late at the start of a scene (when the video card gets new textures), while the game loads, and rarely in play. In my tests with 2.6, 98 to 99% of the pictures came on time.
 - **FRAME RATE 50** in the launcher does nothing when the game's own `settings.ini` says `video=60` (see [Settings](#settings)).
 - **The wide screens:** the menus, the pause menu, the game's own scenes and the life bar are stretched (only the movies keep 4:3), and 21:9 was not made for this game, so some views may show flaws. With the processor drawing only 4:3 and 16:9 can be chosen, and the 4:3 menus and scenes were not checked there.
 - **The video card part needs the Microsoft Visual C++ Redistributable** (x64), which most PCs already have. Without it the game draws on the processor, even if the launcher says video card.
@@ -350,7 +356,7 @@ Close the game with the X of its window.
 
 #### Step 4: the video card part
 
-`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor.
+`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor. `sor-vu.dll` (PCSX2's VU1, faster) comes from the same package, or is built with `pc/sorvu/build.bat` against the same PCSX2 checkout; without it the game uses its own, slower VU1.
 
 ### From the start to the first arena
 
@@ -533,10 +539,12 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
 - [FFmpeg](https://ffmpeg.org) (LGPL), the MPEG-2 decoder for the movies. It is downloaded and built by `pc/compila_ffmpeg.sh`: no part of it is in this repository.
 - [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator. Its graphics chip draws the picture on the video card (`sor-gs.dll`, built from its source), with its fixes for this game from its GameIndex. The reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
+- [SoundTouch](https://www.surina.net/soundtouch/) by Olli Parviainen (LGPL-2.1), the library PCSX2 uses too: SMOOTH AUDIO stretches the sound with it when the game slows down. How much to stretch follows PCSX2's `Host/AudioStream.cpp`. Its source is in `pc/soundtouch`.
+- [drakolordx7/KillzoneRecomp](https://github.com/drakolordx7/KillzoneRecomp) (GPL-3.0): its kzvu library (`ext/kzvu`) packs PCSX2's VU1 recompiler, microVU, for a recompiled game. This port's copy is in `pc/kzvu`, and `sor-vu.dll` is built from it (`pc/sorvu`).
 - [Dear ImGui](https://github.com/ocornut/imgui) and [rlImGui](https://github.com/raylib-extras/rlImGui), for the engine panel (F12).
 - [pcsx2_cheats_collection](https://github.com/xs1l3n7x/pcsx2_cheats_collection) by xs1l3n7x: its codes for the American disc showed where to look for MONEY, UNLOCK ALL and NO FILMS in the European one.
 - [pcsx2_patches](https://github.com/PCSX2/pcsx2_patches): the widescreen patch for this disc by sergx12, whose values the wide camera uses, and the No-Interlacing patch.
-- The libraries in the ready-made package, each under its own licence (in its `licenses` folder): SDL3, FreeType, libpng, zlib, Zstandard, LZ4, libwebp, libjpeg-turbo, PlutoSVG and PlutoVG, rapidyaml, the DirectX Shader Compiler, shaderc, and raylib in `sor.exe`.
+- The libraries in the ready-made package, each under its own licence (in its `licenses` folder): SDL3, FreeType, libpng, zlib, Zstandard, LZ4, libwebp, libjpeg-turbo, PlutoSVG and PlutoVG, rapidyaml, the DirectX Shader Compiler, shaderc, and raylib and SoundTouch in `sor.exe`.
 
 Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. The icon of the launcher and of the game window is a gold aureus of the emperor Nerva: photo by the [American Numismatic Society](http://numismatics.org/collection/1958.214.7), released as public domain (CC0) on [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Gold_Aureus_of_Nerva_(MANTIS).jpg), cut round. This project is not connected to Capcom or Sony.
 

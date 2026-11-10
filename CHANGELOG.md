@@ -2,6 +2,37 @@
 
 Version numbers count the big steps of the port.
 
+## 2.6 (not released yet)
+
+### Smoother play
+
+- **PCSX2's VU1 recompiler (microVU) now runs the game's 3D programs.** The PS2's VU1 turns the models into triangles. Until now the port ran its programs through PS2Recomp's interpreter, which took most of the graphics thread's time. Now it uses microVU from PCSX2, through the kzvu library made for the Killzone port ([drakolordx7/KillzoneRecomp](https://github.com/drakolordx7/KillzoneRecomp), GPL-3.0). It is 2.7 times faster on the same scene. A comparison mode ran both on 389,737 programs and found no difference in the pictures, the memory or the registers. It needs a processor with AVX2 (most PCs from 2015 on); without it the game goes back to the old interpreter by itself. OPTIONS > SPEED TESTS > VU1 ENGINE can choose the old one or the comparison.
+- **Fewer stutters with VSYNC.** The clock that kept the pictures in step with the screen woke up late or skipped refreshes, so some pictures waited one refresh too many. It now runs at the highest priority. In tests, pictures on time went from about 95% to 98%.
+- **G-SYNC and FreeSync screens are recognised by themselves.** On a variable refresh screen the game waited for a refresh that only came with the next picture. Now each picture is shown as soon as it is ready, and the game keeps its own 60 a second. Tested by hand on a FreeSync screen: 98.7 to 99.3% of the pictures on time, against about 95% before.
+- **The video card's shaders are made at the start.** The first time a scene used a new effect, making it cost 20 to 160 ms in the middle of play. The port now keeps a list of the effects used (gpu-data\cache\sor_tfx_pipelines.bin) and makes them all at the start, in less than a tenth of a second. The package comes with a list filled by playing the first levels.
+- **SMOOTH AUDIO** (OPTIONS): the music and voices are stretched a little instead of stopping for an instant when the game is late, with SoundTouch (LGPL-2.1, the same as PCSX2). On by default.
+- **Fixed: the sound slowed down while the game was paused.** Tested by hand.
+
+### The picture
+
+- **FIELD OF VIEW** (GRAPHICS): the playing camera sees wider: ORIGINAL, +10%, +20%, +30%. The camera is the game's own, made wider, and the edges of the view follow. The movies and the game's own scenes stay as they are. Tested by hand at +30%.
+- **Crouching (L2), the mouse turns the view** as when standing, left, right, up and down (before, it worked there like a controller's stick).
+- **Running in a diagonal** with a controller no longer turns into a slow walk: today's sticks reach only about 71% on each axis in a diagonal, the PS2's reached almost the full value; the left stick is now stretched from a circle to a square. Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report. The keyboard does not change.
+- **Fixed: the OSD never showed** (in 2.5 too, where it was on by default). It now shows the frames a second and the video card's statistics.
+
+### First start
+
+- **New first-time settings:** 4x, FIELD OF VIEW +30%, a window, TOGGLE on L2 (one press crouches, the next stands up), and UPSCALE FIX "special", which removes a soft double outline seen at 4x and 8x on the characters and on far trees. The DEBUG page stays there for everyone, all off at first.
+
+### For testing
+
+- **SPEED TESTS** (OPTIONS): VU1 ENGINE (PCSX2, the old one, or both compared), TIMINGS, which writes where the time goes in the log, and UPSCALE FIX, PCSX2's other fixes for the edges of the picture. TIMINGS slows the game a little: leave it off to play.
+
+### Known problems
+
+- The water in the Germanian Forest (Chapter 1) is still wrong.
+- A short stutter can remain at the start of a scene, when the game loads new textures, and during loading.
+
 ## 2.5 (10 November 2026)
 
 ### The movies
@@ -44,11 +75,11 @@ Version numbers count the big steps of the port.
 ### Bug reports
 
 - **A black box** in the game: it keeps the last pictures and log lines in memory and, when the game freezes, crashes, shows a black screen for a long time or slows down, saves them in `blackbox` as one picture of numbered frames and a short text report (the last 5 are kept). F9 saves one by hand. `blackbox=0` in `settings.ini` turns it off.
-- **F3 and F6, test tools** for the water in chapter 4: F3 saves what the game draws in the next 4 frames (with the processor only), F6 runs one part of the game in its exact, slower version. They found that the water is drawn the same way by both renderers; the cause is still open.
+- **F3 and F6, test tools** for the water in the Germanian Forest: F3 saves what the game draws in the next 4 frames (with the processor only), F6 runs one part of the game in its exact, slower version. They found that the water is drawn the same way by both renderers; the cause is still open.
 
 ### Known problems
 
-- **The water in chapter 4** (the forest) shows a blurred copy of the screen, not the forest reflected. See the README.
+- **The water in the Germanian Forest** (Chapter 1) shows a blurred copy of the screen, not the forest reflected. See the README.
 
 ## 1.9 (6 November 2026)
 

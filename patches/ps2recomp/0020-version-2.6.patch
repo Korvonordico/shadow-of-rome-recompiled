@@ -1,0 +1,1821 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_memory.cpp b/ps2xIOP/src/emulator/core/iop_memory.cpp
+index e0873df..62797c4 100644
+--- a/ps2xIOP/src/emulator/core/iop_memory.cpp
++++ b/ps2xIOP/src/emulator/core/iop_memory.cpp
+@@ -325,28 +325,30 @@ namespace ps2x::iop::detail
+             return address;
+         }
+ 
+-        uint32_t candidate = alignUp(m_heapCursor, alignment);
+-        for (;;)
++        // sor: first fit from the bottom of the heap, like the IOP's own sysmem (FIRST mode). The old code
++        // only searched from m_heapCursor, which never moves back, so a freed block was never used again and
++        // the heap ran out after enough level loads (drakolordx7/KillzoneRecomp issue #17: enemy and weapon
++        // sounds gone for good after ~9 loads; their patch 0028 does the same).
++        std::vector<Allocation> blocks(m_allocations.begin(), m_allocations.end());
++        std::sort(blocks.begin(), blocks.end(),
++                  [](const Allocation &a, const Allocation &b)
++                  { return a.address < b.address; });
++        uint64_t candidate = alignUp(HeapBase, alignment);
++        for (const auto &block : blocks)
+         {
+-            bool overlap = false;
+-            for (const auto &block : m_allocations)
+-            {
+-                if (candidate < block.address + block.size && block.address < candidate + size)
+-                {
+-                    candidate = alignUp(block.address + block.size, alignment);
+-                    overlap = true;
+-                    break;
+-                }
+-            }
+-            if (!overlap)
+-                break;
++            if (candidate + size <= block.address)
++                break; // the hole before this block is big enough
++            const uint64_t end = static_cast<uint64_t>(block.address) + block.size;
++            if (end > candidate)
++                candidate = alignUp(static_cast<uint32_t>(end), alignment);
+         }
+         if (candidate > HeapLimit || size > HeapLimit - candidate)
+             return 0u;
+-        m_allocations.push_back({candidate, size});
+-        markOwned(candidate, size);
+-        m_heapCursor = std::max(m_heapCursor, candidate + size);
+-        return candidate;
++        const uint32_t address = static_cast<uint32_t>(candidate);
++        m_allocations.push_back({address, size});
++        markOwned(address, size);
++        m_heapCursor = std::max(m_heapCursor, address + size); // high-water mark only
++        return address;
+     }
+ 
+     bool IopMemory::freeAllocation(uint32_t address)
+@@ -365,7 +367,27 @@ namespace ps2x::iop::detail
+ 
+     uint32_t IopMemory::maxFreeMemory() const
+     {
+-        return m_heapCursor < HeapLimit ? HeapLimit - m_heapCursor : 0u;
++        // sor: the biggest free hole in the heap (QueryMaxFreeMemSize), not only the space above the cursor.
++        std::vector<Allocation> blocks(m_allocations.begin(), m_allocations.end());
++        std::sort(blocks.begin(), blocks.end(),
++                  [](const Allocation &a, const Allocation &b)
++                  { return a.address < b.address; });
++        uint32_t biggest = 0u;
++        uint32_t cursor = HeapBase;
++        for (const auto &block : blocks)
++        {
++            const uint32_t end = block.address + block.size;
++            if (end <= cursor)
++                continue;
++            if (block.address > cursor)
++                biggest = std::max(biggest, std::min(block.address, HeapLimit) - cursor);
++            cursor = end;
++            if (cursor >= HeapLimit)
++                break;
++        }
++        if (cursor < HeapLimit)
++            biggest = std::max(biggest, HeapLimit - cursor);
++        return biggest;
+     }
+ 
+     std::optional<IopMemory::Allocation> IopMemory::allocationContaining(uint32_t address) const
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index e8a24bf..abaaf3a 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -148,6 +148,22 @@ size_t sorSpu2Prendi(int16_t *coppie, size_t n)
+     g_fondo.store(f + quanti, std::memory_order_release);
+     return quanti;
+ }
++// sor: the same queue without the skip rule, for the smooth audio (pc/sor_audio.cpp, SOR_AUDIO_STRETCH): there the
++// queue is kept near its target by playing a little slower or faster instead. coppie == nullptr: the frames are
++// dropped (the oldest).
++size_t sorSpu2PrendiLiscio(int16_t *coppie, size_t n)
++{
++    const size_t f = g_fondo.load(std::memory_order_relaxed);
++    const size_t quanti = std::min(n, g_testa.load(std::memory_order_acquire) - f);
++    if (coppie)
++        for (size_t i = 0; i < quanti; ++i)
++        {
++            coppie[i * 2u] = g_coda[((f + i) & (kCoda - 1u)) * 2u];
++            coppie[i * 2u + 1u] = g_coda[((f + i) & (kCoda - 1u)) * 2u + 1u];
++        }
++    g_fondo.store(f + quanti, std::memory_order_release);
++    return quanti;
++}
+ 
+ namespace ps2x::iop::detail
+ {
+diff --git a/ps2xRecomp/src/lib/mmi_translation_helpers.cpp b/ps2xRecomp/src/lib/mmi_translation_helpers.cpp
+index a2bcb77..58f5117 100644
+--- a/ps2xRecomp/src/lib/mmi_translation_helpers.cpp
++++ b/ps2xRecomp/src/lib/mmi_translation_helpers.cpp
+@@ -81,7 +81,9 @@ namespace ps2recomp
+         switch (subfunc)
+         {
+         case MMI1_PABSW:
+-            return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PABSW(GPR_VEC(ctx, {})));", rd, rs);
++            // sor: PABSW/PABSH take their operand from rt, not rs (rs is 0 in the encoding); the same bug
++            // was found in literalynn/BurnoutDominatorReversed.
++            return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PABSW(GPR_VEC(ctx, {})));", rd, rt);
+         case MMI1_PCEQW:
+             return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PCEQW(GPR_VEC(ctx, {}), GPR_VEC(ctx, {})));", rd, rs, rt);
+         case MMI1_PMINW:
+@@ -89,7 +91,7 @@ namespace ps2recomp
+         case MMI1_PADSBH:
+             return translatePADSBH(inst);
+         case MMI1_PABSH:
+-            return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PABSH(GPR_VEC(ctx, {})));", rd, rs);
++            return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PABSH(GPR_VEC(ctx, {})));", rd, rt);
+         case MMI1_PCEQH:
+             return fmt::format("SET_GPR_VEC(ctx, {}, PS2_PCEQH(GPR_VEC(ctx, {}), GPR_VEC(ctx, {})));", rd, rs, rt);
+         case MMI1_PMINH:
+@@ -471,15 +473,21 @@ namespace ps2recomp
+ 
+     std::string CodeGenerator::translatePMULTH(const Instruction &inst)
+     {
+-        // Parallel multiply halfword, results sum to HI/LO and rd
+-        return fmt::format("{{ __m128i prod = _mm_madd_epi16(GPR_VEC(ctx, {}), GPR_VEC(ctx, {})); \n"
+-                           "   int32_t p0 = _mm_cvtsi128_si32(prod); \n"
+-                           "   int32_t p1 = _mm_cvtsi128_si32(_mm_srli_si128(prod, 4)); \n"
+-                           "   int32_t p2 = _mm_cvtsi128_si32(_mm_srli_si128(prod, 8)); \n"
+-                           "   int32_t p3 = _mm_cvtsi128_si32(_mm_srli_si128(prod, 12)); \n"
+-                           "   int64_t result = (int64_t)p0 + (int64_t)p1 + (int64_t)p2 + (int64_t)p3; \n"
+-                           "   ctx->lo = (uint32_t)result; ctx->hi = (uint32_t)(result >> 32); \n"
+-                           "   SET_GPR_U64(ctx, {}, result); }}",
++        // Parallel multiply halfword: eight separate signed 16x16 -> 32 products p0..p7 (no sums).
++        // LO = {p0, p1, p4, p5}, HI = {p2, p3, p6, p7}, rd = {p0, p2, p4, p6} (word 0 first); the upper
++        // 64 bits of LO/HI are lo1/hi1 here, as for MULT1.
++        // sor: the old code summed the products into one number (the "Kratos walk twist" of
++        // Waffle565/God-Of-War-Native-Port). Layout as in KIexster/god-of-war-recomp
++        // (patches/anteriores/ps2recomp-ee-pmulth.patch, GPL-3.0); this code is our own.
++        return fmt::format("{{ __m128i a = GPR_VEC(ctx, {}), b = GPR_VEC(ctx, {}); \n"
++                           "   __m128i plo = _mm_mullo_epi16(a, b), phi = _mm_mulhi_epi16(a, b); \n"
++                           "   __m128i p0123 = _mm_unpacklo_epi16(plo, phi), p4567 = _mm_unpackhi_epi16(plo, phi); \n"
++                           "   ctx->lo  = (uint64_t)_mm_cvtsi128_si64(p0123); \n"
++                           "   ctx->hi  = (uint64_t)_mm_cvtsi128_si64(_mm_srli_si128(p0123, 8)); \n"
++                           "   ctx->lo1 = (uint64_t)_mm_cvtsi128_si64(p4567); \n"
++                           "   ctx->hi1 = (uint64_t)_mm_cvtsi128_si64(_mm_srli_si128(p4567, 8)); \n"
++                           "   SET_GPR_VEC(ctx, {}, _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(p0123), \n"
++                           "       _mm_castsi128_ps(p4567), _MM_SHUFFLE(2,0,2,0)))); }}",
+                            inst.rs, inst.rt, inst.rd);
+     }
+ 
+@@ -520,8 +528,10 @@ namespace ps2recomp
+ 
+     std::string CodeGenerator::translatePROT3W(const Instruction &inst)
+     {
+-        // Rotates words left by 3: [d,c,b,a] -> [a,d,c,b]
+-        return fmt::format("SET_GPR_VEC(ctx, {}, _mm_shuffle_epi32(GPR_VEC(ctx, {}), _MM_SHUFFLE(0,3,2,1)));",
++        // Rotates only the three low words, the top word stays: rd = {w1, w2, w0, w3} (word 0 first).
++        // sor: was _MM_SHUFFLE(0,3,2,1), a rotation of all four words (fix from
++        // TekRantGaming/cartoon-network-racing-recompiled, docs/FINDINGS.md "Recompiler MMI fixes").
++        return fmt::format("SET_GPR_VEC(ctx, {}, _mm_shuffle_epi32(GPR_VEC(ctx, {}), _MM_SHUFFLE(3,0,2,1)));",
+                            inst.rd, inst.rt);
+     }
+ 
+diff --git a/ps2xRuntime/include/ps2_runtime_macros.h b/ps2xRuntime/include/ps2_runtime_macros.h
+index 856b4a6..04e49ff 100644
+--- a/ps2xRuntime/include/ps2_runtime_macros.h
++++ b/ps2xRuntime/include/ps2_runtime_macros.h
+@@ -734,8 +734,20 @@ inline __m128i ps2_psubsw(__m128i a, __m128i b)
+ #define PS2_PCEQB(a, b) _mm_cmpeq_epi8((__m128i)(a), (__m128i)(b))
+ 
+ // Packed Absolute (PABS)
+-#define PS2_PABSW(a) _mm_abs_epi32((__m128i)(a))
+-#define PS2_PABSH(a) _mm_abs_epi16((__m128i)(a))
++// sor: the EE saturates: |0x80000000| = 0x7FFFFFFF and |0x8000| = 0x7FFF (the plain SSE abs leaves the minimum
++// value as it is). After abs only the minimum has its top bit set, so subtracting that bit fixes exactly it.
++static inline __m128i ps2_pabsw_sat(__m128i a)
++{
++    __m128i r = _mm_abs_epi32(a);
++    return _mm_sub_epi32(r, _mm_srli_epi32(r, 31));
++}
++static inline __m128i ps2_pabsh_sat(__m128i a)
++{
++    __m128i r = _mm_abs_epi16(a);
++    return _mm_sub_epi16(r, _mm_srli_epi16(r, 15));
++}
++#define PS2_PABSW(a) ps2_pabsw_sat((__m128i)(a))
++#define PS2_PABSH(a) ps2_pabsh_sat((__m128i)(a))
+ #define PS2_PABSB(a) _mm_abs_epi8((__m128i)(a))
+ 
+ // Packed Pack (PPAC) - Packs larger elements into smaller ones
+@@ -977,7 +989,9 @@ inline __m128i ps2_qfsrv(__m128i rs, __m128i rt, uint32_t sa)
+ #define PS2_PCPYLD(rs, rt) _mm_unpacklo_epi64(rt, rs)
+ #define PS2_PEXEH(rs) _mm_shufflelo_epi16(_mm_shufflehi_epi16(rs, _MM_SHUFFLE(2, 3, 0, 1)), _MM_SHUFFLE(2, 3, 0, 1))
+ #define PS2_PEXEW(rs) _mm_shuffle_epi32(rs, _MM_SHUFFLE(2, 3, 0, 1))
+-#define PS2_PROT3W(rs) _mm_shuffle_epi32(rs, _MM_SHUFFLE(0, 3, 2, 1))
++// PROT3W rotates only the three low words; the top word stays: rd = {w1, w2, w0, w3}.
++// sor: was _MM_SHUFFLE(0, 3, 2, 1), which rotated all four words.
++#define PS2_PROT3W(rs) _mm_shuffle_epi32(rs, _MM_SHUFFLE(3, 0, 2, 1))
+ 
+ // Additional VU0 operations
+ #define PS2_VSQRT(x) sqrtf(x)
+diff --git a/ps2xRuntime/include/runtime/gs/gs_frontend.h b/ps2xRuntime/include/runtime/gs/gs_frontend.h
+index 8b83614..dc1a017 100644
+--- a/ps2xRuntime/include/runtime/gs/gs_frontend.h
++++ b/ps2xRuntime/include/runtime/gs/gs_frontend.h
+@@ -173,6 +173,8 @@ private:
+     bool tryProcessNativeImageUploadPacket(const uint8_t *data, uint32_t sizeBytes);
+     GSPrimitiveBatch buildDrawBatch(int vertexCount) const;
+     void updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch);
++    // sor: the same check from the state itself, without building a GSPrimitiveBatch (vertexKick with sor-gs drawing)
++    void updatePreferredDisplaySource(const GSContext &ctx, const GSPrimReg &prim, const GSVertex *vertices, uint32_t vertexCount);
+     GSPresentationRequest buildPresentationRequestUnlocked() const;
+ 
+ 
+@@ -192,6 +194,8 @@ private:
+ 
+     uint8_t m_curR = 0x80, m_curG = 0x80, m_curB = 0x80, m_curA = 0x80;
+     float m_curQ = 1.0f;
++    // sor: Q of an ST written in PACKED mode waits here until the next RGBA PACKED write (as on the real GS).
++    float m_pendingQ = 1.0f;
+     float m_curS = 0.0f, m_curT = 0.0f;
+     uint16_t m_curU = 0, m_curV = 0;
+     uint8_t m_curFog = 0;
+diff --git a/ps2xRuntime/include/runtime/sor_times.h b/ps2xRuntime/include/runtime/sor_times.h
+new file mode 100755
+index 0000000..f19d93d
+--- /dev/null
++++ b/ps2xRuntime/include/runtime/sor_times.h
+@@ -0,0 +1,112 @@
++// Where the game's time goes (the author, 10/11/2026: "make it as optimized as possible without losing quality").
++// A Scope placed at the top of a function adds the time spent inside it to one part: VU1 (the microprograms that turn
++// models into triangles, interpreted while playing), VIF1 (unpacking the data around them), GIF (the GS packets,
++// handed to sor-gs.dll), IOP (sound, disc and pad processor). Time is EXCLUSIVE: a part called from inside another
++// (VU1 inside VIF1, GIF inside VU1) is counted only in its own part. Every 5 s one "[sor-time]" line goes to the log,
++// in milliseconds per second of play: 1000 is a whole thread. What is missing up to 1000 on the game thread is the
++// translated game code plus the waiting for the next picture.
++// Only with SOR_TEMPI (tests): two clock reads per section, about 430,000 sections a second, cost roughly 3% of the
++// VIF thread (an estimate). Without it a Scope only checks one flag (10/11/2026).
++#pragma once
++
++#include <atomic>
++#include <chrono>
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++
++namespace sor_times
++{
++enum Part
++{
++    VU1 = 0,
++    VIF1,
++    GIF,
++    IOP,
++    PART_COUNT
++};
++
++inline std::atomic<int64_t> g_ns[PART_COUNT];    // exclusive nanoseconds of each part since the last line
++inline std::atomic<int64_t> g_calls[PART_COUNT]; // calls of each part since the last line
++inline std::atomic<int64_t> g_lastLine{0};       // steady clock of the last line (0: not started yet)
++inline std::atomic<int64_t> g_total_ns[PART_COUNT];    // the same, never reset (the VIF spikes, ps2_memory.cpp)
++inline std::atomic<int64_t> g_total_calls[PART_COUNT];
++inline const bool g_on = std::getenv("SOR_TEMPI") != nullptr; // the measure is on (tests only)
++
++inline int64_t now()
++{
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(
++               std::chrono::steady_clock::now().time_since_epoch())
++        .count();
++}
++
++struct Stack
++{
++    static constexpr int kDepth = 32;
++    int64_t children[kDepth];
++    int depth = 0;
++};
++inline thread_local Stack t_stack;
++
++inline void maybePrint(int64_t at)
++{
++    int64_t last = g_lastLine.load(std::memory_order_relaxed);
++    if (last == 0)
++    {
++        g_lastLine.compare_exchange_strong(last, at);
++        return;
++    }
++    const int64_t span = at - last;
++    if (span < 5000000000LL || !g_lastLine.compare_exchange_strong(last, at))
++        return;
++    const double seconds = span / 1e9;
++    double ms[PART_COUNT];
++    long long calls[PART_COUNT];
++    for (int i = 0; i < PART_COUNT; ++i)
++    {
++        ms[i] = g_ns[i].exchange(0) / 1e6 / seconds;
++        calls[i] = g_calls[i].exchange(0);
++    }
++    std::printf("[sor-time] last %.1f s, ms per second (1000 = a whole thread): vu1 %.0f (%lld runs), vif1 %.0f, "
++                "gif %.0f (%lld packets), iop %.0f; the rest of the game thread is game code + waiting\n",
++                seconds, ms[VU1], calls[VU1], ms[VIF1], ms[GIF], calls[GIF], ms[IOP]);
++    std::fflush(stdout);
++}
++
++class Scope
++{
++public:
++    explicit Scope(Part part) : m_part(part), m_start(g_on ? now() : 0)
++    {
++        if (!g_on)
++            return;
++        Stack &s = t_stack;
++        if (s.depth < Stack::kDepth)
++            s.children[s.depth] = 0;
++        ++s.depth;
++    }
++    ~Scope()
++    {
++        if (!g_on)
++            return;
++        const int64_t end = now();
++        const int64_t all = end - m_start;
++        Stack &s = t_stack;
++        --s.depth;
++        const int64_t children = s.depth < Stack::kDepth ? s.children[s.depth] : 0;
++        g_ns[m_part].fetch_add(all - children, std::memory_order_relaxed);
++        g_calls[m_part].fetch_add(1, std::memory_order_relaxed);
++        g_total_ns[m_part].fetch_add(all - children, std::memory_order_relaxed);
++        g_total_calls[m_part].fetch_add(1, std::memory_order_relaxed);
++        if (s.depth > 0 && s.depth - 1 < Stack::kDepth)
++            s.children[s.depth - 1] += all;
++        maybePrint(end);
++    }
++    Scope(const Scope &) = delete;
++    Scope &operator=(const Scope &) = delete;
++
++private:
++    Part m_part;
++    int64_t m_start;
++};
++} // namespace sor_times
+diff --git a/ps2xRuntime/include/runtime/sor_vu1_host.h b/ps2xRuntime/include/runtime/sor_vu1_host.h
+new file mode 100755
+index 0000000..16f7253
+--- /dev/null
++++ b/ps2xRuntime/include/runtime/sor_vu1_host.h
+@@ -0,0 +1,40 @@
++// sor: a second VU1 engine outside the runtime, chosen with SOR_VU1 (pc/sor_vu1.cpp: PCSX2's microVU through
++// sor-vu.dll). Nothing is set by default: the runtime's own VU1 (VU1Interpreter and its fast path) runs as always.
++//
++// "pcsx2" mode: codeMem/dataMem are the host's VU1 micro and data memory (16 KB each, fixed for the life of the
++// process). PS2Memory::initialize() uses them instead of allocating its own and never frees them, and every MSCAL/MSCNT
++// runs on the host (run). MPG reports what it changed (codeWritten).
++// "confronto" (compare) mode: our VU1 drives the game; around some of its programs the runtime calls compareBefore
++// (before ours runs: true = compare this one, the host copies the starting state) and compareAfter (ours' result and
++// the GIF PATH1 packets ours sent, copied through g_sorVu1CopiaPacchetti).
++//
++// All hooks are called on the thread that runs the VIF1 command (the VIF thread, or the game thread).
++#pragma once
++
++#include <cstdint>
++#include <vector>
++
++struct VU1State;
++
++struct SorVu1Host
++{
++    uint8_t *codeMem = nullptr;
++    uint8_t *dataMem = nullptr;
++    // MSCAL (startPcBytes = byte address in micro memory) or MSCNT (startPcBytes = 0xFFFFFFFF). fbrst = VU0 FBRST as
++    // our VU1 reads it (bits 10/11 enable the D/T stop). Returns the VPU_STAT D/T bits (0x200 / 0x400) after the run.
++    uint32_t (*run)(uint32_t startPcBytes, uint32_t top, uint32_t itop, uint32_t fbrst, uint64_t codeGeneration) = nullptr;
++    // MPG changed micro memory bytes [offset, offset + bytes); codeGeneration is PS2Memory's VU1 code generation after
++    // the write. EE stores into micro memory only bump the generation (the host compares it at the next run).
++    void (*codeWritten)(uint32_t offset, uint32_t bytes, uint64_t codeGeneration) = nullptr;
++    // Compare mode (see above). startPcBytes 0xFFFFFFFF = MSCNT (ours continues at state.pc).
++    bool (*compareBefore)(const VU1State &state, const uint8_t *code, const uint8_t *data, uint64_t codeGeneration,
++                          uint32_t startPcBytes, uint32_t top, uint32_t itop, uint32_t fbrst) = nullptr;
++    void (*compareAfter)(const VU1State &state, const uint8_t *data,
++                         const std::vector<std::vector<uint8_t>> &packets) = nullptr;
++};
++
++// Before PS2Runtime::initialize() (PS2Memory takes the host's memory there). Defined in ps2_memory.cpp.
++void sorSetVu1Host(const SorVu1Host &host);
++const SorVu1Host &sorVu1Host();
++// While set on a thread, every GIF PATH1 packet submitted on that thread is also copied here (compare mode).
++extern thread_local std::vector<std::vector<uint8_t>> *g_sorVu1CopiaPacchetti;
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+index 87bc257..689014d 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+@@ -405,7 +405,7 @@ namespace
+     bool readHostRange(const std::filesystem::path &path, uint64_t offsetBytes, uint8_t *dst, size_t byteCount)
+     {
+         // sor: SOR_CDTEMPI=1 prints the reads from the disc image that take more than 2 ms (pauses during loads).
+-        static const bool sorCdTempi = std::getenv("SOR_CDTEMPI") != nullptr;
++        static const bool sorCdTempi = std::getenv("SOR_CDTEMPI") != nullptr || std::getenv("SOR_TEMPI") != nullptr; // also with TIMINGS (10/11/2026)
+         struct SorCdTempo
+         {
+             bool on;
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index 784ce2f..72a9e39 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -1090,7 +1090,7 @@ void GSBande::Reset()
+ 
+ void sorGsTuttiAdc(const GSPrimitiveBatch &batch) { tuttiPrimSeC(batch); } // sor: vertices the game sends with ADC set
+ 
+-// sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
++// sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
+ // keyboard. It is written by this renderer only, so it works with GRAPHICS > PROCESSOR (SOR_GRAPHICS=cpu).
+ void sorGsTuttiTasto()
+ {
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 2f672e0..429fa2d 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -2,6 +2,7 @@
+ #include "runtime/gs/gs_cpu_backend.h"
+ #include "runtime/gs/gs_bande.h"
+ #include "runtime/gs/gs_pcsx2_mirror.h"
++#include "runtime/sor_times.h"
+ #include "ps2_log.h"
+ #include "runtime/ps2_memory.h"
+ #include <atomic>
+@@ -181,6 +182,7 @@ void GS::reset()
+     m_curB = 0x80;
+     m_curA = 0x80;
+     m_curQ = 1.0f;
++    m_pendingQ = 1.0f;
+     m_curS = 0.0f;
+     m_curT = 0.0f;
+     m_curU = 0;
+@@ -697,6 +699,7 @@ bool GS::copyLatchedHostPresentationFrame(std::vector<uint8_t> &outPixels,
+ 
+ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ {
++    sor_times::Scope sorTimeScope(sor_times::GIF);
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+     sorGpuMirrorGif(data, sizeBytes);
+     if (!data || sizeBytes < 16 || !m_backend)
+@@ -734,6 +737,7 @@ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+         offset += 16;
+ 
+         m_curQ = 1.0f;
++        m_pendingQ = 1.0f;
+ 
+         uint32_t nloop = static_cast<uint32_t>(tagLo & 0x7FFF);
+         uint8_t flg = static_cast<uint8_t>((tagLo >> 58) & 0x3);
+@@ -839,6 +843,7 @@ void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ 
+ bool GS::processNativePackedGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+ {
++    sor_times::Scope sorTimeScope(sor_times::GIF);
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+     if (!data || sizeBytes < 16u || !m_backend)
+         return false;
+@@ -849,6 +854,7 @@ bool GS::processNativePackedGIFPacket(const uint8_t *data, uint32_t sizeBytes)
+     const bool processed = visitPackedGifPacket(data, sizeBytes, [&](const PackedGifPacketTag &tag)
+                                                 {
+         m_curQ = 1.0f;
++        m_pendingQ = 1.0f;
+ 
+         recordGifTagDebugEventUnlocked(sizeBytes, tag.nloop, GIF_FMT_PACKED, tag.nreg);
+ 
+@@ -990,6 +996,7 @@ void GS::writeRegisterPacked(uint8_t regDesc, uint64_t lo, uint64_t hi)
+         m_curG = static_cast<uint8_t>((lo >> 32) & 0xFF);
+         m_curB = static_cast<uint8_t>(hi & 0xFF);
+         m_curA = static_cast<uint8_t>((hi >> 32) & 0xFF);
++        m_curQ = m_pendingQ; // sor: Q of the last ST PACKED becomes RGBAQ.Q only now
+         break;
+     case 0x02:
+     {
+@@ -998,9 +1005,13 @@ void GS::writeRegisterPacked(uint8_t regDesc, uint64_t lo, uint64_t hi)
+         uint32_t qBits = static_cast<uint32_t>(hi & 0xFFFFFFFF);
+         std::memcpy(&m_curS, &sBits, 4);
+         std::memcpy(&m_curT, &tBits, 4);
+-        std::memcpy(&m_curQ, &qBits, 4);
+-        if (m_curQ == 0.0f)
+-            m_curQ = 1.0f;
++        // sor: on the real GS the Q of an ST PACKED write is not used at once: it waits until the next RGBA
++        // PACKED write sets RGBAQ (PCSX2 GIFPackedRegHandlerSTQ/RGBA do the same). Writing it here at once gave
++        // wrong Q to vertices sent as RGBA, ST, XYZ (Waffle565/God-Of-War-Native-Port docs/status.md: flames and
++        // heat haze sampling the wrong place). PROCESSOR path only; the PCSX2 GS path gets the packets as they are.
++        std::memcpy(&m_pendingQ, &qBits, 4);
++        if (m_pendingQ == 0.0f)
++            m_pendingQ = 1.0f;
+         break;
+     }
+     case 0x03:
+@@ -1683,8 +1694,17 @@ void GS::vertexKick(bool drawing)
+         sorGsTuttiAdc(buildDrawBatch(needed));
+     if (drawing && m_backend)
+     {
+-        GSPrimitiveBatch batch = buildDrawBatch(needed);
+         static const bool s_sorConta = std::getenv("SOR_GSDISEGNI") != nullptr;
++        if (sorGpuDrawsWindow() && !s_sorConta)
++        {
++            // sor: PCSX2's GS draws the picture: no batch to build, only the display-source check, from the state
++            updatePreferredDisplaySource(m_ctx[m_prim.ctxt ? 1 : 0], m_prim, m_vtxQueue,
++                                         static_cast<uint32_t>(std::min(needed, 3)));
++            recordDrawDebugEventUnlocked(needed);
++        }
++        else
++        {
++        GSPrimitiveBatch batch = buildDrawBatch(needed);
+         if (s_sorConta)
+         {
+             std::lock_guard<std::mutex> sorLock(g_sorMutex);
+@@ -1710,6 +1730,7 @@ void GS::vertexKick(bool drawing)
+         if (!sorGpuDrawsWindow()) // sor: PCSX2's GS draws the picture, a CPU copy would only cost time
+             m_backend->Submit(batch);
+         recordDrawDebugEventUnlocked(needed);
++        }
+     }
+ 
+     switch (m_prim.type)
+@@ -1835,15 +1856,21 @@ GSPrimitiveBatch GS::buildDrawBatch(int vertexCount) const
+ 
+ void GS::updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch)
+ {
+-    const GSDrawState &state = batch.state;
+-    const GSContext &ctx = state.context;
++    updatePreferredDisplaySource(batch.state.context, batch.state.prim, batch.vertices.data(), batch.vertexCount);
++}
++
++// sor (10/11/2026): the body that was updatePreferredDisplaySourceForDraw, unchanged, reading the values it needs
++// directly. With sor-gs drawing, vertexKick called buildDrawBatch for every primitive (1-2 million a second) only for
++// this check: a copy of the whole drawing state each time.
++void GS::updatePreferredDisplaySource(const GSContext &ctx, const GSPrimReg &prim, const GSVertex *vertices, uint32_t vertexCount)
++{
+     if (m_hasPreferredDisplaySource && ctx.frame.fbp == m_preferredDisplayDestFbp)
+         m_hasPreferredDisplaySource = false;
+-    if (state.prim.type != GS_PRIM_SPRITE || batch.vertexCount < 2u)
++    if (prim.type != GS_PRIM_SPRITE || vertexCount < 2u)
+         return;
+ 
+-    const GSVertex &v0 = batch.vertices[0];
+-    const GSVertex &v1 = batch.vertices[1];
++    const GSVertex &v0 = vertices[0];
++    const GSVertex &v1 = vertices[1];
+     int x0 = static_cast<int>(v0.x) - (ctx.xyoffset.ofx >> 4);
+     int y0 = static_cast<int>(v0.y) - (ctx.xyoffset.ofy >> 4);
+     int x1 = static_cast<int>(v1.x) - (ctx.xyoffset.ofx >> 4);
+@@ -1854,7 +1881,7 @@ void GS::updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch)
+     const int yEnd = y0 + std::max(1, y1 - y0) - 1;
+     const uint8_t alphaMode = static_cast<uint8_t>(ctx.alpha & 0xFFu);
+     const uint8_t alphaFix = static_cast<uint8_t>((ctx.alpha >> 32u) & 0xFFu);
+-    const bool displayCopy = state.prim.tme && state.prim.abe && state.prim.fst && state.prim.ctxt &&
++    const bool displayCopy = prim.tme && prim.abe && prim.fst && prim.ctxt &&
+                              ctx.frame.fbp != ctx.tex0.tbp0 && alphaMode == 0x64u &&
+                              (alphaFix == 0x60u || alphaFix == 0x80u) &&
+                              x0 <= 0 && y0 <= 0 && xEnd >= 639 && yEnd >= 447;
+diff --git a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+index e05943e..aaa2f5f 100644
+--- a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+@@ -305,7 +305,7 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+         else if (other) { ++s_secOther; if (s_frames - s_lastGame >= 15) s_uses = 0; }
+         const unsigned fm = g_sorFilmFourThree.load(std::memory_order_relaxed);
+         if (fm != s_seenFilm) { s_seenFilm = fm; s_lastFilm = s_frames; s_film = true; ++s_sec43; }
+-        // the author, 9/11: only the films stay 4:3; menus and scenes stretched (SOR_WIDE_AUTO=1: the old rule)
++        // the author, 9/11: only the films stay 4:3; menus and scenes stretched (SOR_WIDE_AUTO=1: the old rule)
+         const int wide = !sorWidescreenOn() ? 0 : s_auto43 ? (s_uses >= 8 && s_frames - s_last43 >= 15 && (!s_film || s_frames - s_lastFilm >= 15) ? 1 : 0)
+                                                  : (!s_film || s_frames - s_lastFilm >= 15 ? 1 : 0);
+         static const bool s_tempi = std::getenv("SOR_TEMPI") != nullptr;
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index 023177b..a115694 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1,5 +1,6 @@
+ #include <emmintrin.h>
+ #include "runtime/ps2_memory.h"
++#include "runtime/sor_vu1_host.h"
+ #include "runtime/ps2_address.h"
+ #include "runtime/gs/gs_frontend.h"
+ #include "ps2_log.h"
+@@ -13,6 +14,7 @@
+ #include <algorithm>
+ #include <string>
+ #include <vector>
++#include "runtime/sor_times.h"
+ 
+ namespace
+ {
+@@ -234,6 +236,24 @@ namespace
+ 
+ }
+ 
++// sor: the second VU1 engine (runtime/sor_vu1_host.h). g_sorVu1MemoriaOspite: VU1 memory is the host's, never freed.
++namespace
++{
++    SorVu1Host g_sorVu1Host{};
++    bool g_sorVu1MemoriaOspite = false;
++}
++thread_local std::vector<std::vector<uint8_t>> *g_sorVu1CopiaPacchetti = nullptr;
++
++void sorSetVu1Host(const SorVu1Host &host)
++{
++    g_sorVu1Host = host;
++}
++
++const SorVu1Host &sorVu1Host()
++{
++    return g_sorVu1Host;
++}
++
+ // Helpers for GS VRAM addressing (PSMCT32 path).
+ static inline uint32_t gs_vram_offset(uint32_t basePage, uint32_t x, uint32_t y, uint32_t fbw)
+ {
+@@ -271,12 +291,14 @@ PS2Memory::~PS2Memory()
+ 
+     if (m_vu1Code)
+     {
+-        delete[] m_vu1Code;
++        if (!g_sorVu1MemoriaOspite)
++            delete[] m_vu1Code;
+         m_vu1Code = nullptr;
+     }
+     if (m_vu1Data)
+     {
+-        delete[] m_vu1Data;
++        if (!g_sorVu1MemoriaOspite)
++            delete[] m_vu1Data;
+         m_vu1Data = nullptr;
+     }
+     if (m_vu0Code)
+@@ -307,8 +329,11 @@ bool PS2Memory::initialize(size_t ramSize)
+         delete[] m_gsVRAM;
+         delete[] m_vu0Code;
+         delete[] m_vu0Data;
+-        delete[] m_vu1Code;
+-        delete[] m_vu1Data;
++        if (!g_sorVu1MemoriaOspite)
++        {
++            delete[] m_vu1Code;
++            delete[] m_vu1Data;
++        }
+         m_rdram = nullptr;
+         m_scratchpad = nullptr;
+         ps2SetScratchpadHostPtr(nullptr);
+@@ -379,8 +404,19 @@ bool PS2Memory::initialize(size_t ramSize)
+         std::memset(m_vu0Code, 0, PS2_VU0_CODE_SIZE);
+         std::memset(m_vu0Data, 0, PS2_VU0_DATA_SIZE);
+ 
+-        m_vu1Code = new uint8_t[PS2_VU1_CODE_SIZE];
+-        m_vu1Data = new uint8_t[PS2_VU1_DATA_SIZE];
++        // sor: with SOR_VU1=pcsx2 the VU1 memory is sor-vu.dll's (its recompiled code reads it at fixed addresses).
++        if (g_sorVu1Host.codeMem && g_sorVu1Host.dataMem)
++        {
++            g_sorVu1MemoriaOspite = true;
++            m_vu1Code = g_sorVu1Host.codeMem;
++            m_vu1Data = g_sorVu1Host.dataMem;
++        }
++        else
++        {
++            g_sorVu1MemoriaOspite = false;
++            m_vu1Code = new uint8_t[PS2_VU1_CODE_SIZE];
++            m_vu1Data = new uint8_t[PS2_VU1_DATA_SIZE];
++        }
+         std::memset(m_vu1Code, 0, PS2_VU1_CODE_SIZE);
+         std::memset(m_vu1Data, 0, PS2_VU1_DATA_SIZE);
+         markVU0CodeModified();
+@@ -1176,22 +1212,96 @@ void PS2Memory::sorVifAspetta(uint32_t chi) const
+ 
+ void sorThreadIdeale(int core); // pc/sor_prove.cpp
+ 
++// SOR_TEMPI (10/11/2026): the VIF thread's picture spikes. Between two vblanks it handles, the time is split in waiting
++// for work, VU1, VIF1, GIF (sor_times parts, exclusive) and the rest; a line "[sor-spike]" when more than 20 ms passed
++// (a picture late), with the usual values beside it (average of the last pictures), at most 80 lines.
++namespace
++{
++    struct SorSpike
++    {
++        int64_t prev = 0, idle = 0, vblankFn = 0, bytes = 0;
++        int64_t part0[sor_times::PART_COUNT] = {}, calls0[sor_times::PART_COUNT] = {};
++        uint32_t transfers = 0, frames = 0, lines = 0;
++        double avgWork = 0, avgPart[sor_times::PART_COUNT] = {}, avgTransfers = 0, avgKb = 0;
++    };
++    SorSpike s_spike;
++}
++
+ void PS2Memory::sorVifGiro()
+ {
+     sorThreadIdeale(0);
+     for (;;)
+     {
+         PendingTransfer p;
++        size_t ancora = 0;
+         {
+             std::unique_lock<std::mutex> lock(m_sorVifMutex);
+-            m_sorVifSveglia.wait(lock, [this]()
+-                                 { return !m_sorVifCoda.empty(); });
++            if (sor_times::g_on && m_sorVifCoda.empty())
++            {
++                const int64_t w0 = sor_times::now();
++                m_sorVifSveglia.wait(lock, [this]()
++                                     { return !m_sorVifCoda.empty(); });
++                s_spike.idle += sor_times::now() - w0;
++            }
++            else
++                m_sorVifSveglia.wait(lock, [this]()
++                                     { return !m_sorVifCoda.empty(); });
+             p = std::move(m_sorVifCoda.front());
+             m_sorVifCoda.pop_front();
++            ancora = m_sorVifCoda.size();
++        }
++        if (!p.vblank && sor_times::g_on)
++        {
++            ++s_spike.transfers;
++            s_spike.bytes += static_cast<int64_t>(p.chainData.size());
+         }
+         if (p.vblank)
+         {
++            const int64_t f0 = sor_times::g_on ? sor_times::now() : 0;
+             m_sorVblankFn();
++            if (sor_times::g_on)
++            {
++                SorSpike &s = s_spike;
++                const int64_t ora = sor_times::now();
++                s.vblankFn += ora - f0;
++                double part[sor_times::PART_COUNT];
++                long long calls[sor_times::PART_COUNT];
++                for (int i = 0; i < sor_times::PART_COUNT; ++i)
++                {
++                    const int64_t n = sor_times::g_total_ns[i].load(std::memory_order_relaxed);
++                    const int64_t c = sor_times::g_total_calls[i].load(std::memory_order_relaxed);
++                    part[i] = (n - s.part0[i]) / 1e6;
++                    calls[i] = c - s.calls0[i];
++                    s.part0[i] = n;
++                    s.calls0[i] = c;
++                }
++                if (s.prev)
++                {
++                    const double wall = (ora - s.prev) / 1e6, idle = s.idle / 1e6, work = wall - idle, kb = s.bytes / 1024.0;
++                    ++s.frames;
++                    if (wall > 20.0 && s.frames > 300 && s.lines < 80)
++                    {
++                        ++s.lines;
++                        std::printf("[sor-spike] VIF thread: %.1f ms between vblanks, working %.1f (usually %.1f), waiting for work %.1f; "
++                                    "vu1 %.1f (usually %.1f, %lld runs), vif1 %.1f (usually %.1f), gif %.1f (usually %.1f, %lld packets), "
++                                    "the rest %.1f; picture handoff %.1f; %u transfers (usually %.0f), %.0f KB (usually %.0f); %zu still queued\n",
++                                    wall, work, s.avgWork, idle, part[sor_times::VU1], s.avgPart[sor_times::VU1], calls[sor_times::VU1],
++                                    part[sor_times::VIF1], s.avgPart[sor_times::VIF1], part[sor_times::GIF], s.avgPart[sor_times::GIF],
++                                    calls[sor_times::GIF], work - part[sor_times::VU1] - part[sor_times::VIF1] - part[sor_times::GIF],
++                                    s.vblankFn / 1e6, s.transfers, s.avgTransfers, kb, s.avgKb, ancora);
++                        std::fflush(stdout);
++                    }
++                    const double a = s.frames < 30 ? 1.0 / s.frames : 1.0 / 30.0;
++                    s.avgWork += (work - s.avgWork) * a;
++                    for (int i = 0; i < sor_times::PART_COUNT; ++i)
++                        s.avgPart[i] += (part[i] - s.avgPart[i]) * a;
++                    s.avgTransfers += (s.transfers - s.avgTransfers) * a;
++                    s.avgKb += (kb - s.avgKb) * a;
++                }
++                s.prev = ora;
++                s.idle = s.vblankFn = s.bytes = 0;
++                s.transfers = 0;
++            }
+             m_sorVblankInCoda.fetch_sub(1u, std::memory_order_seq_cst);
+             m_sorVifInCorso.fetch_sub(1u, std::memory_order_release);
+             if (s_sorAttende.load(std::memory_order_seq_cst) != 0u)
+@@ -2223,6 +2333,8 @@ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t
+     sorVifAspetta(7u);
+     if (!data || sizeBytes < 16)
+         return;
++    if (pathId == GifPathId::Path1 && g_sorVu1CopiaPacchetti) // sor: SOR_VU1=confronto (runtime/sor_vu1_host.h)
++        g_sorVu1CopiaPacchetti->emplace_back(data, data + sizeBytes);
+ 
+     if (pathId == GifPathId::Path3)
+     {
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index 8294c40..45555b8 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -1,4 +1,6 @@
+ #include "ps2_runtime.h"
++#include "runtime/sor_times.h"
++#include "runtime/sor_vu1_host.h"
+ #include "ps2_log.h"
+ #include "ps2_stubs.h"
+ #include "ps2_syscalls.h"
+@@ -382,16 +384,30 @@ static thread_local bool s_sorThreadGioco = false;
+ static bool sorSonoThreadGioco() { return s_sorThreadGioco; }
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n); // ps2xIOP/.../iop_spu2.cpp
+ size_t sorSpu2Coda();
++bool sorAudioAvvia();                                    // pc/sor_audio.cpp: smooth audio (SOR_AUDIO_STRETCH)
++size_t sorAudioLiscio(int16_t *out, size_t frames);
++void sorAudioContaVecchio(size_t frames, size_t presi);
++static bool g_sorAudioLiscio = false; // set once before the stream starts
+ static uint64_t g_sorAudioVuoti = 0, g_sorAudioDati = 0;
+ static void sorAudioRichiesta(void *buffer, unsigned int frames)
+ {
+     auto *out = static_cast<int16_t *>(buffer);
+-    const size_t presi = sorSpu2Prendi(out, frames);
+-    g_sorAudioDati += presi;
+-    if (presi < frames)
+-    {
+-        g_sorAudioVuoti += frames - presi;
+-        std::memset(out + presi * 2u, 0, (frames - presi) * 4u);
++    if (g_sorAudioLiscio)
++    {   // sor: through SoundTouch, zeros only when even it has nothing
++        const size_t dati = sorAudioLiscio(out, frames);
++        g_sorAudioDati += dati;
++        g_sorAudioVuoti += frames - dati;
++    }
++    else
++    {   // SOR_AUDIO_STRETCH=0: the old path
++        const size_t presi = sorSpu2Prendi(out, frames);
++        g_sorAudioDati += presi;
++        if (presi < frames)
++        {
++            g_sorAudioVuoti += frames - presi;
++            std::memset(out + presi * 2u, 0, (frames - presi) * 4u);
++        }
++        sorAudioContaVecchio(frames, presi); // only counts, for the [sor-audio] line
+     }
+     static const bool s_rapporto = std::getenv("SOR_TEMPI") != nullptr;
+     static uint64_t s_prossimo = 240000u;
+@@ -409,6 +425,7 @@ static void sorAvviaUscitaAudio()
+         std::printf("[sor] audio: nessun dispositivo\n");
+         return;
+     }
++    g_sorAudioLiscio = sorAudioAvvia(); // before the callback can run
+     SetAudioStreamBufferSizeDefault(1024);
+     static AudioStream s_flusso = LoadAudioStream(48000, 16, 2);
+     SetAudioStreamCallback(s_flusso, sorAudioRichiesta);
+@@ -713,6 +730,7 @@ bool PS2Runtime::canBindIopRpc(uint32_t sid) const noexcept
+ 
+ ps2x::iop::RpcResult PS2Runtime::handleIopRpc(uint8_t *rdram, R5900Context *ctx, ps2x::iop::RpcRequest request)
+ {
++    sor_times::Scope sorTimeScope(sor_times::IOP);
+     auto scope = m_iopHost->enterCall(ctx, rdram);
+     request.callToken = scope.token();
+     return m_iopSubsystem->handleRpc(request);
+@@ -720,12 +738,14 @@ ps2x::iop::RpcResult PS2Runtime::handleIopRpc(uint8_t *rdram, R5900Context *ctx,
+ 
+ void PS2Runtime::notifyIopSifTransfer(uint8_t *rdram, const ps2x::iop::SifTransfer &transfer)
+ {
++    sor_times::Scope sorTimeScope(sor_times::IOP);
+     auto scope = m_iopHost->enterCall(nullptr, rdram);
+     m_iopSubsystem->onSifTransfer(transfer);
+ }
+ 
+ void PS2Runtime::advanceIopEeCycles(uint64_t eeCycles) noexcept
+ {
++    sor_times::Scope sorTimeScope(sor_times::IOP);
+     m_iopSubsystem->runEeCycles(eeCycles);
+ }
+ 
+@@ -789,46 +809,60 @@ bool PS2Runtime::syncCoreSubsystems()
+     m_memory.setGifArbiter(&m_gifArbiter);
+     m_memory.sorImpostaVblank([this]()
+                               { m_gs.sorVblank(); });
+-    m_memory.setVu1MscalCallback([this](uint32_t startPC, uint32_t top, uint32_t itop)
+-                                 {
+-                                     // sor: sul thread del VIF non si toccano i contesti del processore.
+-                                     static R5900Context s_contestoVif{};
+-                                     R5900Context *cpuContext = !sorSonoThreadGioco() ? &s_contestoVif : (m_eeScheduler ? m_eeScheduler->currentContext() : nullptr);
+-                                     if (!cpuContext)
+-                                     {
+-                                         cpuContext = &m_cpuContext;
+-                                     }
+-                                     m_vu1.state().dBitEnabled =
+-                                         (cpuContext->vu0_fbrst & (1u << 10)) != 0u;
+-                                     m_vu1.state().tBitEnabled =
+-                                         (cpuContext->vu0_fbrst & (1u << 11)) != 0u;
+-                                     m_vu1.execute(m_memory.getVU1Code(), PS2_VU1_CODE_SIZE,
+-                                                   m_memory.getVU1Data(), PS2_VU1_DATA_SIZE,
+-                                                   m_gs, &m_memory, startPC, top, itop, 65536);
+-                                     cpuContext->vu0_vpu_stat =
+-                                         (cpuContext->vu0_vpu_stat & ~0x0600u) |
+-                                         (m_vu1.state().stoppedByD ? 0x0200u : 0u) |
+-                                         (m_vu1.state().stoppedByT ? 0x0400u : 0u); });
+-    m_memory.setVu1MscntCallback([this](uint32_t top, uint32_t itop)
+-                                 {
+-                                     // sor: sul thread del VIF non si toccano i contesti del processore.
+-                                     static R5900Context s_contestoVif{};
+-                                     R5900Context *cpuContext = !sorSonoThreadGioco() ? &s_contestoVif : (m_eeScheduler ? m_eeScheduler->currentContext() : nullptr);
+-                                     if (!cpuContext)
+-                                     {
+-                                         cpuContext = &m_cpuContext;
+-                                     }
+-                                     m_vu1.state().dBitEnabled =
+-                                         (cpuContext->vu0_fbrst & (1u << 10)) != 0u;
+-                                     m_vu1.state().tBitEnabled =
+-                                         (cpuContext->vu0_fbrst & (1u << 11)) != 0u;
+-                                     m_vu1.resume(m_memory.getVU1Code(), PS2_VU1_CODE_SIZE,
+-                                                  m_memory.getVU1Data(), PS2_VU1_DATA_SIZE,
+-                                                  m_gs, &m_memory, top, itop, 65536);
+-                                     cpuContext->vu0_vpu_stat =
+-                                         (cpuContext->vu0_vpu_stat & ~0x0600u) |
+-                                         (m_vu1.state().stoppedByD ? 0x0200u : 0u) |
+-                                         (m_vu1.state().stoppedByT ? 0x0400u : 0u); });
++    // MSCAL (mscnt false) and MSCNT. sor: SOR_VU1 (runtime/sor_vu1_host.h, pc/sor_vu1.cpp): "pcsx2" runs the program on
++    // PCSX2's microVU instead of ours; "confronto" runs ours and, for some programs, microVU too, and compares them.
++    const auto sorVu1 = [this](bool mscnt, uint32_t startPC, uint32_t top, uint32_t itop)
++    {
++        // sor: sul thread del VIF non si toccano i contesti del processore.
++        static R5900Context s_contestoVif{};
++        R5900Context *cpuContext = !sorSonoThreadGioco() ? &s_contestoVif : (m_eeScheduler ? m_eeScheduler->currentContext() : nullptr);
++        if (!cpuContext)
++        {
++            cpuContext = &m_cpuContext;
++        }
++        const SorVu1Host &ospite = sorVu1Host();
++        if (ospite.run && ospite.codeMem == m_memory.getVU1Code())
++        {
++            sor_times::Scope sorTimeScope(sor_times::VU1);
++            const uint32_t fermo = ospite.run(mscnt ? 0xFFFFFFFFu : startPC, top, itop, cpuContext->vu0_fbrst,
++                                              m_memory.getVU1CodeGeneration());
++            cpuContext->vu0_vpu_stat = (cpuContext->vu0_vpu_stat & ~0x0600u) | (fermo & 0x0600u);
++            return;
++        }
++        m_vu1.state().dBitEnabled =
++            (cpuContext->vu0_fbrst & (1u << 10)) != 0u;
++        m_vu1.state().tBitEnabled =
++            (cpuContext->vu0_fbrst & (1u << 11)) != 0u;
++        std::vector<std::vector<uint8_t>> sorPacchetti;
++        const bool sorConfronto = ospite.compareBefore &&
++                                  ospite.compareBefore(m_vu1.state(), m_memory.getVU1Code(), m_memory.getVU1Data(),
++                                                       m_memory.getVU1CodeGeneration(), mscnt ? 0xFFFFFFFFu : startPC,
++                                                       top, itop, cpuContext->vu0_fbrst);
++        if (sorConfronto)
++            g_sorVu1CopiaPacchetti = &sorPacchetti;
++        if (mscnt)
++            m_vu1.resume(m_memory.getVU1Code(), PS2_VU1_CODE_SIZE,
++                         m_memory.getVU1Data(), PS2_VU1_DATA_SIZE,
++                         m_gs, &m_memory, top, itop, 65536);
++        else
++            m_vu1.execute(m_memory.getVU1Code(), PS2_VU1_CODE_SIZE,
++                          m_memory.getVU1Data(), PS2_VU1_DATA_SIZE,
++                          m_gs, &m_memory, startPC, top, itop, 65536);
++        if (sorConfronto)
++        {
++            g_sorVu1CopiaPacchetti = nullptr;
++            if (ospite.compareAfter)
++                ospite.compareAfter(m_vu1.state(), m_memory.getVU1Data(), sorPacchetti);
++        }
++        cpuContext->vu0_vpu_stat =
++            (cpuContext->vu0_vpu_stat & ~0x0600u) |
++            (m_vu1.state().stoppedByD ? 0x0200u : 0u) |
++            (m_vu1.state().stoppedByT ? 0x0400u : 0u);
++    };
++    m_memory.setVu1MscalCallback([sorVu1](uint32_t startPC, uint32_t top, uint32_t itop)
++                                 { sorVu1(false, startPC, top, itop); });
++    m_memory.setVu1MscntCallback([sorVu1](uint32_t top, uint32_t itop)
++                                 { sorVu1(true, 0u, top, itop); });
+     resetIop();
+     m_vu0.reset();
+     m_vu1.reset();
+diff --git a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+index 0816179..1ea7a2d 100644
+--- a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
++++ b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+@@ -1,10 +1,13 @@
+ // Based on Blackline Interactive implementation
+ #include <string>
+ #include <vector>
++#include <atomic>
+ #include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
+ #include "runtime/ps2_memory.h"
++#include "runtime/sor_times.h"
++#include "runtime/sor_vu1_host.h"
+ #include <cstring>
+ 
+ enum VIFCmd : uint8_t
+@@ -288,6 +291,524 @@ void PS2Memory::processVIF0Data(const uint8_t *data, uint32_t sizeBytes)
+     }
+ }
+ 
++// sor: fast UNPACK (10/11/2026, the author: "as optimized as possible without losing quality").
++// The generic loop (now sor_unpack::generic, unchanged) decided format, mask, mode and address again for every
++// single vector, with two divisions each time: in the busiest places the VIF1 part took a quarter of the VIF
++// thread. Here those decisions are taken once per UNPACK and every format has its own loop (fastLoop).
++// The result must be identical to the generic loop, bit for bit. With SOR_UNPACKVERIFICA=1 (tests) the first 64
++// commands of every kind and then one in 256 are run with both, the generic one on a copy, and compared; a difference
++// is written in the log ("[sor-unpack] DIFFERENCE") and the generic result is kept. Every 5 s one "[sor-unpack]" line
++// counts them.
++namespace sor_unpack
++{
++struct Cmd
++{
++    uint32_t vn = 0u, vl = 0u;
++    bool maskEnable = false;
++    bool zeroExtend = false;
++    uint32_t writeVectorCount = 0u;
++    uint32_t sourceVectorCount = 0u;
++    uint32_t bytesPerVector = 0u;
++    uint32_t cl = 1u, wl = 1u;
++    uint32_t vuAddr = 0u;
++    uint32_t mask = 0u;
++    uint32_t mode = 0u;
++    const uint32_t *col = nullptr;
++};
++
++static_assert(PS2_VU1_DATA_SIZE == 0x4000u, "fastLoop writes (address & 0x3FF) * 16 without the size check");
++
++// The old loop, word for word (vif1_regs -> c / row, m_vu1Data -> vu).
++static void generic(const Cmd &c, const uint8_t *srcBase, uint8_t *vu, uint32_t *row)
++{
++    const uint8_t vn = static_cast<uint8_t>(c.vn);
++    const uint8_t vl = static_cast<uint8_t>(c.vl);
++    const bool maskEnable = c.maskEnable;
++    const int components = vn + 1;
++    const uint32_t bytesPerVector = c.bytesPerVector;
++    const uint32_t writeVectorCount = c.writeVectorCount;
++    const uint32_t cl = c.cl;
++    const uint32_t wl = c.wl;
++    const uint32_t sourceVectorCount = c.sourceVectorCount;
++    const uint32_t vuAddr = c.vuAddr;
++    const bool zeroExtend = c.zeroExtend;
++    uint32_t srcIndex = 0u;
++    for (uint32_t writeIndex = 0; writeIndex < writeVectorCount; ++writeIndex)
++    {
++        const uint32_t cyclePos = writeIndex % wl;
++        const bool sourceAvailable = (cl >= wl) || (cyclePos < cl);
++
++        uint32_t destVec = 0;
++        if (cl >= wl)
++        {
++            destVec = (vuAddr + (writeIndex / wl) * cl + cyclePos) & 0x3FFu;
++        }
++        else
++        {
++            destVec = (vuAddr + writeIndex) & 0x3FFu;
++        }
++
++        uint32_t destOff = destVec * 16u;
++        if (destOff + 16u > PS2_VU1_DATA_SIZE)
++        {
++            if (sourceAvailable && srcIndex < sourceVectorCount)
++                ++srcIndex;
++            continue;
++        }
++
++        uint32_t lanes[4] = {0u, 0u, 0u, 0u};
++        std::memcpy(lanes, vu + destOff, sizeof(lanes));
++        uint32_t decompressed[4] = {lanes[0], lanes[1], lanes[2], lanes[3]};
++        bool decoded = false;
++
++        const uint8_t *srcVec = nullptr;
++        if (sourceAvailable && srcIndex < sourceVectorCount)
++        {
++            srcVec = srcBase + srcIndex * bytesPerVector;
++            ++srcIndex;
++            decoded = true;
++        }
++
++        auto extend16 = [&](uint16_t raw) -> uint32_t
++        {
++            if (zeroExtend)
++                return static_cast<uint32_t>(raw);
++            return static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(raw)));
++        };
++
++        auto extend8 = [&](uint8_t raw) -> uint32_t
++        {
++            if (zeroExtend)
++                return static_cast<uint32_t>(raw);
++            return static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(raw)));
++        };
++
++        bool handledFormat = true;
++        if (!decoded)
++        {
++            handledFormat = false;
++        }
++        else if (vl == 0u)
++        {
++            if (components == 1)
++            {
++                uint32_t scalar = 0;
++                std::memcpy(&scalar, srcVec, sizeof(scalar));
++                decompressed[0] = scalar;
++                decompressed[1] = scalar;
++                decompressed[2] = scalar;
++                decompressed[3] = scalar;
++            }
++            else
++            {
++                const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
++                for (uint32_t c = 0; c < limit; ++c)
++                {
++                    uint32_t scalar = 0;
++                    std::memcpy(&scalar, srcVec + c * 4u, sizeof(scalar));
++                    decompressed[c] = scalar;
++                }
++            }
++        }
++        else if (vl == 1u)
++        {
++            if (components == 1)
++            {
++                uint16_t raw = 0;
++                std::memcpy(&raw, srcVec, sizeof(raw));
++                const uint32_t scalar = extend16(raw);
++                decompressed[0] = scalar;
++                decompressed[1] = scalar;
++                decompressed[2] = scalar;
++                decompressed[3] = scalar;
++            }
++            else
++            {
++                const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
++                for (uint32_t c = 0; c < limit; ++c)
++                {
++                    uint16_t raw = 0;
++                    std::memcpy(&raw, srcVec + c * 2u, sizeof(raw));
++                    decompressed[c] = extend16(raw);
++                }
++            }
++        }
++        else if (vl == 2u)
++        {
++            if (components == 1)
++            {
++                const uint32_t scalar = extend8(srcVec[0]);
++                decompressed[0] = scalar;
++                decompressed[1] = scalar;
++                decompressed[2] = scalar;
++                decompressed[3] = scalar;
++            }
++            else
++            {
++                const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
++                for (uint32_t c = 0; c < limit; ++c)
++                {
++                    decompressed[c] = extend8(srcVec[c]);
++                }
++            }
++        }
++        else if (vl == 3u && vn == 3u)
++        {
++            // V4-5: packed color-like format in a single 16-bit value.
++            uint16_t packed = 0;
++            std::memcpy(&packed, srcVec, sizeof(packed));
++            // sor: sulla console 5 bit diventano 8 (<<3) e il bit alto vale 0x80. Il microcodice dei
++            // personaggi usa questi valori come pesi delle ossa (x 1/248): piu' piccoli li deformava.
++            decompressed[0] = (packed & 0x1Fu) << 3;
++            decompressed[1] = ((packed >> 5) & 0x1Fu) << 3;
++            decompressed[2] = ((packed >> 10) & 0x1Fu) << 3;
++            decompressed[3] = ((packed >> 15) & 0x01u) << 7;
++        }
++        else
++        {
++            handledFormat = false;
++        }
++
++        // Unknown compressed format fallback: preserve legacy raw-copy behavior.
++        if (!handledFormat && decoded && !maskEnable && (c.mode == 0u || c.mode == 3u))
++        {
++            uint32_t copyBytes = (bytesPerVector < 16u) ? bytesPerVector : 16u;
++            std::memcpy(vu + destOff, srcVec, copyBytes);
++            continue;
++        }
++
++        const bool canAdd = (vl != 3u || vn != 3u);
++        const uint32_t mode = c.mode & 3u;
++        const uint32_t colIdx = (cyclePos > 3u) ? 3u : cyclePos;
++        const uint32_t maskCycle = (cyclePos > 3u) ? 3u : cyclePos;
++
++        for (uint32_t field = 0u; field < 4u; ++field)
++        {
++            uint32_t maskSpec = 0u;
++            if (maskEnable)
++            {
++                const uint32_t shift = ((maskCycle * 4u) + field) * 2u;
++                maskSpec = (c.mask >> shift) & 0x3u;
++            }
++
++            // In fill-write cycles with suspended source reads, treat raw-data selections as row-fill.
++            if (!decoded && maskSpec == 0u)
++                maskSpec = 1u;
++
++            uint32_t writeVal = lanes[field];
++            if (maskSpec == 0u)
++            {
++                if (handledFormat)
++                {
++                    writeVal = decompressed[field];
++                    if (canAdd && (mode == 1u || mode == 2u))
++                    {
++                        writeVal = writeVal + row[field];
++                        if (mode == 2u)
++                            row[field] = writeVal;
++                    }
++                }
++            }
++            else if (maskSpec == 1u)
++            {
++                writeVal = row[field];
++            }
++            else if (maskSpec == 2u)
++            {
++                writeVal = c.col[colIdx];
++            }
++            else
++            {
++                continue; // write-protect
++            }
++
++            lanes[field] = writeVal;
++        }
++
++        std::memcpy(vu + destOff, lanes, sizeof(lanes));
++    }
++
++}
++
++template <uint32_t VN, uint32_t VL>
++static inline void decode(const uint8_t *s, bool zeroExtend, uint32_t *d)
++{
++    if constexpr (VL == 0u)
++    {
++        if constexpr (VN == 0u)
++        {
++            uint32_t v;
++            std::memcpy(&v, s, 4u);
++            d[0] = v;
++            d[1] = v;
++            d[2] = v;
++            d[3] = v;
++        }
++        else
++            std::memcpy(d, s, (VN + 1u) * 4u);
++    }
++    else if constexpr (VL == 1u)
++    {
++        auto ext = [zeroExtend](const uint8_t *p) -> uint32_t
++        {
++            uint16_t r;
++            std::memcpy(&r, p, 2u);
++            return zeroExtend ? static_cast<uint32_t>(r) : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(r)));
++        };
++        if constexpr (VN == 0u)
++        {
++            const uint32_t v = ext(s);
++            d[0] = v;
++            d[1] = v;
++            d[2] = v;
++            d[3] = v;
++        }
++        else
++            for (uint32_t i = 0u; i <= VN; ++i)
++                d[i] = ext(s + i * 2u);
++    }
++    else if constexpr (VL == 2u)
++    {
++        auto ext = [zeroExtend](uint8_t r) -> uint32_t
++        {
++            return zeroExtend ? static_cast<uint32_t>(r) : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(r)));
++        };
++        if constexpr (VN == 0u)
++        {
++            const uint32_t v = ext(s[0]);
++            d[0] = v;
++            d[1] = v;
++            d[2] = v;
++            d[3] = v;
++        }
++        else
++            for (uint32_t i = 0u; i <= VN; ++i)
++                d[i] = ext(s[i]);
++    }
++    else
++    {
++        // V4-5, same as the generic loop: 5 bits become 8 (<<3), the top bit is worth 0x80.
++        uint16_t p;
++        std::memcpy(&p, s, 2u);
++        d[0] = (p & 0x1Fu) << 3;
++        d[1] = ((p >> 5) & 0x1Fu) << 3;
++        d[2] = ((p >> 10) & 0x1Fu) << 3;
++        d[3] = ((p >> 15) & 0x01u) << 7;
++    }
++}
++
++constexpr uint32_t vectorBytes(uint32_t vn, uint32_t vl)
++{
++    return (vl == 3u && vn == 3u) ? 2u : (vn + 1u) * (vl == 0u ? 4u : vl == 1u ? 2u : 1u);
++}
++
++template <uint32_t VN, uint32_t VL>
++static void fastLoop(const Cmd &c, const uint8_t *src, uint8_t *vu, uint32_t *row)
++{
++    constexpr bool kV45 = (VL == 3u && VN == 3u);
++    constexpr uint32_t kBpv = vectorBytes(VN, VL);
++    const uint32_t cl = c.cl, wl = c.wl, vuAddr = c.vuAddr;
++    const uint32_t count = c.writeVectorCount, sourceCount = c.sourceVectorCount;
++    const uint32_t mode = c.mode & 3u;
++    const bool add = !kV45 && (mode == 1u || mode == 2u);
++    const bool simple = !c.maskEnable && !add;
++    const bool blocks = cl >= wl; // cl >= wl: blocks of wl vectors every cl; otherwise fill cycles
++    uint32_t srcIndex = 0u, cyclePos = 0u, blockBase = 0u;
++    for (uint32_t w = 0u; w < count; ++w)
++    {
++        const uint32_t destVec = (vuAddr + (blocks ? blockBase + cyclePos : w)) & 0x3FFu;
++        const bool sourceAvailable = blocks || cyclePos < cl;
++        uint8_t *dst = vu + destVec * 16u;
++        const bool decoded = sourceAvailable && srcIndex < sourceCount;
++        if (decoded && simple)
++        {
++            uint32_t d[4];
++            if constexpr (VN == 1u || VN == 2u) // V2 and V3 keep the old z/w (or w)
++                std::memcpy(d, dst, 16u);
++            decode<VN, VL>(src + srcIndex * kBpv, c.zeroExtend, d);
++            std::memcpy(dst, d, 16u);
++            ++srcIndex;
++        }
++        else
++        {
++            uint32_t lanes[4];
++            std::memcpy(lanes, dst, 16u);
++            uint32_t d[4] = {lanes[0], lanes[1], lanes[2], lanes[3]};
++            if (decoded)
++            {
++                decode<VN, VL>(src + srcIndex * kBpv, c.zeroExtend, d);
++                ++srcIndex;
++            }
++            const uint32_t mc = cyclePos > 3u ? 3u : cyclePos;
++            for (uint32_t f = 0u; f < 4u; ++f)
++            {
++                uint32_t ms = c.maskEnable ? (c.mask >> ((mc * 4u + f) * 2u)) & 3u : 0u;
++                if (!decoded && ms == 0u)
++                    ms = 1u;
++                uint32_t v = lanes[f];
++                if (ms == 0u)
++                {
++                    v = d[f];
++                    if (add)
++                    {
++                        v += row[f];
++                        if (mode == 2u)
++                            row[f] = v;
++                    }
++                }
++                else if (ms == 1u)
++                    v = row[f];
++                else if (ms == 2u)
++                    v = c.col[mc];
++                else
++                    continue; // write-protect
++                lanes[f] = v;
++            }
++            std::memcpy(dst, lanes, 16u);
++        }
++        if (++cyclePos == wl)
++        {
++            cyclePos = 0u;
++            blockBase += cl;
++        }
++    }
++}
++
++static bool fast(const Cmd &c, const uint8_t *src, uint8_t *vu, uint32_t *row)
++{
++    if (c.vn > 3u || c.vl > 3u || c.bytesPerVector != vectorBytes(c.vn, c.vl))
++        return false;
++    switch (c.vl * 4u + c.vn)
++    {
++    case 0u: fastLoop<0u, 0u>(c, src, vu, row); return true;
++    case 1u: fastLoop<1u, 0u>(c, src, vu, row); return true;
++    case 2u: fastLoop<2u, 0u>(c, src, vu, row); return true;
++    case 3u: fastLoop<3u, 0u>(c, src, vu, row); return true;
++    case 4u: fastLoop<0u, 1u>(c, src, vu, row); return true;
++    case 5u: fastLoop<1u, 1u>(c, src, vu, row); return true;
++    case 6u: fastLoop<2u, 1u>(c, src, vu, row); return true;
++    case 7u: fastLoop<3u, 1u>(c, src, vu, row); return true;
++    case 8u: fastLoop<0u, 2u>(c, src, vu, row); return true;
++    case 9u: fastLoop<1u, 2u>(c, src, vu, row); return true;
++    case 10u: fastLoop<2u, 2u>(c, src, vu, row); return true;
++    case 11u: fastLoop<3u, 2u>(c, src, vu, row); return true;
++    case 15u: fastLoop<3u, 3u>(c, src, vu, row); return true;
++    default: return false; // vl 3 with vn 0-2: not real formats, the generic loop keeps its old raw copy
++    }
++}
++
++static std::atomic<uint64_t> s_fast{0}, s_generic{0}, s_checked{0}, s_differences{0}, s_allDifferences{0};
++static std::atomic<uint64_t> s_commands{0};
++static std::atomic<uint32_t> s_kind[512];
++static std::atomic<int64_t> s_lastLine{0};
++
++static void printKind(const Cmd &c, uint32_t kind, bool handled)
++{
++    static const char *const kSize[4] = {"32", "16", "8", "5"};
++    char name[16];
++    if (c.vn == 0u)
++        std::snprintf(name, sizeof(name), "S-%s", kSize[c.vl & 3u]);
++    else
++        std::snprintf(name, sizeof(name), "V%u-%s", c.vn + 1u, kSize[c.vl & 3u]);
++    std::printf("[sor-unpack] new kind %u: %s%s, mode %u, cl %u wl %u, %s\n", kind, name,
++                c.maskEnable ? " with mask" : "", c.mode & 3u, c.cl, c.wl, handled ? "fast way" : "generic way");
++    std::fflush(stdout);
++}
++
++static void maybePrint()
++{
++    const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
++                            std::chrono::steady_clock::now().time_since_epoch())
++                            .count();
++    int64_t last = s_lastLine.load(std::memory_order_relaxed);
++    if (last == 0)
++    {
++        s_lastLine.compare_exchange_strong(last, now);
++        return;
++    }
++    if (now - last < 5000000000LL || !s_lastLine.compare_exchange_strong(last, now))
++        return;
++    std::printf("[sor-unpack] last %.1f s: %llu fast, %llu generic, %llu checked against the old way, %llu differences "
++                "(since the start %llu)\n",
++                (now - last) / 1e9, static_cast<unsigned long long>(s_fast.exchange(0)),
++                static_cast<unsigned long long>(s_generic.exchange(0)), static_cast<unsigned long long>(s_checked.exchange(0)),
++                static_cast<unsigned long long>(s_differences.exchange(0)),
++                static_cast<unsigned long long>(s_allDifferences.load()));
++    std::fflush(stdout);
++}
++
++static void run(const Cmd &c, const uint8_t *src, uint8_t *vu, uint32_t *row)
++{
++    // The comparison with the old way costs time: only with SOR_UNPACKVERIFICA=1 (tests). Without it the fast way runs
++    // alone (10/11/2026: 0 differences in about 170,000 commands compared while playing and in 325,219 random ones
++    // outside the game).
++    static const bool s_check = []
++    {
++        const char *e = std::getenv("SOR_UNPACKVERIFICA");
++        return e && e[0] == '1';
++    }();
++    if (!s_check)
++    {
++        if (!fast(c, src, vu, row))
++            generic(c, src, vu, row);
++        return;
++    }
++    const uint32_t clKind = c.cl == c.wl ? 0u : (c.cl > c.wl ? 1u : 2u);
++    const uint32_t kind = (c.vn & 3u) | ((c.vl & 3u) << 2) | (c.maskEnable ? 16u : 0u) | ((c.mode & 3u) << 5) | (clKind << 7);
++    const uint32_t seen = s_kind[kind].fetch_add(1u, std::memory_order_relaxed);
++    const uint64_t number = s_commands.fetch_add(1u, std::memory_order_relaxed);
++    const bool handled = c.vn <= 3u && c.vl <= 3u && !(c.vl == 3u && c.vn != 3u);
++    if (seen == 0u)
++        printKind(c, kind, handled);
++    if ((number & 1023u) == 0u)
++        maybePrint();
++
++    if (!handled)
++    {
++        generic(c, src, vu, row);
++        s_generic.fetch_add(1u, std::memory_order_relaxed);
++        return;
++    }
++    if (seen < 64u || (number & 255u) == 0u)
++    {
++        static thread_local uint8_t s_copy[PS2_VU1_DATA_SIZE];
++        uint32_t rowCopy[4];
++        std::memcpy(s_copy, vu, PS2_VU1_DATA_SIZE);
++        std::memcpy(rowCopy, row, sizeof(rowCopy));
++        generic(c, src, s_copy, rowCopy);
++        const bool done = fast(c, src, vu, row);
++        s_checked.fetch_add(1u, std::memory_order_relaxed);
++        if (!done || std::memcmp(s_copy, vu, PS2_VU1_DATA_SIZE) != 0 || std::memcmp(rowCopy, row, sizeof(rowCopy)) != 0)
++        {
++            const uint64_t all = s_allDifferences.fetch_add(1u, std::memory_order_relaxed);
++            s_differences.fetch_add(1u, std::memory_order_relaxed);
++            if (all < 8u)
++            {
++                uint32_t at = 0u;
++                while (at < PS2_VU1_DATA_SIZE && s_copy[at] == vu[at])
++                    ++at;
++                std::printf("[sor-unpack] DIFFERENCE kind %u (vn %u vl %u mask %u mode %u cl %u wl %u num %u addr 0x%x): "
++                            "first different byte %u%s, the old way's result is kept\n",
++                            kind, c.vn, c.vl, c.maskEnable ? 1u : 0u, c.mode, c.cl, c.wl, c.writeVectorCount, c.vuAddr, at,
++                            done ? "" : " (fast way refused)");
++                std::fflush(stdout);
++            }
++            std::memcpy(vu, s_copy, PS2_VU1_DATA_SIZE);
++            std::memcpy(row, rowCopy, sizeof(rowCopy));
++        }
++        s_fast.fetch_add(1u, std::memory_order_relaxed);
++        return;
++    }
++    if (!fast(c, src, vu, row))
++    {
++        generic(c, src, vu, row);
++        s_generic.fetch_add(1u, std::memory_order_relaxed);
++        return;
++    }
++    s_fast.fetch_add(1u, std::memory_order_relaxed);
++}
++} // namespace sor_unpack
++
+ uint64_t g_sorMpg = 0; // sor: per SOR_TEMPI
+ 
+ void PS2Memory::processVIF1Data(uint32_t srcPhys, uint32_t sizeBytes)
+@@ -304,6 +825,7 @@ void PS2Memory::processVIF1Data(uint32_t srcPhys, uint32_t sizeBytes)
+ 
+ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+ {
++    sor_times::Scope sorTimeScope(sor_times::VIF1);
+     if (sizeBytes == 0u)
+         return;
+ 
+@@ -547,6 +1069,9 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+                     {
+                         std::memcpy(m_vu1Code + destAddr, data + pos, copyBytes);
+                         markVU1CodeModified();
++                        // sor: SOR_VU1=pcsx2: microVU recompiles only the programs over this range.
++                        if (const SorVu1Host &ospite = sorVu1Host(); ospite.codeWritten && m_vu1Code == ospite.codeMem)
++                            ospite.codeWritten(destAddr, copyBytes, getVU1CodeGeneration());
+                     }
+                     // sor: SOR_MPGDUMP=<prefisso>: salva il primo microprogramma di ogni dimensione (lo legge strumenti/vudis.py).
+                     static const char *s_mpg = std::getenv("SOR_MPGDUMP");
+@@ -659,202 +1184,21 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
+ 
+             if (m_vu1Data && totalBytes > 0 && pos + totalBytes <= sizeBytes)
+             {
+-                const uint8_t *srcBase = data + pos;
+-                uint32_t srcIndex = 0u;
+-                for (uint32_t writeIndex = 0; writeIndex < writeVectorCount; ++writeIndex)
+-                {
+-                    const uint32_t cyclePos = writeIndex % wl;
+-                    const bool sourceAvailable = (cl >= wl) || (cyclePos < cl);
+-
+-                    uint32_t destVec = 0;
+-                    if (cl >= wl)
+-                    {
+-                        destVec = (vuAddr + (writeIndex / wl) * cl + cyclePos) & 0x3FFu;
+-                    }
+-                    else
+-                    {
+-                        destVec = (vuAddr + writeIndex) & 0x3FFu;
+-                    }
+-
+-                    uint32_t destOff = destVec * 16u;
+-                    if (destOff + 16u > PS2_VU1_DATA_SIZE)
+-                    {
+-                        if (sourceAvailable && srcIndex < sourceVectorCount)
+-                            ++srcIndex;
+-                        continue;
+-                    }
+-
+-                    uint32_t lanes[4] = {0u, 0u, 0u, 0u};
+-                    std::memcpy(lanes, m_vu1Data + destOff, sizeof(lanes));
+-                    uint32_t decompressed[4] = {lanes[0], lanes[1], lanes[2], lanes[3]};
+-                    bool decoded = false;
+-
+-                    const uint8_t *srcVec = nullptr;
+-                    if (sourceAvailable && srcIndex < sourceVectorCount)
+-                    {
+-                        srcVec = srcBase + srcIndex * bytesPerVector;
+-                        ++srcIndex;
+-                        decoded = true;
+-                    }
+-
+-                    auto extend16 = [&](uint16_t raw) -> uint32_t
+-                    {
+-                        if (zeroExtend)
+-                            return static_cast<uint32_t>(raw);
+-                        return static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(raw)));
+-                    };
+-
+-                    auto extend8 = [&](uint8_t raw) -> uint32_t
+-                    {
+-                        if (zeroExtend)
+-                            return static_cast<uint32_t>(raw);
+-                        return static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(raw)));
+-                    };
+-
+-                    bool handledFormat = true;
+-                    if (!decoded)
+-                    {
+-                        handledFormat = false;
+-                    }
+-                    else if (vl == 0u)
+-                    {
+-                        if (components == 1)
+-                        {
+-                            uint32_t scalar = 0;
+-                            std::memcpy(&scalar, srcVec, sizeof(scalar));
+-                            decompressed[0] = scalar;
+-                            decompressed[1] = scalar;
+-                            decompressed[2] = scalar;
+-                            decompressed[3] = scalar;
+-                        }
+-                        else
+-                        {
+-                            const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
+-                            for (uint32_t c = 0; c < limit; ++c)
+-                            {
+-                                uint32_t scalar = 0;
+-                                std::memcpy(&scalar, srcVec + c * 4u, sizeof(scalar));
+-                                decompressed[c] = scalar;
+-                            }
+-                        }
+-                    }
+-                    else if (vl == 1u)
+-                    {
+-                        if (components == 1)
+-                        {
+-                            uint16_t raw = 0;
+-                            std::memcpy(&raw, srcVec, sizeof(raw));
+-                            const uint32_t scalar = extend16(raw);
+-                            decompressed[0] = scalar;
+-                            decompressed[1] = scalar;
+-                            decompressed[2] = scalar;
+-                            decompressed[3] = scalar;
+-                        }
+-                        else
+-                        {
+-                            const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
+-                            for (uint32_t c = 0; c < limit; ++c)
+-                            {
+-                                uint16_t raw = 0;
+-                                std::memcpy(&raw, srcVec + c * 2u, sizeof(raw));
+-                                decompressed[c] = extend16(raw);
+-                            }
+-                        }
+-                    }
+-                    else if (vl == 2u)
+-                    {
+-                        if (components == 1)
+-                        {
+-                            const uint32_t scalar = extend8(srcVec[0]);
+-                            decompressed[0] = scalar;
+-                            decompressed[1] = scalar;
+-                            decompressed[2] = scalar;
+-                            decompressed[3] = scalar;
+-                        }
+-                        else
+-                        {
+-                            const uint32_t limit = (components > 4) ? 4u : static_cast<uint32_t>(components);
+-                            for (uint32_t c = 0; c < limit; ++c)
+-                            {
+-                                decompressed[c] = extend8(srcVec[c]);
+-                            }
+-                        }
+-                    }
+-                    else if (vl == 3u && vn == 3u)
+-                    {
+-                        // V4-5: packed color-like format in a single 16-bit value.
+-                        uint16_t packed = 0;
+-                        std::memcpy(&packed, srcVec, sizeof(packed));
+-                        // sor: sulla console 5 bit diventano 8 (<<3) e il bit alto vale 0x80. Il microcodice dei
+-                        // personaggi usa questi valori come pesi delle ossa (x 1/248): piu' piccoli li deformava.
+-                        decompressed[0] = (packed & 0x1Fu) << 3;
+-                        decompressed[1] = ((packed >> 5) & 0x1Fu) << 3;
+-                        decompressed[2] = ((packed >> 10) & 0x1Fu) << 3;
+-                        decompressed[3] = ((packed >> 15) & 0x01u) << 7;
+-                    }
+-                    else
+-                    {
+-                        handledFormat = false;
+-                    }
+-
+-                    // Unknown compressed format fallback: preserve legacy raw-copy behavior.
+-                    if (!handledFormat && decoded && !maskEnable && (vif1_regs.mode == 0u || vif1_regs.mode == 3u))
+-                    {
+-                        uint32_t copyBytes = (bytesPerVector < 16u) ? bytesPerVector : 16u;
+-                        std::memcpy(m_vu1Data + destOff, srcVec, copyBytes);
+-                        continue;
+-                    }
+-
+-                    const bool canAdd = (vl != 3u || vn != 3u);
+-                    const uint32_t mode = vif1_regs.mode & 3u;
+-                    const uint32_t colIdx = (cyclePos > 3u) ? 3u : cyclePos;
+-                    const uint32_t maskCycle = (cyclePos > 3u) ? 3u : cyclePos;
+-
+-                    for (uint32_t field = 0u; field < 4u; ++field)
+-                    {
+-                        uint32_t maskSpec = 0u;
+-                        if (maskEnable)
+-                        {
+-                            const uint32_t shift = ((maskCycle * 4u) + field) * 2u;
+-                            maskSpec = (vif1_regs.mask >> shift) & 0x3u;
+-                        }
+-
+-                        // In fill-write cycles with suspended source reads, treat raw-data selections as row-fill.
+-                        if (!decoded && maskSpec == 0u)
+-                            maskSpec = 1u;
+-
+-                        uint32_t writeVal = lanes[field];
+-                        if (maskSpec == 0u)
+-                        {
+-                            if (handledFormat)
+-                            {
+-                                writeVal = decompressed[field];
+-                                if (canAdd && (mode == 1u || mode == 2u))
+-                                {
+-                                    writeVal = writeVal + vif1_regs.row[field];
+-                                    if (mode == 2u)
+-                                        vif1_regs.row[field] = writeVal;
+-                                }
+-                            }
+-                        }
+-                        else if (maskSpec == 1u)
+-                        {
+-                            writeVal = vif1_regs.row[field];
+-                        }
+-                        else if (maskSpec == 2u)
+-                        {
+-                            writeVal = vif1_regs.col[colIdx];
+-                        }
+-                        else
+-                        {
+-                            continue; // write-protect
+-                        }
+-
+-                        lanes[field] = writeVal;
+-                    }
+-
+-                    std::memcpy(m_vu1Data + destOff, lanes, sizeof(lanes));
+-                }
++                sor_unpack::Cmd cmd;
++                cmd.vn = vn;
++                cmd.vl = vl;
++                cmd.maskEnable = maskEnable;
++                cmd.zeroExtend = zeroExtend;
++                cmd.writeVectorCount = writeVectorCount;
++                cmd.sourceVectorCount = sourceVectorCount;
++                cmd.bytesPerVector = bytesPerVector;
++                cmd.cl = cl;
++                cmd.wl = wl;
++                cmd.vuAddr = vuAddr;
++                cmd.mask = vif1_regs.mask;
++                cmd.mode = vif1_regs.mode;
++                cmd.col = vif1_regs.col;
++                sor_unpack::run(cmd, data + pos, m_vu1Data, vif1_regs.row);
+             }
+             pos += totalBytes;
+ 
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+index b527de5..a18ee25 100644
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+@@ -1,4 +1,5 @@
+ #include "runtime/ps2_vu1.h"
++#include "runtime/sor_times.h"
+ #include "runtime/gs/ps2_gif_arbiter.h"
+ #include "runtime/gs/gs_frontend.h"
+ #include "runtime/ps2_memory.h"
+@@ -1660,7 +1661,7 @@ void VU1Interpreter::resume(uint8_t *vuCode, uint32_t codeSize,
+     run(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
+ }
+ 
+-// sor: F6 in the game window (the author, 9/11: the water in chapter 4 is wrong with the video card and with the processor;
++// sor: F6 in the game window (the author, 9/11: the water in chapter 4 is wrong with the video card and with the processor;
+ // SOR_VU1LENTO from the start is too slow to get there). While it is on, every VU1 program runs as with SOR_VU1VERIFICA:
+ // the exact interpreter draws (its result is kept) and the fast translation is compared with it, each difference written
+ // in the log ("VU1 DIFFERENZA ingresso ..."). Slow while on; F6 again goes back to the fast way.
+@@ -1679,6 +1680,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
+                          uint8_t *vuData, uint32_t dataSize,
+                          GS &gs, PS2Memory *memory, uint32_t maxCycles)
+ {
++    sor_times::Scope sorTimeScope(sor_times::VU1);
+     m_activeVuData = vuData;
+     m_activeVuDataSize = dataSize;
+     m_activeGs = &gs;
+diff --git a/ps2xTest/src/code_generator_tests.cpp b/ps2xTest/src/code_generator_tests.cpp
+index 463b6cf..ef09b0f 100644
+--- a/ps2xTest/src/code_generator_tests.cpp
++++ b/ps2xTest/src/code_generator_tests.cpp
+@@ -1245,6 +1245,9 @@ void register_code_generator_tests()
+                 {"PEXCH", MMI_MMI3, MMI3_PEXCH},
+                 {"PCPYH", MMI_MMI3, MMI3_PCPYH},
+                 {"PEXCW", MMI_MMI3, MMI3_PEXCW},
++                // sor: PABSW/PABSH read rs before (same bug as literalynn/BurnoutDominatorReversed).
++                {"PABSW", MMI_MMI1, MMI1_PABSW},
++                {"PABSH", MMI_MMI1, MMI1_PABSH},
+             };
+ 
+             for (const UnaryMmiCase &item : cases)
+@@ -1266,6 +1269,35 @@ void register_code_generator_tests()
+             }
+         });
+ 
++        tc.Run("PROT3W keeps the top word and PMULTH keeps eight products", [](TestCase &t) {
++            CodeGenerator gen({}, {});
++
++            Instruction prot3w{};
++            prot3w.isMMI = true;
++            prot3w.opcode = OPCODE_MMI;
++            prot3w.function = MMI_MMI2;
++            prot3w.sa = MMI2_PROT3W;
++            prot3w.rd = 3;
++            prot3w.rt = 5;
++            const std::string prot3wOut = gen.translateInstruction(prot3w);
++            t.IsTrue(prot3wOut.find("_MM_SHUFFLE(3,0,2,1)") != std::string::npos,
++                     "PROT3W should give {w1, w2, w0, w3}");
++
++            Instruction pmulth{};
++            pmulth.isMMI = true;
++            pmulth.opcode = OPCODE_MMI;
++            pmulth.function = MMI_MMI2;
++            pmulth.sa = MMI2_PMULTH;
++            pmulth.rd = 3;
++            pmulth.rs = 4;
++            pmulth.rt = 5;
++            const std::string pmulthOut = gen.translateInstruction(pmulth);
++            t.IsTrue(pmulthOut.find("ctx->lo1") != std::string::npos && pmulthOut.find("ctx->hi1") != std::string::npos,
++                     "PMULTH should fill the upper halves of LO and HI");
++            t.IsTrue(pmulthOut.find("_mm_madd_epi16") == std::string::npos,
++                     "PMULTH should not add the products together");
++        });
++
+         tc.Run("VU0 macro mappings cover all S1/S2 enums", [](TestCase &t) {
+             const std::vector<std::string> candidates = {
+                 "ps2xRecomp/include/ps2recomp/instructions.h",

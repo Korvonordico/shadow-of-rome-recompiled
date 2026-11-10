@@ -118,6 +118,13 @@ namespace
     const uint32_t kWorldScreen = 0x4D3930u;   // FMATRIX world -> screen
     const uint32_t kArea = 0x4BE2E8u, kScene = 0x4BE2E0u; // Global.Area_no, Global.Scene_no (ushort)
     const uint8_t kNormalType = 6;             // mCtrl_type of the normal camera (move_type07)
+    // mCtrl_type 0x0A = move_type16 (0x262020), the camera while crouching (L2): free_move's table 0x49FEE0 entry 0x0A
+    // -> 0x2681A0 -> jal 0x262020. Same angles as move_type07: yaw read from Camera.mDir_y into +0xFE, turned by
+    // +-0x10 a frame with the virtual pad bits 0x4000/0x8000 (a fixed speed, so the mouse as a stick felt like a pad),
+    // written back to mDir_y; pitch pulled towards a target kept at +0xFC (+-0x10 a frame by bits 0x1000/0x2000,
+    // clamped to -0x280..0x154, func_131DA0). Its target is not reset each frame, so the hold writes it too.
+    // (10/11/2026, the author: crouched, the mouse did not turn the view as when standing.)
+    const uint8_t kCrouchType = 0x0A;
     PS2Runtime::RecompiledFunction g_nextMove = nullptr; // the game's classCAMERA_CTRL::move (or the free camera's hook)
     std::atomic<long long> g_directFino{0};    // ms: until then the mouse turns the camera directly, not via the stick
     // game thread
@@ -479,11 +486,12 @@ namespace
         }
         const uint8_t tipo = rd8(kCamCtrl + 0x180);
         const bool centra = static_cast<int16_t>(rd16(kCamCtrl + 0xE8)) > 0;
-        if (tipo != kNormalType || centra || rd32(kCamCtrl + 0x8) != kCamera)
+        const bool crouch = tipo == kCrouchType;
+        if ((tipo != kNormalType && !crouch) || centra || rd32(kCamCtrl + 0x8) != kCamera)
         {
             g_hold = false;
             g_directFino.store(0);
-            if (tipo != kNormalType)
+            if (tipo != kNormalType && !crouch)
                 diciTipo(tipo);
             return;
         }
@@ -501,7 +509,7 @@ namespace
         g_sx = g_sy = 0.0f;
         // the stick's own range for the pitch (see the top of the file)
         const int base = rd8(kCamCtrl + 0x183) == 1 ? -0x32 : -0x8C;
-        const float lo = static_cast<float>(base - 0x280), hi = static_cast<float>(base + 0x154);
+        const float lo = static_cast<float>(crouch ? -0x280 : base - 0x280), hi = static_cast<float>(crouch ? 0x154 : base + 0x154);
         if (dx != 0.0f || dy != 0.0f)
         {
             if (!g_hold)
@@ -535,6 +543,11 @@ namespace
             return;
         wr16(kYaw, static_cast<uint16_t>(std::lround(g_holdYaw) & 0xFFF));
         wr16(kPitch, static_cast<uint16_t>(static_cast<int16_t>(std::lround(g_holdPitch))));
+        if (crouch) // move_type16 pulls the pitch towards its own target: the target is the player's pitch too
+        {   // and its yaw lives in +0xFE (read from mDir_y only on its first frame, written back to mDir_y at its end)
+            wr16(kCamCtrl + 0xFC, static_cast<uint16_t>(static_cast<int16_t>(std::lround(g_holdPitch))));
+            wr16(kCamCtrl + 0xFE, static_cast<uint16_t>(std::lround(g_holdYaw) & 0xFFF));
+        }
     }
 
     void cameraMove(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)

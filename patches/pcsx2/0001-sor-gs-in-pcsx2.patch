@@ -10,6 +10,338 @@ index b0c3945..b596ac3 100644
  
  if(ENABLE_QT_UI)
  	add_subdirectory(pcsx2-qt)
+diff --git a/pcsx2/GS/Renderers/Common/GSDevice.cpp b/pcsx2/GS/Renderers/Common/GSDevice.cpp
+index b3c8d65..efd7b56 100644
+--- a/pcsx2/GS/Renderers/Common/GSDevice.cpp
++++ b/pcsx2/GS/Renderers/Common/GSDevice.cpp
+@@ -2,6 +2,7 @@
+ // SPDX-License-Identifier: GPL-3.0+
+ 
+ #include "GS/Renderers/Common/GSDevice.h"
++#include "GS/SorGsTimes.h"
+ #include "GS/GSGL.h"
+ #include "GS/GS.h"
+ #include "GS/GSUtil.h"
+@@ -682,6 +683,8 @@ GSTexture* GSDevice::FetchSurface(GSTexture::Usage usage, const GSVector2i& size
+ 	return FetchSurface(usage, size.x, size.y, levels, format, clear, prefer_reuse);
+ }
+ 
++SorGsTimes g_sor_gs_times; // sor-gs timing, see GS/SorGsTimes.h
++
+ GSTexture* GSDevice::FetchSurface(GSTexture::Usage usage, int width, int height, int levels, GSTexture::Format format, bool clear, bool prefer_reuse)
+ {
+ 	const GSVector2i size(std::clamp(width, 1, static_cast<int>(g_gs_device->GetMaxTextureSize())),
+@@ -725,7 +728,10 @@ GSTexture* GSDevice::FetchSurface(GSTexture::Usage usage, int width, int height,
+ 		}
+ 		else
+ 		{
++			const int64_t sor_surface0 = SorGsNowNs(); // sor-gs timing: a texture or target the pool did not have
+ 			t = CreateSurface(usage, size.x, size.y, levels, format);
++			g_sor_gs_times.surface_ns += SorGsNowNs() - sor_surface0;
++			g_sor_gs_times.surfaces++;
+ 			if (!t)
+ 			{
+ 				ERROR_LOG("GS: Memory allocation failure for {}x{} texture. Purging pool and retrying.", size.x, size.y);
+diff --git a/pcsx2/GS/Renderers/Common/GSDevice.h b/pcsx2/GS/Renderers/Common/GSDevice.h
+index 421f8ea..7e97560 100644
+--- a/pcsx2/GS/Renderers/Common/GSDevice.h
++++ b/pcsx2/GS/Renderers/Common/GSDevice.h
+@@ -1295,6 +1295,7 @@ struct alignas(16) GSHWDrawConfig
+ 	DestinationAlphaMode destination_alpha;
+ 	SetDATM datm;
+ 	bool line_expand;
++	bool wireframe; ///< sor-gs (Shadow of Rome port, debug): draw these triangles as wires (DX11 only)
+ 
+ 	struct AlphaPass
+ 	{
+diff --git a/pcsx2/GS/Renderers/Common/GSRenderer.cpp b/pcsx2/GS/Renderers/Common/GSRenderer.cpp
+index 35ab6fc..80e7c24 100644
+--- a/pcsx2/GS/Renderers/Common/GSRenderer.cpp
++++ b/pcsx2/GS/Renderers/Common/GSRenderer.cpp
+@@ -4,6 +4,7 @@
+ #include "ImGui/FullscreenUI.h"
+ #include "ImGui/ImGuiManager.h"
+ #include "GS/Renderers/Common/GSRenderer.h"
++#include "GS/SorGsTimes.h"
+ #include "GS/GSCapture.h"
+ #include "GS/GSDump.h"
+ #include "GS/GSGL.h"
+@@ -706,6 +707,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
+ 			EndPresentFrame();
+ 
+ 			const float gpu_time = g_gs_device->GetAndResetAccumulatedGPUTime();
++			g_sor_gs_times.gpu_ms_total += gpu_time; // sor-gs timing
+ 			GPUPipelineStatistics gpu_stats = g_gs_device->GetAndResetAccumulatedGPUPipelineStatistics();
+ 			PerformanceMetrics::OnGPUPresent(gpu_time, gpu_stats.vs_invocations, gpu_stats.ps_invocations);
+ 		}
+diff --git a/pcsx2/GS/Renderers/DX11/GSDevice11.cpp b/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
+index 1dd7600..8ae5d66 100644
+--- a/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
++++ b/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
+@@ -650,6 +650,7 @@ void GSDevice11::Destroy()
+ 	m_om_dss.clear();
+ 	m_om_bs.clear();
+ 	m_rs.reset();
++	m_rs_wire.reset();
+ 
+ 	if (m_state.rtv)
+ 	{
+@@ -3208,6 +3209,10 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+ 	SetupVS(config.vs, &config.cb_vs);
+ 	SetupPS(config.ps, &config.cb_ps, config.sampler);
+ 
++	// sor-gs debug view: the game's triangles as wires, only around this draw's own passes (the copies and
++	// conversions around them stay solid). config.wireframe is set only for triangles (GSRendererHW::SetupIA).
++	const bool wire = config.wireframe && SetWireframe(true);
++
+ 	if (primid_texture)
+ 	{
+ 		OMDepthStencilSelector dss = config.depth;
+@@ -3308,6 +3313,9 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+ 			one_barrier, config.alpha_second_pass.require_full_barrier, rtsize);
+ 	}
+ 
++	if (wire)
++		SetWireframe(false);
++
+ 	if (colclip_rt)
+ 	{
+ 		config.colclip_update_area = config.colclip_update_area.runion(config.drawarea);
+@@ -3325,6 +3333,28 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+ 	}
+ }
+ 
++// sor-gs debug view (Shadow of Rome port): binds the wire rasterizer state (made on first use from m_rs, so it is
++// the same in all but the fill mode) or puts the normal one back. Returns true if the wire state is now bound.
++bool GSDevice11::SetWireframe(bool on)
++{
++	static bool s_wire_failed = false;
++	if (on && !m_rs_wire && m_rs && !s_wire_failed)
++	{
++		D3D11_RASTERIZER_DESC rd;
++		m_rs->GetDesc(&rd);
++		rd.FillMode = D3D11_FILL_WIREFRAME;
++		if (FAILED(m_dev->CreateRasterizerState(&rd, m_rs_wire.put())))
++		{
++			Console.Error("D3D11: Failed to create the wireframe rasterizer state.");
++			m_rs_wire.reset();
++			s_wire_failed = true;
++		}
++	}
++	const bool wire = on && m_rs_wire;
++	m_ctx->RSSetState(wire ? m_rs_wire.get() : m_rs.get());
++	return wire;
++}
++
+ void GSDevice11::FeedbackCopyAndBind(const GSHWDrawConfig& config,
+ 	GSTexture* rt, GSTexture* rt_clone, GSTexture* ds, GSTexture* ds_clone, const GSVector4i& copyarea)
+ {
+diff --git a/pcsx2/GS/Renderers/DX11/GSDevice11.h b/pcsx2/GS/Renderers/DX11/GSDevice11.h
+index 8fc99a4..ec757e2 100644
+--- a/pcsx2/GS/Renderers/DX11/GSDevice11.h
++++ b/pcsx2/GS/Renderers/DX11/GSDevice11.h
+@@ -297,6 +297,8 @@ private:
+ 	std::unordered_map<u32, wil::com_ptr_nothrow<ID3D11DepthStencilState>> m_om_dss;
+ 	std::unordered_map<u64, wil::com_ptr_nothrow<ID3D11BlendState>> m_om_bs;
+ 	wil::com_ptr_nothrow<ID3D11RasterizerState> m_rs;
++	wil::com_ptr_nothrow<ID3D11RasterizerState> m_rs_wire; // sor-gs debug view: m_rs with FILL_WIREFRAME, made on first use
++	bool SetWireframe(bool on); // sor-gs: true if the wire state is now bound
+ 
+ 	GSHWDrawConfig::VSConstantBuffer m_vs_cb_cache;
+ 	GSHWDrawConfig::PSConstantBuffer m_ps_cb_cache;
+diff --git a/pcsx2/GS/Renderers/DX12/GSDevice12.cpp b/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
+index e2b6505..5c09717 100644
+--- a/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
++++ b/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
+@@ -2,6 +2,7 @@
+ // SPDX-License-Identifier: GPL-3.0+
+ 
+ #include "GS/GS.h"
++#include "GS/SorGsTimes.h"
+ #include "GS/GSGL.h"
+ #include "GS/GSPerfMon.h"
+ #include "GS/GSUtil.h"
+@@ -11,6 +12,9 @@
+ #include "GS/Renderers/DX12/D3D12ShaderCache.h"
+ #include "Host.h"
+ #include "ShaderCacheVersion.h"
++#include "Config.h"
++#include <cstdio>
++#include <unordered_set>
+ 
+ #include "common/Console.h"
+ #include "common/BitUtils.h"
+@@ -707,6 +711,7 @@ void GSDevice12::WaitForFence(u64 fence, bool spin)
+ {
+ 	if (m_completed_fence_value >= fence)
+ 		return;
++	const int64_t sor_wait0 = SorGsNowNs(); // sor-gs timing: the CPU waiting for the GPU
+ 
+ 	if (spin)
+ 	{
+@@ -729,6 +734,12 @@ void GSDevice12::WaitForFence(u64 fence, bool spin)
+ 		}
+ 	}
+ 
++	{
++		const int64_t sor_waited = SorGsNowNs() - sor_wait0;
++		g_sor_gs_times.fence_wait_ns += sor_waited;
++		if (sor_waited > 100000)
++			g_sor_gs_times.fence_waits++;
++	}
+ 	// Release resources for as many command lists which have completed.
+ 	u32 index = (m_current_command_list + 1) % NUM_COMMAND_LISTS;
+ 	for (u32 i = 0; i < NUM_COMMAND_LISTS; i++)
+@@ -1052,6 +1063,7 @@ bool GSDevice12::Create(GSVSyncMode vsync_mode, bool allow_present_throttle)
+ 	InitializeSamplers();
+ 	// Reference stencil isn't tied to pipeline, so we can set it once and leave it.
+ 	SetStencilRef(1);
++	SorPreloadTfxPipelines();
+ 	return true;
+ }
+ 
+@@ -1456,7 +1468,9 @@ void GSDevice12::EndPresent()
+ 
+ 	const UINT sync_interval = static_cast<UINT>(m_vsync_mode == GSVSyncMode::FIFO);
+ 	const UINT flags = (m_vsync_mode == GSVSyncMode::Disabled && m_using_allow_tearing) ? DXGI_PRESENT_ALLOW_TEARING : 0;
++	const int64_t sor_present0 = SorGsNowNs(); // sor-gs timing
+ 	m_swap_chain->Present(sync_interval, flags);
++	g_sor_gs_times.present_ns += SorGsNowNs() - sor_present0;
+ 
+ 	InvalidateCachedState();
+ }
+@@ -3177,6 +3191,9 @@ bool GSDevice12::CompilePostProcessingPipelines()
+ 	return true;
+ }
+ 
++// sor-gs: the list of draw pipelines (see SorPreloadTfxPipelines)
++static std::FILE* s_sor_tfx_list = nullptr;
++static u32 s_sor_tfx_listed = 0;
+ void GSDevice12::DestroyResources()
+ {
+ 	m_convert_vs.reset();
+@@ -3185,6 +3202,11 @@ void GSDevice12::DestroyResources()
+ 	m_cas_upscale_pipeline.reset();
+ 	m_cas_root_signature.reset();
+ 
++	if (s_sor_tfx_list)
++	{
++		std::fclose(s_sor_tfx_list);
++		s_sor_tfx_list = nullptr;
++	}
+ 	m_tfx_pipelines.clear();
+ 	m_tfx_pixel_shaders.clear();
+ 	m_tfx_vertex_shaders.clear();
+@@ -3475,13 +3497,73 @@ GSDevice12::ComPtr<ID3D12PipelineState> GSDevice12::CreateTFXPipeline(const Pipe
+ 	return pipeline;
+ }
+ 
++// sor-gs (10/11/2026): every draw pipeline made in a session is written to cache/sor_tfx_pipelines.bin (its 32-byte
++// selector); at the next start they are all made at once, before the game draws. Before this, the first time a scene
++// used them cost 20-160 ms in the middle of play (49 pipelines at a scene start: 36-44 ms; 4 of them once: 157 ms),
++// even with PCSX2's pipeline cache on disk. At most 6000 kept; selectors whose pipeline cannot be made are skipped.
++static std::string SorTfxListPath()
++{
++	return Path::Combine(EmuFolders::Cache, "sor_tfx_pipelines.bin");
++}
++
++void GSDevice12::SorPreloadTfxPipelines()
++{
++	const std::string path = SorTfxListPath();
++	std::vector<PipelineSelector> list;
++	if (std::FILE* f = FileSystem::OpenCFile(path.c_str(), "rb"))
++	{
++		PipelineSelector p;
++		while (list.size() < 6000 && std::fread(&p, sizeof(p), 1, f) == 1)
++			list.push_back(p);
++		std::fclose(f);
++	}
++	const int64_t t0 = SorGsNowNs();
++	std::unordered_set<PipelineSelector, PipelineSelectorHash> kept;
++	u32 made = 0, failed = 0;
++	for (const PipelineSelector& p : list)
++	{
++		if (!kept.insert(p).second || m_tfx_pipelines.find(p) != m_tfx_pipelines.end())
++			continue;
++		ComPtr<ID3D12PipelineState> pipeline(CreateTFXPipeline(p));
++		if (!pipeline)
++		{
++			kept.erase(p);
++			failed++;
++			continue;
++		}
++		m_tfx_pipelines.emplace(p, std::move(pipeline));
++		made++;
++	}
++	// The list is written again without doubles or failures, then new ones are added at the end.
++	s_sor_tfx_list = FileSystem::OpenCFile(path.c_str(), "wb");
++	s_sor_tfx_listed = 0;
++	if (s_sor_tfx_list)
++	{
++		for (const auto& it : m_tfx_pipelines)
++			if (std::fwrite(&it.first, sizeof(it.first), 1, s_sor_tfx_list) == 1)
++				s_sor_tfx_listed++;
++		std::fflush(s_sor_tfx_list);
++	}
++	std::fprintf(stderr, "[sor-gs] draw pipelines made at start: %u in %.0f ms (%u could not be made, %u in the list)\n",
++		made, static_cast<double>(SorGsNowNs() - t0) / 1e6, failed, static_cast<u32>(list.size()));
++	std::fflush(stderr);
++}
++
+ const ID3D12PipelineState* GSDevice12::GetTFXPipeline(const PipelineSelector& p)
+ {
+ 	auto it = m_tfx_pipelines.find(p);
+ 	if (it != m_tfx_pipelines.end())
+ 		return it->second.get();
+ 
++	const int64_t sor_pipe0 = SorGsNowNs(); // sor-gs timing: a pipeline new in this session
+ 	ComPtr<ID3D12PipelineState> pipeline(CreateTFXPipeline(p));
++	g_sor_gs_times.pipeline_ns += SorGsNowNs() - sor_pipe0;
++	g_sor_gs_times.pipelines++;
++	if (pipeline && s_sor_tfx_list && s_sor_tfx_listed < 6000 && std::fwrite(&p, sizeof(p), 1, s_sor_tfx_list) == 1)
++	{
++		s_sor_tfx_listed++;
++		std::fflush(s_sor_tfx_list);
++	}
+ 	it = m_tfx_pipelines.emplace(p, std::move(pipeline)).first;
+ 	return it->second.get();
+ }
+diff --git a/pcsx2/GS/Renderers/DX12/GSDevice12.h b/pcsx2/GS/Renderers/DX12/GSDevice12.h
+index 3eeab02..49b0db7 100644
+--- a/pcsx2/GS/Renderers/DX12/GSDevice12.h
++++ b/pcsx2/GS/Renderers/DX12/GSDevice12.h
+@@ -478,6 +478,7 @@ private:
+ 	const ID3DBlob* GetTFXPixelShader(const GSHWDrawConfig::PSSelector& sel);
+ 	ComPtr<ID3D12PipelineState> CreateTFXPipeline(const PipelineSelector& p);
+ 	const ID3D12PipelineState* GetTFXPipeline(const PipelineSelector& p);
++	void SorPreloadTfxPipelines(); // sor-gs: the pipelines of earlier sessions, made at start
+ 
+ 	ComPtr<ID3DBlob> GetUtilityVertexShader(const std::string& source, const char* entry_point);
+ 	ComPtr<ID3DBlob> GetUtilityPixelShader(const std::string& source, const char* entry_point);
+diff --git a/pcsx2/GS/Renderers/HW/GSRendererHW.cpp b/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
+index 8b058e1..8514ca5 100644
+--- a/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
++++ b/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
+@@ -15,6 +15,11 @@
+ using PS_ATST  = GSShader::PS_ATST;
+ using PS_AFAIL = GSShader::PS_AFAIL;
+ 
++// sor-gs (Shadow of Rome port), debug only: triangles drawn as wires (F7 with the launcher's WIREFRAME row on).
++// Set by sor-gs/SorGS.cpp on the GS thread before each frame; only DX11 honours it (GSDevice11::RenderHW). Points,
++// lines and sprites (clears, copies, full-screen effects, most menus) stay as they are. Needs proper testing.
++bool g_sor_wireframe = false;
++
+ GSRendererHW::GSRendererHW()
+ 	: GSRenderer()
+ {
+@@ -5714,6 +5719,7 @@ void GSRendererHW::SetupIA(float target_scale, float sx, float sy, bool req_vert
+ 				{
+ 					m_conf.topology = GSHWDrawConfig::Topology::Triangle;
+ 					m_conf.indices_per_prim = 3;
++					m_conf.wireframe = g_sor_wireframe; // sor-gs debug view, see the top of this file
+ 				}
+ 
+ 				// See note above in GS_SPRITE_CLASS.
 diff --git a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp b/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
 index 77a28df..0269e75 100644
 --- a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
@@ -44,3 +376,99 @@ index 77a28df..0269e75 100644
  	if (s_current_serial == new_serial)
  		return;
  
+diff --git a/pcsx2/GS/SorGsTimes.h b/pcsx2/GS/SorGsTimes.h
+new file mode 100644
+index 0000000..0a5f2e6
+--- /dev/null
++++ b/pcsx2/GS/SorGsTimes.h
+@@ -0,0 +1,24 @@
++#pragma once
++// sor-gs timing (10/11/2026): where a picture loses its time on the GS thread. Plain counters: only the GS thread
++// writes them (the DX12 device, the texture pool, GSRenderer::VSync) and reads them (sor-gs/SorGS.cpp, after each
++// picture; SOR_TEMPI=1, the launcher's SPEED TESTS > TIMINGS, prints them). Defined in GSDevice.cpp.
++#include <chrono>
++#include <cstdint>
++
++struct SorGsTimes
++{
++	int64_t fence_wait_ns = 0; // GSDevice12::WaitForFence: the CPU waiting for the GPU to finish older work
++	uint32_t fence_waits = 0;  // ... the waits longer than 0.1 ms
++	int64_t present_ns = 0;    // the swap chain's Present call (DX12)
++	int64_t pipeline_ns = 0;   // draw pipelines new in this session (DX12 CreateTFXPipeline: from the cache or compiled)
++	uint32_t pipelines = 0;
++	int64_t surface_ns = 0;    // textures and render targets the pool did not have (GSDevice::FetchSurface)
++	uint32_t surfaces = 0;
++	double gpu_ms_total = 0.0; // GPU time PCSX2 read at each present (its timestamp queries; lags 1-3 pictures)
++};
++extern SorGsTimes g_sor_gs_times;
++
++inline int64_t SorGsNowNs()
++{
++	return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
++}
+diff --git a/pcsx2/ImGui/ImGuiManager.cpp b/pcsx2/ImGui/ImGuiManager.cpp
+index 53abe0f..3b21db7 100644
+--- a/pcsx2/ImGui/ImGuiManager.cpp
++++ b/pcsx2/ImGui/ImGuiManager.cpp
+@@ -40,6 +40,12 @@
+ #include FT_FREETYPE_H
+ #include FT_MODULE_H
+ 
++// sor (Shadow of Rome port, sor-gs.dll): the DLL runs PCSX2's GS without a VM, so RenderOSD() never drew the
++// performance overlay (FPS, frame-time graph). With SORGS_OSD=1 the DLL sets this, feeds PerformanceMetrics at every
++// vsync and gives the target frame rate (60 or 50) that colours the FPS line.
++bool g_sor_overlays_without_vm = false;
++float g_sor_overlay_target_fps = 0.0f;
++
+ namespace ImGuiManager
+ {
+ 	struct SoftwareCursor
+@@ -1052,7 +1058,7 @@ void ImGuiManager::RenderOSD()
+ 	if (!FullscreenUI::HasActiveWindow())
+ 	{
+ 		// Don't draw OSD when we're just running big picture.
+-		if (VMManager::HasValidVM())
++		if (VMManager::HasValidVM() || g_sor_overlays_without_vm)
+ 			RenderOverlays();
+ 
+ 		DrawOSDMessages(current_time);
+diff --git a/pcsx2/ImGui/ImGuiOverlays.cpp b/pcsx2/ImGui/ImGuiOverlays.cpp
+index a984613..2f87d67 100644
+--- a/pcsx2/ImGui/ImGuiOverlays.cpp
++++ b/pcsx2/ImGui/ImGuiOverlays.cpp
+@@ -53,6 +53,10 @@ InputRecordingUI::InputRecordingData g_InputRecordingData;
+ static constexpr double ONE_BILLION = 1000000000;
+ static constexpr double UPDATE_INTERVAL = 0.1 * ONE_BILLION;
+ static constexpr double UPDATE_INTERVAL_CPU_INFO = 5.0 * ONE_BILLION;
++
++// sor: set by sor-gs.dll (ImGuiManager.cpp), see there.
++extern bool g_sor_overlays_without_vm;
++extern float g_sor_overlay_target_fps;
+ Common::Timer s_last_update_timer = Common::Timer(0.0);
+ Common::Timer s_last_update_timer_cpu_info = Common::Timer(0.0);
+ 
+@@ -314,7 +318,10 @@ __ri void ImGuiManager::DrawPerformanceOverlay(float& position_y, float scale, f
+ 		if (s_last_update_timer.GetTimeNanoseconds() >= UPDATE_INTERVAL)
+ 		{
+ 			s_last_update_timer.Reset();
+-			const float speed = PerformanceMetrics::GetSpeed();
++			// sor: without a VM GetSpeed() divides by the VM's frame rate; sor-gs.dll gives the target (60 or 50).
++			const float speed = (g_sor_overlays_without_vm && g_sor_overlay_target_fps > 0.0f) ?
++				PerformanceMetrics::GetFPS() / g_sor_overlay_target_fps * 100.0f :
++				PerformanceMetrics::GetSpeed();
+ 
+ 			s_speed_line.clear();
+ 			if (GSConfig.OsdShowFPS)
+@@ -369,6 +376,12 @@ __ri void ImGuiManager::DrawPerformanceOverlay(float& position_y, float scale, f
+ 			{
+ 				GSgetStats(s_gs_stats_line);
+ 				GSgetMemoryStats(s_gs_memory_stats_line);
++				if (g_sor_overlays_without_vm) // sor: no MTGS vsync queue in sor-gs.dll, "QF" would read -1
++					s_gs_frame_times_line.format("Min: {:.2f}ms | Avg: {:.2f}ms | Max: {:.2f}ms",
++						PerformanceMetrics::GetMinimumFrameTime(),
++						PerformanceMetrics::GetAverageFrameTime(),
++						PerformanceMetrics::GetMaximumFrameTime());
++				else
+ 				s_gs_frame_times_line.format("{} QF | Min: {:.2f}ms | Avg: {:.2f}ms | Max: {:.2f}ms",
+ 					MTGS::GetCurrentVsyncQueueSize() - 1, // subtract one for the current frame
+ 					PerformanceMetrics::GetMinimumFrameTime(),

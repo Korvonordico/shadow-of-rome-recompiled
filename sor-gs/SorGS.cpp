@@ -16,6 +16,8 @@
 
 #include "pcsx2/GS/GS.h"
 #include "pcsx2/GS/GSPerfMon.h"
+#include "pcsx2/PerformanceMetrics.h"
+#include "pcsx2/GS/SorGsTimes.h"
 #include "pcsx2/GS/Renderers/Common/GSRenderer.h"
 
 #include <chrono>
@@ -40,6 +42,10 @@
 // Debug view (launcher, DEBUG page, WIREFRAME row: SORGS_WIREFRAME=1; F7 in the game): the game's triangles drawn
 // as wires. Defined in pcsx2/GS/Renderers/HW/GSRendererHW.cpp, honoured by DX11 only (GSDevice11::RenderHW).
 extern bool g_sor_wireframe;
+
+// OSD without PCSX2's VM (launcher, GRAPHICS page, OSD row: SORGS_OSD=1). Defined in pcsx2/ImGui/ImGuiManager.cpp.
+extern bool g_sor_overlays_without_vm;
+extern float g_sor_overlay_target_fps;
 
 namespace
 {
@@ -297,6 +303,122 @@ namespace
 	std::atomic<u64> s_wait_count{0}, s_wait_us{0};
 	std::chrono::steady_clock::time_point s_gs_last_vsync{};
 	double s_gs_worst_gap_ms = 0.0, s_gs_busy_ms = 0.0;
+	// sor-gs timing (10/11/2026; SOR_TEMPI=1, the launcher's SPEED TESTS > TIMINGS, prints it): where each picture
+	// spends its time on the GS thread. queue = waiting for the GS thread; work = the GS work of its GIF data on the
+	// CPU; slot = waiting for its refresh (vsync pacing); vsync = GSvsync (last draws, post-processing, OSD, Present);
+	// gpu wait = the CPU waiting for the GPU inside work and vsync (DX12); present = the Present call (DX12); gpu = the
+	// GPU time PCSX2 read at this present (timestamp queries, it lags 1-3 pictures); new = pipelines (DX12) and
+	// textures/targets made for the first time, with their ms. A slow GPU shows as gpu and gpu wait, a slow CPU side
+	// as work or vsync without them.
+	struct SorPic
+	{
+		u64 n = 0;
+		float queue = 0, work = 0, slot = 0, late = 0, vsync = 0, gpu_wait = 0, present = 0, gpu = 0, new_ms = 0;
+		u32 pipelines = 0, surfaces = 0;
+	};
+	constexpr u32 kPicRing = 6;
+	SorPic s_pic_ring[kPicRing];
+	u32 s_pic_pos = 0;
+	bool s_times_on = false;
+	float s_pic_slot_late = 0.0f; // how late the GS thread went on after this picture's refresh
+	double s_slot_late_sum = 0.0, s_slot_late_max = 0.0;
+	u32 s_slot_late_n = 0;
+	double s_work_part_ms = 0.0; // the GS work of the frame's chunks before the one with its vsync
+	SorGsTimes s_times_prev;
+	struct SorSumMax
+	{
+		double sum = 0.0, max = 0.0;
+		void Add(double v)
+		{
+			sum += v;
+			max = std::max(max, v);
+		}
+	};
+	SorSumMax s_t_queue, s_t_work, s_t_slot, s_t_vsync, s_t_gpu_wait, s_t_present, s_t_gpu;
+	u32 s_t_n = 0, s_t_pipelines = 0, s_t_surfaces = 0, s_t_fence_waits = 0;
+	double s_t_new_ms = 0.0;
+	std::chrono::steady_clock::time_point s_t_since{};
+	void SorNotePicture(s64 pushed_ns, s64 pop_ns, std::chrono::steady_clock::time_point busy0,
+		std::chrono::steady_clock::time_point w0, std::chrono::steady_clock::time_point w1,
+		std::chrono::steady_clock::time_point done)
+	{
+		using Ms = std::chrono::duration<double, std::milli>;
+		const SorGsTimes& t = g_sor_gs_times;
+		SorPic& p = s_pic_ring[s_pic_pos++ % kPicRing];
+		p.n = s_gs_frames + 1;
+		p.queue = pushed_ns ? static_cast<float>(static_cast<double>(pop_ns - pushed_ns) / 1e6) : 0.0f;
+		p.work = static_cast<float>(s_work_part_ms + Ms(w0 - busy0).count());
+		p.slot = static_cast<float>(Ms(w1 - w0).count());
+		p.late = s_pic_slot_late;
+		s_pic_slot_late = 0.0f;
+		p.vsync = static_cast<float>(Ms(done - w1).count());
+		p.gpu_wait = static_cast<float>(static_cast<double>(t.fence_wait_ns - s_times_prev.fence_wait_ns) / 1e6);
+		p.present = static_cast<float>(static_cast<double>(t.present_ns - s_times_prev.present_ns) / 1e6);
+		p.gpu = static_cast<float>(t.gpu_ms_total - s_times_prev.gpu_ms_total);
+		p.pipelines = t.pipelines - s_times_prev.pipelines;
+		p.surfaces = t.surfaces - s_times_prev.surfaces;
+		p.new_ms = static_cast<float>(static_cast<double>((t.pipeline_ns - s_times_prev.pipeline_ns) +
+			(t.surface_ns - s_times_prev.surface_ns)) / 1e6);
+		s_t_fence_waits += t.fence_waits - s_times_prev.fence_waits;
+		s_times_prev = t;
+		s_work_part_ms = 0.0;
+		if (s_t_since.time_since_epoch().count() == 0)
+			s_t_since = done;
+		s_t_queue.Add(p.queue);
+		s_t_work.Add(p.work);
+		s_t_slot.Add(p.slot);
+		s_t_vsync.Add(p.vsync);
+		s_t_gpu_wait.Add(p.gpu_wait);
+		s_t_present.Add(p.present);
+		s_t_gpu.Add(p.gpu);
+		s_t_pipelines += p.pipelines;
+		s_t_surfaces += p.surfaces;
+		s_t_new_ms += p.new_ms;
+		++s_t_n;
+	}
+	// With each long gap: the last pictures, oldest first.
+	void SorPrintRing()
+	{
+		static bool s_legend = false;
+		if (!s_legend)
+		{
+			s_legend = true;
+			std::fprintf(stderr, "[sor-gs] before a long gap, the last pictures in ms: q = waiting for the GS thread, w = GS work on the CPU,"
+				" s = waiting for its refresh, l = how late it went on after that refresh, v = GSvsync (last draws, OSD, Present), gw = the CPU waiting for the GPU (inside w and v),"
+				" p = Present, gpu = GPU time (lags 1-3 pictures), new = pipelines/textures made for the first time and their ms\n");
+		}
+		char line[1024];
+		int len = std::snprintf(line, sizeof(line), "[sor-gs]   before it:");
+		for (u32 i = 0; i < kPicRing; ++i)
+		{
+			const SorPic& p = s_pic_ring[(s_pic_pos + i) % kPicRing];
+			if (!p.n || len < 0 || len >= static_cast<int>(sizeof(line)) - 1)
+				continue;
+			len += std::snprintf(line + len, sizeof(line) - static_cast<size_t>(len),
+				" | %llu q %.1f w %.1f s %.1f l %.1f v %.1f gw %.1f p %.1f gpu %.1f new %u/%u %.1f", static_cast<unsigned long long>(p.n),
+				p.queue, p.work, p.slot, p.late, p.vsync, p.gpu_wait, p.present, p.gpu, p.pipelines, p.surfaces, p.new_ms);
+		}
+		std::fprintf(stderr, "%s\n", line);
+	}
+	void SorPrintTimes()
+	{
+		if (!s_t_n)
+			return;
+		const auto now = std::chrono::steady_clock::now();
+		const double wall = std::chrono::duration<double, std::milli>(now - s_t_since).count();
+		const double n = static_cast<double>(s_t_n);
+		std::fprintf(stderr, "[sor-gs] times, ms a picture (average / worst) over %u pictures: queue %.1f / %.1f; GS work %.1f / %.1f;"
+			" waiting for the refresh %.1f / %.1f; GSvsync %.1f / %.1f; CPU waiting for the GPU %.1f / %.1f (%u waits);"
+			" Present %.1f / %.1f; GPU %.1f / %.1f, GPU busy %.0f%%; first-time pipelines %u, textures %u, %.1f ms\n",
+			s_t_n, s_t_queue.sum / n, s_t_queue.max, s_t_work.sum / n, s_t_work.max, s_t_slot.sum / n, s_t_slot.max,
+			s_t_vsync.sum / n, s_t_vsync.max, s_t_gpu_wait.sum / n, s_t_gpu_wait.max, s_t_fence_waits, s_t_present.sum / n,
+			s_t_present.max, s_t_gpu.sum / n, s_t_gpu.max, wall > 0.0 ? s_t_gpu.sum * 100.0 / wall : 0.0, s_t_pipelines,
+			s_t_surfaces, s_t_new_ms);
+		s_t_queue = s_t_work = s_t_slot = s_t_vsync = s_t_gpu_wait = s_t_present = s_t_gpu = SorSumMax{};
+		s_t_n = s_t_pipelines = s_t_surfaces = s_t_fence_waits = 0;
+		s_t_new_ms = 0.0;
+		s_t_since = now;
+	}
 
 	// VSYNC (SORGS_VSYNC=1, from the launcher): every picture in step with the screen. A thread wakes at each of
 	// the screen's refreshes (DXGI WaitForVBlank) and counts them. When the screen's rate is a whole multiple of
@@ -308,6 +430,22 @@ namespace
 	bool s_pacing_on = false;
 	std::atomic<u64> s_vb_count{0};     // the screen's refreshes so far
 	std::atomic<s64> s_vb_period_ns{0}; // their period, measured (0: not known yet)
+	// The screen clock's own timing (10/11/2026, SOR_TEMPI=1 prints it after the pacing line): its wake-ups, the ones
+	// later than 2 ms against the line through the others (median), the worst, refreshes counted after a late
+	// wake-up, double wake-ups.
+	std::atomic<u32> s_clk_wakes{0}, s_clk_late{0}, s_clk_missed{0}, s_clk_double{0};
+	std::atomic<s64> s_clk_late_max_ns{0};
+	// Variable refresh (G-SYNC / FreeSync, 10/11/2026): the screen refreshes when a picture arrives, so there is no
+	// fixed refresh to wait for. Seen in the tests: WaitForVBlank woke about every 3.3 refreshes of 180 Hz, the swap
+	// chain counted 60.6 refreshes a second, and the GS thread waited for a refresh that came only with the next
+	// picture (waits of 16 or 30 ms, then a picture at once: the long gaps left). Seen from the clock thread: the
+	// median time between refreshes over the last 64 more than 1.6 times the screen's set period (off again under
+	// 1.25 times), 64 times in a row. Then each picture is shown as soon as it is ready, the game keeps its own clock.
+	std::atomic<bool> s_vrr{false};
+	std::atomic<s64> s_cfg_period_ns{0}; // the screen's set refresh period (EnumDisplaySettings), 0 = not known
+	std::atomic<s64> s_clk_median_ns{0};
+	u64 s_vb_ref_count = 0; // the latest refresh and when it really was (from the line); under s_vb_lock
+	s64 s_vb_ref_ns = 0;
 	std::atomic<bool> s_vb_quit{false};
 	std::thread* s_vb_thread = nullptr;
 	std::mutex s_vb_lock;
@@ -364,8 +502,24 @@ namespace
 		return found;
 	}
 
+	// The set refresh period of the screen `mon` (its display settings), 0 if not known.
+	s64 VsConfiguredPeriod(HMONITOR mon)
+	{
+		MONITORINFOEXW mi = {};
+		mi.cbSize = sizeof(mi);
+		if (!GetMonitorInfoW(mon, &mi))
+			return 0;
+		DEVMODEW dm = {};
+		dm.dmSize = sizeof(dm);
+		if (!EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm) || dm.dmDisplayFrequency <= 1)
+			return 0;
+		return static_cast<s64>(1e9 / static_cast<double>(dm.dmDisplayFrequency));
+	}
 	void VsClockThread()
 	{
+		// 10/11/2026: above everything else of the game, so a busy PC does not hold back the count of refreshes (slot
+		// waits of 27-31 ms instead of at most 16.5 in the test at 15:35); it only runs for a moment at each refresh.
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
 		HMONITOR mon = MonitorFromWindow(s_hwnd, MONITOR_DEFAULTTOPRIMARY);
 		IDXGIOutput* out = VsFindOutput(mon);
 		if (!out)
@@ -373,10 +527,13 @@ namespace
 			std::fprintf(stderr, "[sor-gs] vsync: no screen found, the pictures are not in step\n");
 			return;
 		}
+		s_cfg_period_ns.store(VsConfiguredPeriod(mon), std::memory_order_relaxed);
+		s64 gaps[64]; // the last times between refreshes, for variable refresh
+		int gap_n = 0, gap_head = 0, vrr_votes = 0;
 		constexpr int N = 128; // the period from the last 128 refreshes
 		s64 times[N];
 		u64 counts[N];
-		int have = 0, head = 0, fails = 0;
+		int have = 0, head = 0, fails = 0, doubles = 0;
 		s64 prev = 0, period = 0;
 		auto checked = std::chrono::steady_clock::now();
 		while (!s_vb_quit.load(std::memory_order_relaxed))
@@ -399,19 +556,65 @@ namespace
 			{
 				const double r = static_cast<double>(t - prev) / static_cast<double>(period);
 				if (r < 0.5) // woken twice for the same refresh
+				{
+					s_clk_double.fetch_add(1, std::memory_order_relaxed);
+					if (++doubles >= 3) // never a busy loop at this thread's priority
+					{
+						Sleep(1);
+						doubles = 0;
+					}
 					continue;
+				}
 				if (r > 1.5) // refreshes this thread missed (a busy PC): counted all the same
+				{
 					step = static_cast<u64>(std::llround(r));
+					s_clk_missed.fetch_add(static_cast<u32>(step - 1), std::memory_order_relaxed);
+				}
+			}
+			if (prev)
+			{
+				// variable refresh: the median time between refreshes against the screen's set period
+				gaps[gap_head] = t - prev;
+				gap_head = (gap_head + 1) % 64;
+				if (gap_n < 64)
+					++gap_n;
+				const s64 cfg = s_cfg_period_ns.load(std::memory_order_relaxed);
+				if (gap_n == 64 && cfg > 0)
+				{
+					s64 tmp[64];
+					std::memcpy(tmp, gaps, sizeof(tmp));
+					std::nth_element(tmp, tmp + 32, tmp + 64);
+					const s64 med = tmp[32];
+					s_clk_median_ns.store(med, std::memory_order_relaxed);
+					const bool vrr = s_vrr.load(std::memory_order_relaxed);
+					const bool other = vrr ? med * 4 < cfg * 5 : med * 5 > cfg * 8; // under 1.25 times / over 1.6 times
+					vrr_votes = other ? vrr_votes + 1 : 0;
+					if (vrr_votes >= 64)
+					{
+						vrr_votes = 0;
+						s_vrr.store(!vrr, std::memory_order_relaxed);
+						if (!vrr)
+							std::fprintf(stderr, "[sor-gs] vsync: variable refresh (G-SYNC/FreeSync): the screen refreshes when a picture arrives, "
+								"about every %.1f ms (set to %.1f Hz); each picture is shown as soon as it is ready, the game keeps its own clock\n",
+								static_cast<double>(med) / 1e6, 1e9 / static_cast<double>(cfg));
+						else
+							std::fprintf(stderr, "[sor-gs] vsync: fixed refresh again (about every %.1f ms, set to %.1f Hz): pictures in step with the screen\n",
+								static_cast<double>(med) / 1e6, 1e9 / static_cast<double>(cfg));
+						std::fflush(stderr);
+					}
+				}
 			}
 			if (prev && !period)
 				period = t - prev; // a rough first value, until there are enough
 			prev = t;
+			doubles = 0;
 			const u64 c = s_vb_count.load(std::memory_order_relaxed) + step;
 			times[head] = t;
 			counts[head] = c;
 			head = (head + 1) % N;
 			if (have < N)
 				++have;
+			s64 ref_ns = 0; // when refresh c really was (0: not known yet)
 			if (have >= 16)
 			{
 				// The straight line through all of them (least squares): a late wake-up of this thread at either
@@ -433,11 +636,33 @@ namespace
 				{
 					period = static_cast<s64>((have * sxy - sx * sy) / den);
 					s_vb_period_ns.store(period, std::memory_order_relaxed);
+					// 10/11/2026: how late this wake-up is against the line (its median: most wake-ups are on time),
+					// and when the refresh just counted really was, for the slot wait's own lateness.
+					const double lb = (have * sxy - sx * sy) / den;
+					const double la = (sy - lb * sx) / have;
+					double res[N];
+					for (int k = 0; k < have; ++k)
+					{
+						const int i = (oldest + k) % N;
+						res[k] = static_cast<double>(times[i] - times[oldest]) - (la + lb * static_cast<double>(counts[i] - counts[oldest]));
+					}
+					const double newest = res[have - 1];
+					std::nth_element(res, res + have / 2, res + have);
+					const double med = res[have / 2];
+					const s64 late_ns = static_cast<s64>(newest - med);
+					s_clk_wakes.fetch_add(1, std::memory_order_relaxed);
+					if (late_ns > 2000000)
+						s_clk_late.fetch_add(1, std::memory_order_relaxed);
+					if (late_ns > s_clk_late_max_ns.load(std::memory_order_relaxed))
+						s_clk_late_max_ns.store(late_ns, std::memory_order_relaxed);
+					ref_ns = times[oldest] + static_cast<s64>(la + lb * static_cast<double>(c - counts[oldest]) + med);
 				}
 			}
 			{
 				std::lock_guard<std::mutex> lk(s_vb_lock);
 				s_vb_count.store(c, std::memory_order_release);
+				s_vb_ref_count = c;
+				s_vb_ref_ns = ref_ns;
 			}
 			s_vb_tick.notify_all();
 			// The game's window moved to another screen: follow it.
@@ -456,6 +681,8 @@ namespace
 						have = head = 0;
 						prev = period = 0;
 						s_vb_period_ns.store(0, std::memory_order_relaxed);
+						s_cfg_period_ns.store(VsConfiguredPeriod(now_mon), std::memory_order_relaxed);
+						gap_n = gap_head = vrr_votes = 0;
 					}
 				}
 			}
@@ -487,6 +714,11 @@ namespace
 	// the game's clock how early this picture was (sorgs_pace).
 	void VsWaitForSlot()
 	{
+		if (s_vrr.load(std::memory_order_relaxed)) // variable refresh: shown as soon as it is ready
+		{
+			s_slot_step.store(0, std::memory_order_relaxed);
+			return;
+		}
 		const u32 game_us = s_game_us.load(std::memory_order_relaxed);
 		const int step = VsStepFor(s_vb_period_ns.load(std::memory_order_relaxed), game_us);
 		s_slot_step.store(step, std::memory_order_relaxed);
@@ -502,6 +734,9 @@ namespace
 			return;
 		}
 		const s64 t0 = VsNowNs();
+		bool reached = false;
+		u64 ref_c = 0;
+		s64 ref_t = 0;
 		{
 			// Never longer than 3 of the game's frames (a stuck clock must not freeze the picture), and not at all
 			// when the game's next picture is already here (the game is ahead of the screen).
@@ -510,8 +745,25 @@ namespace
 				return s_vb_count.load(std::memory_order_acquire) >= target ||
 					s_vs_in.load(std::memory_order_relaxed) > s_vs_out.load(std::memory_order_relaxed) + 1;
 			});
+			reached = s_vb_count.load(std::memory_order_acquire) >= target;
+			ref_c = s_vb_ref_count;
+			ref_t = s_vb_ref_ns;
 		}
-		const double waited = static_cast<double>(VsNowNs() - t0) / 1e6;
+		const s64 t1 = VsNowNs();
+		const double waited = static_cast<double>(t1 - t0) / 1e6;
+		// 10/11/2026: how late this thread went on after its refresh (the refresh's real time from the clock's line)
+		if (const s64 per = s_vb_period_ns.load(std::memory_order_relaxed); reached && ref_t && per > 0)
+		{
+			const s64 due = ref_t + (static_cast<s64>(target) - static_cast<s64>(ref_c)) * per;
+			if (due > t0)
+			{
+				const double late = static_cast<double>(t1 - due) / 1e6;
+				s_slot_late_sum += late;
+				s_slot_late_max = std::max(s_slot_late_max, late);
+				++s_slot_late_n;
+				s_pic_slot_late = static_cast<float>(late);
+			}
+		}
 		s_pace_waited_ms += waited;
 		s_nudge_ns.store(std::clamp<s64>(static_cast<s64>((waited - kWaitAimMs) * 1e6) / 8, -kNudgeMaxNs, kNudgeMaxNs),
 			std::memory_order_relaxed);
@@ -523,7 +775,14 @@ namespace
 	{
 		const u64 c = s_vb_count.load(std::memory_order_acquire);
 		const s64 now = VsNowNs();
-		if (s_slot_last && c >= s_slot_last)
+		if (s_vrr.load(std::memory_order_relaxed))
+		{
+			// variable refresh: the time since the picture before, in thirds of the game's frame (3 = on time)
+			const u32 gus = s_game_us.load(std::memory_order_relaxed);
+			if (s_last_shown_ns && gus)
+				++s_pace_hist[std::min<s64>(std::llround(static_cast<double>(now - s_last_shown_ns) * 3.0 / (gus * 1000.0)), 5)];
+		}
+		else if (s_slot_last && c >= s_slot_last)
 			++s_pace_hist[std::min<u64>(c - s_slot_last, 5)];
 		s_slot_last = c;
 		const u32 game_us = s_game_us.load(std::memory_order_relaxed);
@@ -537,6 +796,8 @@ namespace
 				std::fprintf(stderr, "[sor-gs] long gap %.1f ms before picture %llu: the game handed it over %.1f ms after the one before, %.1f ms from the game to the screen\n",
 					gap, static_cast<unsigned long long>(s_gs_frames + 1), static_cast<double>(pushed_ns - s_last_pushed_ns) / 1e6,
 					static_cast<double>(now - pushed_ns) / 1e6);
+				if (s_times_on)
+					SorPrintRing();
 			}
 		}
 		{
@@ -558,6 +819,8 @@ namespace
 		char mode[64];
 		if (!s_vsync_on)
 			std::snprintf(mode, sizeof(mode), "vsync off");
+		else if (s_vrr.load(std::memory_order_relaxed))
+			std::snprintf(mode, sizeof(mode), "variable refresh, each picture when ready");
 		else if (step)
 			std::snprintf(mode, sizeof(mode), "vsync in step, %d refreshes a picture", step);
 		else
@@ -565,6 +828,20 @@ namespace
 		std::fprintf(stderr, "[sor-gs] pacing: refreshes per picture 0:%u 1:%u 2:%u 3:%u 4:%u 5+:%u; screen %.2f Hz; %s; late %u; waited %.1f ms a picture; game to screen %.1f ms (max %.1f)\n",
 			s_pace_hist[0], s_pace_hist[1], s_pace_hist[2], s_pace_hist[3], s_pace_hist[4], s_pace_hist[5],
 			p > 0 ? 1e9 / static_cast<double>(p) : 0.0, mode, s_pace_late, s_pace_waited_ms / 250.0, s_lat_n ? s_lat_sum_ms / s_lat_n : 0.0, s_lat_max_ms);
+		if (s_times_on)
+		{
+			std::fprintf(stderr, "[sor-gs] screen clock: %u wake-ups, %u later than 2 ms (worst %.1f ms), %u refreshes counted after a"
+				" late wake-up, %u double wake-ups; the GS thread after its refresh: %.1f ms on average, worst %.1f ms (%u waits)\n",
+				s_clk_wakes.exchange(0), s_clk_late.exchange(0), static_cast<double>(s_clk_late_max_ns.exchange(0)) / 1e6,
+				s_clk_missed.exchange(0), s_clk_double.exchange(0), s_slot_late_n ? s_slot_late_sum / s_slot_late_n : 0.0,
+				s_slot_late_max, s_slot_late_n);
+			s_slot_late_sum = s_slot_late_max = 0.0;
+			s_slot_late_n = 0;
+			const s64 cfg = s_cfg_period_ns.load(std::memory_order_relaxed), med = s_clk_median_ns.load(std::memory_order_relaxed);
+			std::fprintf(stderr, "[sor-gs] screen: set to %.1f Hz, median time between refreshes %.1f ms, variable refresh %s\n",
+				cfg > 0 ? 1e9 / static_cast<double>(cfg) : 0.0, static_cast<double>(med) / 1e6,
+				s_vrr.load(std::memory_order_relaxed) ? "yes" : "no");
+		}
 		s_lat_sum_ms = s_lat_max_ms = 0.0;
 		s_lat_n = 0;
 		std::fflush(stderr);
@@ -595,6 +872,8 @@ namespace
 		std::fflush(stderr);
 		s_gs_worst_gap_ms = 0.0;
 		s_gs_busy_ms = 0.0;
+		if (s_times_on)
+			SorPrintTimes();
 		VsPrintPacing();
 	}
 
@@ -622,6 +901,7 @@ namespace
 			s_q_space.notify_all();
 			if (f->quit)
 				break;
+			const s64 pop_ns = VsNowNs(); // sor-gs timing: how long the frame waited for the GS thread
 			const auto busy0 = std::chrono::steady_clock::now();
 			g_sor_wireframe = s_wire_req.load(std::memory_order_relaxed) != 0; // debug view, a whole frame at a time
 
@@ -656,8 +936,19 @@ namespace
 					EmuConfig.CurrentAspectRatio = f->wide ? EmuConfig.GS.AspectRatio : AspectRatioType::R4_3;
 					EmuConfig.CurrentCustomAspectRatio = f->wide ? s_wide_custom : 0.0f;
 				}
+				if (g_sor_overlays_without_vm)
+				{   // the OSD's FPS and frame-time graph: PCSX2's VM does this at every vsync, here there is no VM
+					static bool s_metrics_started = false;
+					if (!s_metrics_started)
+					{
+						s_metrics_started = true;
+						PerformanceMetrics::Reset();
+					}
+					PerformanceMetrics::Update(false, true, false);
+				}
 				GSvsync(f->field, true);
 				const auto done = std::chrono::steady_clock::now();
+				SorNotePicture(f->pushed_ns, pop_ns, busy0, w0, w1, done);
 				if (s_vsync_on || s_pacing_on)
 					VsNotePresent(f->pushed_ns);
 				s_vs_out.fetch_add(1, std::memory_order_relaxed);
@@ -669,6 +960,8 @@ namespace
 				if (++s_gs_frames % 250 == 0)
 					PrintStats();
 			}
+			else
+				s_work_part_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - busy0).count();
 			f->data.clear();
 			std::lock_guard<std::mutex> lk(s_q_lock);
 			if (s_spare.size() < 4)
@@ -693,6 +986,7 @@ namespace
 
 	void Push(std::unique_ptr<Frame> f)
 	{
+		bool new_picture = false;
 		{
 			std::unique_lock<std::mutex> lk(s_q_lock);
 			// More than 3 frames ahead of the video card: wait. Never forever (a stuck GS must not freeze the game).
@@ -711,10 +1005,23 @@ namespace
 				}
 			}
 			if (f->vsync)
+			{
 				s_vs_in.fetch_add(1, std::memory_order_relaxed);
+				new_picture = true;
+			}
 			s_queue.push_back(std::move(f));
 		}
 		s_q_data.notify_one();
+		if (new_picture)
+		{
+			// 10/11/2026: a GS thread waiting for its refresh goes on at once when the next picture is already here;
+			// before, only the screen clock's next tick woke it, late when the PC was busy. The empty lock: the GS thread
+			// checks and starts waiting under s_vb_lock, so this wake-up cannot fall in between.
+			{
+				std::lock_guard<std::mutex> vb(s_vb_lock);
+			}
+			s_vb_tick.notify_all();
+		}
 	}
 }
 
@@ -739,15 +1046,32 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 	// gpu-data\logs\sor-gs.log.
 	if (const char* lg = std::getenv("SORGS_LOG"); lg && lg[0] == '1')
 		Log::SetFileOutputLevel(LOGLEVEL_DEBUG, Path::Combine(EmuFolders::DataRoot, "logs" FS_OSPATH_SEPARATOR_STR "sor-gs.log"));
+	if (const char* tm = std::getenv("SOR_TEMPI"); tm && tm[0] && tm[0] != '0') // the launcher's SPEED TESTS > TIMINGS
+		s_times_on = true;
+	if (const char* tm = std::getenv("SORGS_TIMES"); tm && tm[0] == '1')
+		s_times_on = true;
 	const char* osd = std::getenv("SORGS_OSD");
 	const bool show = osd && osd[0] == '1';
+	// PCSX2 draws these only with its VM running: g_sor_overlays_without_vm (pcsx2/ImGui/ImGuiManager.cpp) lets the DLL
+	// draw them too, and the vsync loop feeds the numbers (PerformanceMetrics::Update before GSvsync). The FPS line is
+	// red below 95% of the target.
+	g_sor_overlays_without_vm = show;
+	{
+		const char* hz = std::getenv("SOR_60HZ");
+		g_sor_overlay_target_fps = (hz && hz[0] == '1') ? 60.0f : 50.0f;
+	}
 	si.SetBoolValue("EmuCore/GS", "OsdShowFPS", show);
 	si.SetBoolValue("EmuCore/GS", "OsdShowResolution", show);
 	si.SetBoolValue("EmuCore/GS", "OsdShowGSStats", show);
 	// With the statistics, the frame-time graph (every hitch is a spike) and the GPU load.
 	si.SetBoolValue("EmuCore/GS", "OsdShowFrameTimes", show);
 	si.SetBoolValue("EmuCore/GS", "OsdShowGPU", show);
-	si.SetBoolValue("EmuCore/GS", "OsdShowVPS", show);
+	// Here every vsync is a new picture, so VPS would only repeat the FPS. Lines that need PCSX2's VM (speed, CPU
+	// threads, indicators...) stay off.
+	si.SetBoolValue("EmuCore/GS", "OsdShowVPS", false);
+	for (const char* off : {"OsdShowSpeed", "OsdShowCPU", "OsdShowHardwareInfo", "OsdShowVersion", "OsdShowSettings",
+			 "OsdShowInputs", "OsdShowIndicators", "OsdShowTextureReplacements"})
+		si.SetBoolValue("EmuCore/GS", off, false);
 	// No PCSX2 messages on the player's screen ("Saved screenshot..."): only in tests, with the statistics.
 	si.SetIntValue("EmuCore/GS", "OsdMessagesPos", static_cast<int>(show ? OsdOverlayPos::TopLeft : OsdOverlayPos::None));
 	// Test snapshots at the resolution the GS draws at, not the window's: they show the upscale as it is.
@@ -756,8 +1080,11 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 	// PCSX2's own fixes for this game (GameIndex.yaml, SLES-52950): without them the upscaled picture has
 	// thin lines and blurred, shifted post effects. halfPixelOffset 5 = align to native, nativeScaling 2 = aggressive.
 	si.SetBoolValue("EmuCore/GS", "UserHacks", true);
-	si.SetIntValue("EmuCore/GS", "UserHacks_HalfPixelOffset", 5);
-	si.SetIntValue("EmuCore/GS", "UserHacks_native_scaling", 2);
+	// 10/11/2026: PCSX2's game fixes (5 and 2) still left a soft, slightly shifted double outline at 4x and 8x, on
+	// the characters and on far trees. the author tried them all (launcher SPEED TESTS > UPSCALE FIX): "Special"
+	// (2) with native scaling off is sharp with no double outline. That is the default now.
+	si.SetIntValue("EmuCore/GS", "UserHacks_HalfPixelOffset", 2);
+	si.SetIntValue("EmuCore/GS", "UserHacks_native_scaling", 0);
 	if (const char* ns = std::getenv("SORGS_NATIVESCALING"); ns && ns[0] >= '0' && ns[0] <= '4') // tests
 		si.SetIntValue("EmuCore/GS", "UserHacks_native_scaling", ns[0] - '0');
 	if (const char* hp = std::getenv("SORGS_HALFPIXEL"); hp && hp[0] >= '0' && hp[0] <= '5') // tests
@@ -1012,7 +1339,7 @@ SORGS_API unsigned long long sorgs_frames_shown()
 SORGS_API long long sorgs_pace(unsigned int game_us)
 {
 	s_game_us.store(game_us, std::memory_order_relaxed);
-	if (!s_vsync_on)
+	if (!s_vsync_on || s_vrr.load(std::memory_order_relaxed)) // variable refresh: the game's own clock
 		return 0;
 	const s64 period = s_vb_period_ns.load(std::memory_order_relaxed);
 	const int step = VsStepFor(period, game_us);

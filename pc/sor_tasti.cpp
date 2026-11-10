@@ -32,7 +32,9 @@
 //   cross ... r3 a toggle: one press holds it down, the next lets it go (pc/sor_interruttore.h). It works on the final
 //   buttons, so the key, the mouse button and the controller button of that action all toggle it. Unset, "off" or
 //   unknown: no toggle.
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -496,6 +498,16 @@ void sorTastiLeggi(bool useGamepad, int gamepad, uint16_t &btns, uint8_t *data)
 
         float lx = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X);
         float ly = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y);
+        // Today's pads have a round gate: pushed into a diagonal, each axis reads only ~0.71. A DualShock 2 reads almost
+        // full on both, and the game, seeing ~0.71, probably walks instead of running (reported by n0l4n666, 10/11/2026).
+        // Stretch the circle to the square: the bigger axis becomes the stick's distance from the centre (no change
+        // straight up, down, left or right; half a push stays half a push in every direction).
+        if (const float big = std::max(std::fabs(lx), std::fabs(ly)); big > 0.0001f)
+        {
+            const float k = std::sqrt(lx * lx + ly * ly) / big;
+            lx = std::clamp(lx * k, -1.0f, 1.0f);
+            ly = std::clamp(ly * k, -1.0f, 1.0f);
+        }
         float rx = m.invX * GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X);
         float ry = m.invY * GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y);
         data[6] = static_cast<uint8_t>(128 + lx * 127);

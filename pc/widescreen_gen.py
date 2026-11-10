@@ -32,7 +32,8 @@ DECL = ("bool sorWidescreenOn(); // sor: widescreen 16:9 (pc/widescreen_gen.py)\
         "void sorFourThree(); // sor: this view stays 4:3 on a wide screen (pc/widescreen_gen.py)\n"
         "void sorCameraView(); // sor: the camera makes a view (pc/widescreen_gen.py)\n"
         "int sorVideoMode(); // sor: 60 Hz (pc/widescreen_gen.py)\n"
-        "bool sorInterlaceOn(); // sor: steady picture (pc/widescreen_gen.py)\n")
+        "bool sorInterlaceOn(); // sor: steady picture (pc/widescreen_gen.py)\n"
+        "float sorFovScale(); // sor: FIELD OF VIEW, 1 = as on the PS2 (pc/widescreen_gen.py)\n")
 EDITS = {
     "classCAMERA_make_view_mat_146aa0_0x146aa0.cpp": [
         ("SET_GPR_S32(ctx, 2, (int32_t)((uint32_t)16110 << 16));",
@@ -40,6 +41,7 @@ EDITS = {
         ("SET_GPR_U64(ctx, 2, GPR_U64(ctx, 2) | (uint64_t)(uint16_t)61167);",
          "SET_GPR_U64(ctx, 2, GPR_U64(ctx, 2) | (uint64_t)(uint16_t)(" + WC[1] + "));", 2),
     ],
+    # (the FIELD OF VIEW edit of make_view_mat is added below, after this table)
     # The camera's other view (make_view_matF, the same field at 0x146718 and 0x146934) stays as on the PS2, as
     # in the PCSX2 patch: the game's own scenes keep their 4:3 look. A translation widened here by an older
     # version of this script is put back.
@@ -71,6 +73,15 @@ EDITS = {
          "    SET_GPR_U64(ctx, 2, GPR_U64(ctx, 2) & (uint64_t)(uint16_t)(sorInterlaceOn() ? 8 : 0));", 1),
     ],
 }
+# FIELD OF VIEW (SOR_FOV, pc/main_sor.cpp sorFovScale()): the gameplay camera's screen distance (camera+0x3C, read
+# into $f25 at 0x146c04 and used for the view and the clip matrices) and the area's screen distance (224 / tan at
+# 0x1e7584 in classAREA::area_init, the constant the widescreen also changes) are multiplied by 100 / percent.
+EDITS["classCAMERA_make_view_mat_146aa0_0x146aa0.cpp"].append(
+    ("    ctx->pc = 0x146c04u;\n    { uint32_t bits = READ32(ADD32(GPR_U32(ctx, 17), 60)); float f; std::memcpy(&f, &bits, sizeof(f)); ctx->f[25] = f; }",
+     "    ctx->pc = 0x146c04u;\n    { uint32_t bits = READ32(ADD32(GPR_U32(ctx, 17), 60)); float f; std::memcpy(&f, &bits, sizeof(f)); ctx->f[25] = f * sorFovScale(); }", 1))
+EDITS["classAREA_area_init_1e7250_0x1e7250.cpp"].append(
+    ("    ctx->pc = 0x1e7584u;\n    { uint32_t bits = GPR_U32(ctx, 4); std::memcpy(&ctx->f[2], &bits, sizeof(bits)); }",
+     "    ctx->pc = 0x1e7584u;\n    { uint32_t bits = GPR_U32(ctx, 4); std::memcpy(&ctx->f[2], &bits, sizeof(bits)); ctx->f[2] *= sorFovScale(); }", 1))
 # Views that stay 4:3 on a wide screen: each frame they call sorFourThree() (pc/main_sor.cpp).
 FOUR_THREE = ("classMOVIE_TASK_task_move_308ca0_0x308ca0", "classPAUSE_MENU_main_349390_0x349390",
               "classPAUSE_MENU_trans_349270_0x349270", "classTITLE_TASK_task_move_13fb60_0x13fb60",
