@@ -8,6 +8,8 @@
 
 <p align="center">Version 2.7 · <a href="CHANGELOG.md">What changed</a></p>
 
+<p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen.</p>
+
 <p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
 <p align="center">
