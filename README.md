@@ -12,20 +12,20 @@
   <img src="https://img.shields.io/badge/DirectX-12%20%7C%2011-5C2D91" alt="DirectX 12 | 11">
   <img src="https://img.shields.io/badge/Vulkan-yes-AC162C" alt="Vulkan">
   <img src="https://img.shields.io/badge/disc-SLES--52950%20(PAL)-555555" alt="disc SLES-52950 (PAL)">
-  <img src="https://img.shields.io/badge/languages-EN%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES-2E8B57" alt="languages EN FR DE IT ES">
+  <img src="https://img.shields.io/badge/languages-EN%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES%20%7C%20RU-2E8B57" alt="languages EN FR DE IT ES RU">
   <img src="https://img.shields.io/badge/status-chapter%201%20of%204%20tested-orange" alt="status: chapter 1 of 4 tested">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
-<p align="center">Version 2.7 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.8 · <a href="CHANGELOG.md">What changed</a></p>
 
-<p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen.</p>
+<p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español, Русский</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too.</p>
 
 > [!IMPORTANT]
 > **This port is still being tested.** Chapter 1 has been played to the end; chapters 2, 3 and 4 have not been played by hand yet. You may find graphics glitches (for example the water in the Germanian Forest), crashes or parts that do not work: keep a separate save, and save often.
 > Found a problem? [Tell me here](../../issues/new/choose): every report is read and fixed as soon as possible.
 >
-> **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950) as an .iso file. Please don't ask for, or share, game files or disc images.
+> **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), or of its Russian translation, as an .iso file. Please don't ask for, or share, game files or disc images.
 
 <p align="center">
   <img src="docs/launcher.png" width="70%" alt="The launcher of 2.7: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
@@ -43,6 +43,10 @@ This project makes it run on a Windows PC as a normal program. It is not an emul
 This is an experiment. Chapter 1 can be played from start to end; the rest of the game still has to be played and fixed. I can't promise I'll finish it, for personal reasons: I work on it with limited time and resources, so there are no deadlines.
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
+
+## What's new in 2.8
+
+- **The Russian version works.** The Russian translation of the European disc (SLES-52950) keeps the game's code exactly as it is and changes only the texts and the list of where the files are on the disc. The launcher used to refuse it; now it accepts the European disc and translations made the same way. Played by hand on one Russian disc. Thanks to [@Luger-git](https://github.com/Luger-git) for the request ([#5](../../issues/5)).
 
 ## What's new in 2.7
 
@@ -117,6 +121,14 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 **In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played Chapter 1 by hand, from the start to its end. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
+
+### What was tested in 2.8
+
+| What | By hand | Script or picture only | Not tested yet |
+|---|---|---|---|
+| The launcher reads the Russian disc, the European disc, and refuses another game | | ✅ | |
+| The Russian disc: the game in Russian, played for a while | ✅ | | |
+| Other Russian translations, the rest of the game in Russian | | | ⬜ |
 
 ### What was tested in 2.7
 
@@ -300,9 +312,9 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 ### The easy way: the ready-made package
 
-1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
+1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.7-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.8-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.

@@ -2,6 +2,10 @@
 
 Version numbers count the big steps of the port.
 
+## 2.8 (10 November 2026)
+
+- **The Russian translation of the European disc is accepted.** Compared byte by byte, its `SLES_529.50` differs from the European one in 917 bytes, all in `Sector0_list` (where each file sits in `IMAGE0.IMG`, rebuilt with the Russian texts); the code is the same, and `IMAGE1.IMG` and `IMAGE2.IMG` too. The game reads those lists from the ELF at run time, so `sor.exe` works with them. The launcher now accepts an ELF whose SHA-1, with `Sector0_list` to `Sector2_list` (0x45B1A0-0x45C7B0) zeroed, matches the European one. Checked: the Russian and the European disc read, another game refused; the Russian disc played by hand for a while. Asked for in #5.
+
 ## 2.7 (10 November 2026)
 
 - **ReShade in the package** (MODS > RESHADE, off by default). ReShade 6.8.0 by crosire (BSD-3-Clause) with the SweetFX effects (MIT). On, the launcher copies `ReShade64.dll` as `dxgi.dll` next to `sor.exe` before Play; off, it removes its copy (a `dxgi.dll` you put there yourself stays). Home opens ReShade's menu. The first preset is the author's (`ShadowOfRome.ini`); presets are ReShade's normal files, so they can be shared and used with any ReShade. DirectX 11 and 12 only. Tested by hand with DirectX 12.

@@ -29,7 +29,7 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.7";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.8";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -1158,6 +1158,19 @@ class Launcher : Form
     // The SHA-1 of SLES_529.50 on the European disc (PAL, SLES-52950) the port was made on: the code in sor.exe
     // was translated from it, so another version of the game cannot work with it.
     const string ElfSha1 = "e56561c4b73fd6e01f63c1157bb7ce457fdb65d0";
+    // Translated discs with the same serial (a Russian one, checked 10/11/2026) keep the game's code byte for byte and
+    // change only Sector0_list..Sector2_list (0x45B1A0-0x45C7B0: where each file sits in IMAGE0-2.IMG, rebuilt with the
+    // translated texts). The game reads those lists from the ELF at run time, so sor.exe works with them: the SHA-1 of
+    // the ELF with that range zeroed is the same for all of them.
+    const string CodeSha1 = "2f4875d1b072d591578a7b04c980e9aaab8e66e8";
+    const int SectorListsFrom = 0x45B1A0 - 0x100000 + 0x100, SectorListsTo = 0x45C7B0 - 0x100000 + 0x100; // file offsets
+    static bool SameCode(byte[] elf)
+    {
+        if (elf.Length <= SectorListsTo) return false;
+        var c = (byte[])elf.Clone();
+        Array.Clear(c, SectorListsFrom, SectorListsTo - SectorListsFrom);
+        using (var s = SHA1.Create()) return BitConverter.ToString(s.ComputeHash(c)).Replace("-", "").ToLowerInvariant() == CodeSha1;
+    }
 
     // Lists the files of an ISO9660 image: full path in capitals -> (first sector, size).
     static Dictionary<string, long[]> IsoFiles(FileStream f)
@@ -1214,7 +1227,7 @@ class Launcher : Form
                 var elf = ReadAt(f, e[0] * 2048, (int)e[1]);
                 string sha;
                 using (var s = SHA1.Create()) sha = BitConverter.ToString(s.ComputeHash(elf)).Replace("-", "").ToLowerInvariant();
-                if (sha != ElfSha1) return "THIS DISC'S GAME IS A DIFFERENT VERSION  ·  ONLY THE EUROPEAN DISC (SLES-52950) WORKS";
+                if (sha != ElfSha1 && !SameCode(elf)) return "THIS DISC'S GAME IS A DIFFERENT VERSION  ·  ONLY THE EUROPEAN DISC (SLES-52950) AND ITS TRANSLATIONS WORK";
                 uint phoff = BitConverter.ToUInt32(elf, 0x1c);
                 int phentsize = BitConverter.ToUInt16(elf, 0x2a), phnum = BitConverter.ToUInt16(elf, 0x2c);
                 for (int i = 0; i < phnum; i++)
