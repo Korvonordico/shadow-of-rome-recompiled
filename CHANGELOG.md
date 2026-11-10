@@ -2,7 +2,7 @@
 
 Version numbers count the big steps of the port.
 
-## 2.6 (not released yet)
+## 2.6 (10 November 2026)
 
 ### Smoother play
 
