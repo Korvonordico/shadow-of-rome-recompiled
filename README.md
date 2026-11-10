@@ -40,13 +40,13 @@ This project makes it run on a Windows PC as a normal program. It is not an emul
 
 **You need your own copy of the game** (the European disc, PAL, SLES-52950), as an `.iso` file. No game data is included. The ready-made package on the [Releases](../../releases) page holds only the program: the game's code translated to C++ and built for Windows, the video card part and the launcher. The first time you press Play, the launcher reads the rest from your own disc image. You can also build the program yourself from your disc: see [How to get it running](#how-to-get-it-running).
 
-This is an experiment. I can't promise I'll finish it, for personal reasons, and it will take a long time before the game is playable: I work on it with limited time and resources, so there are no deadlines.
+This is an experiment. Chapter 1 can be played from start to end; the rest of the game still has to be played and fixed. I can't promise I'll finish it, for personal reasons: I work on it with limited time and resources, so there are no deadlines.
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
 ## What's new in 2.7
 
-- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 11 and 12 (not Vulkan). In the game the **Home** key opens its menu. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Some antivirus programs warn about ReShade's `dxgi.dll` by mistake.
+- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 12 or 11 (not Vulkan; tested by hand with DirectX 12). In the game the **Home** key opens its menu. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Some antivirus programs warn about ReShade's `dxgi.dll` by mistake.
 - **Smaller writing in the launcher's pages**, so the longer pages are less crowded.
 - The list of the video card's effects made at the start grew to 564.
 
@@ -117,6 +117,14 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 **In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played Chapter 1 by hand, from the start to its end. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
+
+### What was tested in 2.7
+
+| What | By hand | Script or picture only | Not tested yet |
+|---|---|---|---|
+| ReShade on with DirectX 12: Home opens its menu, the effects change the picture, the game stays smooth, a preset saved and loaded | ✅ | | |
+| The smaller writing in the launcher's pages | ✅ | | |
+| ReShade with DirectX 11, the final 2.7 package unpacked into an empty folder | | | ⬜ |
 
 ### What was tested in 2.6
 
@@ -251,7 +259,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 | Options: Default, OK | Yes | Default puts the changed values back |
 
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
-- **Saving and loading:** the game saves after the First Match ("First Battle - Fini", see below) and offers to save after City Arena Round I. Tested on City Arena Round I: "Save Successful", the game closed and opened again, Load Game finds "City Arena Round I", "Load Successful", and the game goes on from City Arena Round II. **The win was forced by writing to the game's memory in the test:** nobody has won that round by playing yet. Starting from an empty memory card also works, both when you create the save file at the start and when you skip it and save later (that second way was followed up to the last confirmation). The saves are in `disco/mc0/`.
+- **Saving and loading:** the game saves after the First Match ("First Battle - Fini", see below) and offers to save after City Arena Round I. Tested on City Arena Round I: "Save Successful", the game closed and opened again, Load Game finds "City Arena Round I", "Load Successful", and the game goes on from City Arena Round II. **The win was forced by writing to the game's memory in the test:** nobody has won that round by playing yet. Starting from an empty memory card also works, both when you create the save file at the start and when you skip it and save later (that second way was followed up to the last confirmation). The saves are in the `mc0` folder, next to `sor.exe`.
 - **The 60 Hz choice is remembered:** after you choose it in Change video mode and press Start Game, the game writes `settings.ini` next to `sor.exe`, and the next start begins in that mode. See [Settings](#settings). Tested with scripted keys, not yet from the launcher.
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). The arrow keys and W A S D move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
 - **Speed at 50 Hz, the game's PAL mode (the European version):** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second, which here means frames per second: 50 is full speed. The earlier build is on the same PC:
@@ -299,7 +307,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
 
-Saves and the files read from your disc stay in that folder. Close the game with the X of its window.
+Saves (the `mc0` and `mc1` folders) and the files read from your disc stay in that folder. **Updating:** unpack the new version into a new folder and copy `mc0` and `mc1` from the old one to keep your progress. Close the game with the X of its window.
 
 ### Building it yourself
 
@@ -379,7 +387,7 @@ Close the game with the X of its window.
 
 #### Step 4: the video card part
 
-`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor. `sor-vu.dll` (PCSX2's VU1, faster) comes from the same package, or is built with `pc/sorvu/build.bat` against the same PCSX2 checkout; without it the game uses its own, slower VU1.
+`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor. `sor-vu.dll` (PCSX2's VU1, faster) comes from the same package, or is built with `pc/sorvu/build.bat` against the same PCSX2 checkout; without it the game uses its own, slower VU1. For MODS > RESHADE, copy `ReShade64.dll` from the package (or from [reshade.me](https://reshade.me)) and the files in [reshade/](reshade/README.md) next to `sor.exe`.
 
 ### From the start to the first arena
 
@@ -554,8 +562,7 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 
 ## Credits and thanks
 
-**Thanks to [@n0l4n666](https://github.com/n0l4n666)**, the first player to send reports: the movie sound drifting at 60 frames per second ([#3](../../issues/3)), and in [#4](../../discussions/4) antialiasing, skippable movies, more frames per second and quick saves. The first three are in 2.5.
-
+**Thanks to [@n0l4n666](https://github.com/n0l4n666)**, the first player to send reports: the movie sound drifting at 60 frames per second ([#3](../../issues/3)), and in [#4](../../discussions/4) antialiasing, skippable movies, more frames per second and quick saves. The first three are in 2.5; his report on running in a diagonal with a controller is fixed in 2.6.
 
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
@@ -564,6 +571,7 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 - [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator. Its graphics chip draws the picture on the video card (`sor-gs.dll`, built from its source), with its fixes for this game from its GameIndex. The reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
 - [SoundTouch](https://www.surina.net/soundtouch/) by Olli Parviainen (LGPL-2.1), the library PCSX2 uses too: SMOOTH AUDIO stretches the sound with it when the game slows down. How much to stretch follows PCSX2's `Host/AudioStream.cpp`. Its source is in `pc/soundtouch`.
 - [drakolordx7/KillzoneRecomp](https://github.com/drakolordx7/KillzoneRecomp) (GPL-3.0): its kzvu library (`ext/kzvu`) packs PCSX2's VU1 recompiler, microVU, for a recompiled game. This port's copy is in `pc/kzvu`, and `sor-vu.dll` is built from it (`pc/sorvu`).
+- [ReShade](https://reshade.me) by crosire (BSD-3-Clause) and [SweetFX](https://github.com/CeeJayDK/SweetFX) by CeeJay.dk (MIT): the colours and filters of MODS > RESHADE.
 - [Dear ImGui](https://github.com/ocornut/imgui) and [rlImGui](https://github.com/raylib-extras/rlImGui), for the engine panel (F12).
 - [pcsx2_cheats_collection](https://github.com/xs1l3n7x/pcsx2_cheats_collection) by xs1l3n7x: its codes for the American disc showed where to look for MONEY, UNLOCK ALL and NO FILMS in the European one.
 - [pcsx2_patches](https://github.com/PCSX2/pcsx2_patches): the widescreen patch for this disc by sergx12, whose values the wide camera uses, and the No-Interlacing patch.
@@ -574,4 +582,3 @@ Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the
 ---
 
 If you'd like to support me, have a look at my other projects on my profile: [github.com/Korvonordico](https://github.com/Korvonordico).
-- [ReShade](https://reshade.me) by crosire (BSD-3-Clause) and [SweetFX](https://github.com/CeeJayDK/SweetFX) by CeeJay.dk (MIT): the colours and filters of MODS > RESHADE.
