@@ -37,6 +37,10 @@
 #include <dxgi.h>
 #pragma comment(lib, "dxgi.lib")
 
+// Debug view (launcher, DEBUG page, WIREFRAME row: SORGS_WIREFRAME=1; F7 in the game): the game's triangles drawn
+// as wires. Defined in pcsx2/GS/Renderers/HW/GSRendererHW.cpp, honoured by DX11 only (GSDevice11::RenderHW).
+extern bool g_sor_wireframe;
+
 namespace
 {
 	enum : u32
@@ -60,6 +64,7 @@ namespace
 	std::mutex s_in_lock;
 	std::atomic<int> s_wide_req{-1}; // sorgs_wide
 	int s_wide_cur = -1;              // GS thread
+	std::atomic<int> s_wire_req{0};   // sorgs_wireframe: 1 wires, read by the GS thread before each frame
 	float s_wide_custom = 0.0f;      // 21:9 / 32:9: PCSX2's custom ratio
 	std::vector<u8> s_cur;
 	alignas(64) u8 s_regs_in[0x2000] = {}; // the game writes the privileged registers here (sorgs_regs)
@@ -287,7 +292,7 @@ namespace
 	}
 
 	u64 s_gs_frames = 0;
-	std::atomic<u64> s_shown{0}; // pictures shown, read by the game (tests)
+	std::atomic<u64> s_shown{0}; // pictures shown, read by the game (black box, tests)
 	// Timing, for the reports: the game waiting for the GS thread, and the GS thread's own pace.
 	std::atomic<u64> s_wait_count{0}, s_wait_us{0};
 	std::chrono::steady_clock::time_point s_gs_last_vsync{};
@@ -618,6 +623,7 @@ namespace
 			if (f->quit)
 				break;
 			const auto busy0 = std::chrono::steady_clock::now();
+			g_sor_wireframe = s_wire_req.load(std::memory_order_relaxed) != 0; // debug view, a whole frame at a time
 
 			const u8* p = f->data.data();
 			const u8* const end = p + f->data.size();
@@ -771,6 +777,20 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 		si.SetIntValue("EmuCore/GS", "CASMode", static_cast<int>(GSCASMode::SharpenOnly));
 		si.SetIntValue("EmuCore/GS", "CASSharpness", high ? 80 : 40);
 	}
+	// Antialiasing (SORGS_FXAA=1, from the launcher's ANTIALIASING row): PCSX2's own FXAA on the finished picture
+	// (GSRenderer::Merge, after the deinterlacer and before CAS), the same with DirectX 11, DirectX 12 and Vulkan.
+	// The shader is read from resources\shaders\common\fxaa.fx next to the game (DX12 and Vulkan build it when
+	// the device starts, FXAA or not; DX11 only at the first FXAA picture, and without the file it would show a
+	// picture it never drew): if the file is missing FXAA stays off and the log says why. Without the variable,
+	// nothing is set: PCSX2's default, off, as before.
+	const char* fxaa_why = "";
+	if (const char* fx = std::getenv("SORGS_FXAA"); fx && fx[0] == '1')
+	{
+		if (FileSystem::FileExists(Path::Combine(EmuFolders::Resources, "shaders/common/fxaa.fx").c_str()))
+			si.SetBoolValue("EmuCore/GS", "fxaa", true);
+		else
+			fxaa_why = " (resources\\shaders\\common\\fxaa.fx is missing)";
+	}
 	// Replaceable textures, as in PCSX2: PNGs in textures\SLES-52950\replacements next to the game are used in
 	// place of the originals (same names as PCSX2's dumps). SORGS_TEXDUMP=1 saves every texture the game uses in
 	// textures\SLES-52950\dumps, to find the ones to redo.
@@ -827,6 +847,13 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 	if (EmuConfig.GS.CASMode != GSCASMode::Disabled || EmuConfig.GS.MaxAnisotropy > 1)
 		std::fprintf(stderr, "[sor-gs] sharpness: anisotropic %dx, CAS %d%%\n", static_cast<int>(EmuConfig.GS.MaxAnisotropy),
 			static_cast<int>(EmuConfig.GS.CAS_Sharpness));
+	// Once in the game's log (sor-gs writes to the game's stderr), read back from the settings the GS opens with.
+	static bool s_fxaa_logged = false;
+	if (!s_fxaa_logged)
+	{
+		s_fxaa_logged = true;
+		std::fprintf(stderr, "[sor] antialiasing: %s%s\n", EmuConfig.GS.FXAA ? "FXAA" : "off", fxaa_why);
+	}
 
 	s_parent = static_cast<HWND>(parent);
 	s_ui_ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -888,6 +915,21 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 SORGS_API void sorgs_wide(int on)
 {
 	s_wide_req.store(on ? 1 : 0, std::memory_order_relaxed);
+}
+
+// Debug view: the game's triangles (the 3D world, some of the HUD) drawn as wires; points, lines and sprites (the
+// screen clear, the copy to the display buffer, full-screen effects, most menus) stay as they are. on: 1 wires,
+// 0 normal. Accepted only with SORGS_WIREFRAME=1 (the launcher's DEBUG page): returns -1 without it, 0 when the
+// renderer cannot draw wires (only DX11 can), 1 when done. Read at the start of the next frame the GS thread draws.
+SORGS_API int sorgs_wireframe(int on)
+{
+	const char* w = std::getenv("SORGS_WIREFRAME");
+	if (!(w && w[0] == '1'))
+		return -1;
+	if (s_type != GSRendererType::DX11)
+		return 0;
+	s_wire_req.store(on ? 1 : 0, std::memory_order_relaxed);
+	return 1;
 }
 
 SORGS_API void* sorgs_regs()

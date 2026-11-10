@@ -9,6 +9,7 @@
 //    runtime legge dall'immagine senza estrarre 4,6 GB di file.
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
+#include "runtime/ee_scheduler.h"   // currentVSyncTick() for the START skip (point 7)
 
 #include <algorithm>
 #include <atomic>
@@ -516,13 +517,13 @@ namespace
         const int scelta = rdram[kByteFrequenza];
         if ((scelta != 1 && scelta != 2) || scelta == g_videoNelFile || (scelta == 2 && g_videoNelFile == 0))
             return;
-        std::string monitorAltre, monitorRiga; // monitor: keeps the other settings of the file (the monitor's lines)
-        for (std::ifstream monitorVecchio(fileImpostazioni()); std::getline(monitorVecchio, monitorRiga);) // monitor
-            if (monitorRiga.rfind("video=", 0) != 0) // monitor
-                monitorAltre += monitorRiga + "\n"; // monitor
+        std::string blackboxAltre, blackboxRiga; // blackbox: keeps the other settings of the file (blackbox=...)
+        for (std::ifstream blackboxVecchio(fileImpostazioni()); std::getline(blackboxVecchio, blackboxRiga);) // blackbox
+            if (blackboxRiga.rfind("video=", 0) != 0) // blackbox
+                blackboxAltre += blackboxRiga + "\n"; // blackbox
         std::ofstream f(fileImpostazioni(), std::ios::trunc);
         f << "video=" << (scelta == 1 ? 60 : 50) << "\n";
-        f << monitorAltre; // monitor
+        f << blackboxAltre; // blackbox
         std::printf("[sor] impostazioni: scelta ricordata, %d Hz\n", scelta == 1 ? 60 : 50);
         std::fflush(stdout);
     }
@@ -538,6 +539,181 @@ namespace
         ricordaVideo(rdram);
         g_palCard(rdram, ctx, rt);
     }
+
+    // 5. Game volumes shared with the launcher (the author, 9/11). The game keeps its options in Configdata (0x551400):
+    //    0x551409 = BGM VOLUME, 0x55140A = SE VOLUME, 0..10 (defaults 10). classCONFIGDATA::config_update (0x2F2520)
+    //    applies them: at start-up and when the player leaves the game's own options. Before its first call the values
+    //    of settings.ini (bgm=, se=, written by the launcher) are put there; after every call, if the player changed
+    //    them in the game, they go back to settings.ini, so the launcher shows the same numbers. Other lines are kept.
+    const uint32_t kByteBgm = 0x551409u, kByteSe = 0x55140Au;
+    PS2Runtime::RecompiledFunction g_cfgUpdate = nullptr;
+    int g_bgmFile = -1, g_seFile = -1;
+
+    void leggiVolumi()
+    {
+        std::ifstream f(fileImpostazioni());
+        std::string riga;
+        while (std::getline(f, riga))
+        {
+            if (riga.rfind("bgm=", 0) == 0) g_bgmFile = std::atoi(riga.c_str() + 4);
+            else if (riga.rfind("se=", 0) == 0) g_seFile = std::atoi(riga.c_str() + 3);
+        }
+        if (g_bgmFile < 0 || g_bgmFile > 10) g_bgmFile = -1;
+        if (g_seFile < 0 || g_seFile > 10) g_seFile = -1;
+    }
+
+    void scriviVolumi(int bgm, int se)
+    {
+        std::string altre, riga;
+        for (std::ifstream vecchio(fileImpostazioni()); std::getline(vecchio, riga);)
+            if (riga.rfind("bgm=", 0) != 0 && riga.rfind("se=", 0) != 0)
+                altre += riga + '\n';
+        std::ofstream f(fileImpostazioni(), std::ios::trunc);
+        f << altre << "bgm=" << bgm << '\n' << "se=" << se << '\n';
+        g_bgmFile = bgm; g_seFile = se;
+        std::printf("[sor] impostazioni: volumi ricordati, BGM %d SE %d\n", bgm, se);
+        std::fflush(stdout);
+    }
+
+    void cfgUpdate(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        static bool primo = true;
+        if (primo)
+        {
+            primo = false;
+            leggiVolumi();
+            if (g_bgmFile >= 0) rdram[kByteBgm] = static_cast<uint8_t>(g_bgmFile);
+            if (g_seFile >= 0) rdram[kByteSe] = static_cast<uint8_t>(g_seFile);
+            std::printf("[sor] impostazioni: volumi dal file, BGM %d SE %d\n", rdram[kByteBgm], rdram[kByteSe]);
+            std::fflush(stdout);
+        }
+        g_cfgUpdate(rdram, ctx, rt);
+        const int bgm = rdram[kByteBgm], se = rdram[kByteSe];
+        if (bgm <= 10 && se <= 10 && (bgm != (g_bgmFile < 0 ? 10 : g_bgmFile) || se != (g_seFile < 0 ? 10 : g_seFile)))
+            scriviVolumi(bgm, se);
+    }
+
+    // 6. Evidence of the volumes the game sends to the sound side (9/11): one line each time a value changes.
+    //    classBGM_TASK::set_bgm_volume (0x2F7460): a1 = BGM VOLUME * 9 (0..90), it reaches the SPU2 as BVOL (see the
+    //    "[sor] spu: bgm volume" line of iop_spu2.cpp). classSNDDRV::set_mastervol (0x229890): a1 = SE master volume
+    //    0..255 from the table at 0x4668C0 (SE VOLUME 0 -> 0, 10 -> 255); the sound driver scales every effect with it.
+    //    ra tells who called (config_update, the OPTIONS menu, the title, a movie...).
+    PS2Runtime::RecompiledFunction g_setBgm = nullptr, g_setSe = nullptr;
+
+    void setBgm(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        static int ultimo = -1;
+        const int v = static_cast<int>(GPR_U32(ctx, 5));
+        if (v != ultimo)
+        {
+            ultimo = v;
+            std::printf("[sor] volume applied: BGM %d (0..90) from %06x\n", v, GPR_U32(ctx, 31));
+            std::fflush(stdout);
+        }
+        g_setBgm(rdram, ctx, rt);
+    }
+
+    void setSe(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        static int ultimo = -1;
+        const int v = static_cast<int>(GPR_U32(ctx, 5));
+        if (v != ultimo)
+        {
+            ultimo = v;
+            std::printf("[sor] volume applied: SE master %d (0..255) from %06x\n", v, GPR_U32(ctx, 31));
+            std::fflush(stdout);
+        }
+        g_setSe(rdram, ctx, rt);
+    }
+
+    // 7. START skips every film. In the original game classMOVIE_TASK::task_move (0x308CA0) looks at START (bit 0x8 of
+    //    the repeat field of the virtual pad, 0x4BD2FC, at 0x309368) only when the film's "seen" bit is set: Configdata
+    //    0x551A44 + (id >> 5) * 4, bit id & 31, film id = byte 0x4BE2DA. That bit is set when a film ends
+    //    (classMOVIE_TASK::task_move_wait, 0x308BC0), skipped or not. So the original skips a film only from its second
+    //    viewing on (the opening film too: it can be skipped because it has been seen). Here the bit of the film that
+    //    is playing is set as soon as START has been up for a moment during the film, so the game's own skip path runs
+    //    for every film (the same path the opening film already took). The repeat field also repeats a key that is
+    //    held, so a START held from before the film (Start Game, a menu) must not count: until START has been up for
+    //    3 frames in this film the bit is kept clear (and put back after, if the film had been seen). The film then
+    //    ends as a skipped film does on the console, and it counts as seen (as it does when it ends). Each frame of a
+    //    film the task draws its picture with Cms_MovieSetImage (0x30EC50), before it looks at the pad: the check is
+    //    there. SOR_FILM_START=0: as the original.
+    PS2Runtime::RecompiledFunction g_movieSetImage = nullptr;
+
+    void filmatoImmagine(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
+    {
+        struct Stato
+        {
+            uint64_t ultimoTick = 0;
+            uint32_t flusso = 0, quadri = 0;
+            uint8_t film = 0xFF;
+            int suDa = 0;         // frames in a row with START up
+            bool armato = false;  // START has been up: a press from now on is a real one
+            bool tolto = false;   // the bit was set before the film and is kept clear while START is held from before
+            bool messo = false;   // the bit was set here (first viewing)
+        };
+        static Stato s;
+        if (rdram[0x5558E0u] == 1u) // the film task (Movie_task_main, 0x5558E0) is in task_move
+        {
+            const uint64_t tick = rt->eeScheduler().currentVSyncTick();
+            const uint32_t flusso = GPR_U32(ctx, 4);
+            uint32_t quadri = 0; // the film's picture count (sceMpeg.frameCount, CMS_MOVIE_STREAM + 0x90)
+            std::memcpy(&quadri, rdram + ((flusso + 0x90u) & PS2_RAM_MASK), 4);
+            const uint8_t film = rdram[0x4BE2DAu];
+            const uint32_t dove = 0x551A44u + (film >> 5) * 4u;
+            const uint32_t bit = 1u << (film & 31u);
+            uint32_t visti = 0;
+            std::memcpy(&visti, rdram + dove, 4);
+            if (film != s.film || flusso != s.flusso || quadri < s.quadri || tick > s.ultimoTick + 20u)
+            {   // a new film
+                s = Stato{};
+                s.film = film;
+                s.flusso = flusso;
+            }
+            s.ultimoTick = tick;
+            s.quadri = quadri;
+            uint32_t tasti = 0; // the virtual pad's "on" field (0x4BD2EC): the keys held now
+            std::memcpy(&tasti, rdram + 0x4BD2ECu, 4);
+            const bool tenuto = (tasti & 0x8u) != 0u;
+            s.suDa = tenuto ? 0 : s.suDa + 1;
+            if (!s.armato)
+            {
+                if (s.suDa >= 3)
+                    s.armato = true;
+                else if ((visti & bit) && !s.tolto && !s.messo)
+                {   // seen before, START held from before: the game would take its repeats as a press
+                    visti &= ~bit;
+                    s.tolto = true;
+                }
+            }
+            if (s.armato && !(visti & bit))
+            {
+                visti |= bit;
+                if (s.tolto)
+                    s.tolto = false; // seen before: put back
+                else if (!s.messo)
+                {
+                    s.messo = true;
+                    static int detti = 0;
+                    if (detti < 40)
+                    {
+                        ++detti;
+                        std::printf("[sor] film %u: START skips it (first viewing; the original game allows it only after the film has been seen once)\n", film);
+                        std::fflush(stdout);
+                    }
+                }
+            }
+            std::memcpy(rdram + dove, &visti, 4);
+        }
+        g_movieSetImage(rdram, ctx, rt);
+    }
+}
+
+// The movies are skipped (SOR_SENZAFILMATI for the tests, and the "nofilms" debug cheat of pc/sor_trucchi.cpp).
+void sorSaltaFilmati(PS2Runtime &rt)
+{
+    rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
+    rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
 }
 
 void sorInstallaSostituzioni(PS2Runtime &rt)
@@ -545,10 +721,7 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
     rt.registerFunction(0x120190u, cercaFile); // sceCdSearchFile
     rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
     if (std::getenv("SOR_SENZAFILMATI")) // for tests: the movies are skipped, the same keys always land on the same screens
-    {
-        rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
-        rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
-    }
+        sorSaltaFilmati(rt);
     leggiImpostazioni();
     g_palInit = rt.lookupFunction(0x32B7D0u);
     g_palAvviso = rt.lookupFunction(0x32B170u);
@@ -556,6 +729,18 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
     rt.registerFunction(0x32B7D0u, palInit);   // classPALSELECT_TASK::move_init
     rt.registerFunction(0x32B170u, palAvviso); // classPALSELECT_TASK::move_alert_disp
     rt.registerFunction(0x32B330u, palCard);   // classPALSELECT_TASK::move_memcd_check
+    g_cfgUpdate = rt.lookupFunction(0x2F2520u);
+    if (g_cfgUpdate && !std::getenv("SOR_NO_VOLUMI"))
+        rt.registerFunction(0x2F2520u, cfgUpdate); // classCONFIGDATA::config_update: volumes shared with the launcher
+    g_setBgm = rt.lookupFunction(0x2F7460u);
+    g_setSe = rt.lookupFunction(0x229890u);
+    if (g_setBgm)
+        rt.registerFunction(0x2F7460u, setBgm); // classBGM_TASK::set_bgm_volume: log only
+    if (g_setSe)
+        rt.registerFunction(0x229890u, setSe); // classSNDDRV::set_mastervol: log only
+    g_movieSetImage = rt.lookupFunction(0x30EC50u);
+    if (g_movieSetImage && !(std::getenv("SOR_FILM_START") && std::getenv("SOR_FILM_START")[0] == '0'))
+        rt.registerFunction(0x30EC50u, filmatoImmagine); // Cms_MovieSetImage: START skips every film (point 7)
 
     const char *mappa = std::getenv("SOR_TRACCIA");
     if (!mappa || !*mappa)

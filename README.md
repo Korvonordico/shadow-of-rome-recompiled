@@ -4,16 +4,16 @@
 
 <h1 align="center">Shadow of Rome Recompiled</h1>
 
-<p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. Since 1.9 the video card draws it: up to 4 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9.</p>
+<p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. The video card draws it: up to 8 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9, with the mouse and every key your own.</p>
 
-<p align="center">Version 1.9 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.5 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
 <p align="center">
-  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the forest camp, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
+  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.5: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
 </p>
-<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
+<p align="center"><sub>The launcher. It starts the game and holds every setting.</sub></p>
 
 ## What this is
 
@@ -27,16 +27,22 @@ This is an experiment. I can't promise I'll finish it, for personal reasons, and
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
-## What's new in 1.9
+## What's new in 2.5
 
-- **The video card draws the picture**, with DirectX 11, DirectX 12 or Vulkan, at 1x to 4x the PS2's resolution. The drawing on the processor of 0.0.7 can still be chosen.
-- **60 frames per second**, with **VSYNC** on by default: every picture stays on screen for the same time, so the movement is steady.
-- **A steady and sharper picture:** the picture no longer shakes half a line at every frame, and **SHARPNESS** (off, low, high) makes textures and edges crisper.
-- **Wider screens, 16:9 and 21:9:** you see more of the scene at the sides while you play and when you talk to someone; the movies, the game's own scenes, the pause menu and the title menus stay 4:3. 21:9 was not made for this game: some views may show flaws.
-- **Full screen** (F11), the **OSD** (frames per second on screen) and **texture packs**, as in PCSX2.
-- **Fixed: long dark stripes on the floor** between the characters: they were their shadows, with the corners shifted.
-- **Fixed: the voices running ahead of the lips** in the movies, a little more every time the game stopped for a moment.
-- **CONTROLS** in the launcher: swap ✕ and ○, and invert the camera, for the controller.
+- **Change every key and button:** the launcher's CONTROLS has a KEYBOARD page and a CONTROLLER page. Choose a row and press the new key; mouse buttons and the wheel can be used too.
+- **TOGGLE:** one button can be held down with one press and let go with the next, for example to stay crouched without holding the key (CONTROLS, TOGGLE; off at first).
+- **Play with the mouse:** the mouse turns the camera directly, like in a PC game, and the camera stays where you leave it. MOUSE SPEED and MOUSE Y in CONTROLS.
+- **The movies stay in time with their sound** at 60 frames per second, to the end, and **Start skips every movie**, also the first time you see it. Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report.
+- **Wide screens:** only the movies stay 4:3 now. The menus, the pause menu and the game's own scenes fill the screen, stretched.
+- **VIGNETTE:** the grain and haze the game puts over the picture can be turned off. Off by default.
+- **Smoother edges:** ANTIALIASING (FXAA, on by default) and RESOLUTION up to 6x and 8x, which draws the game larger and shrinks it to your screen. Both work with DirectX 11, DirectX 12 and Vulkan. Thanks to [@n0l4n666](https://github.com/n0l4n666) for asking.
+- **Music and effects volume** in OPTIONS (BGM VOLUME, SE VOLUME), the same values as in the game's own options.
+- **A DEBUG page** in OPTIONS, for testing: invincible, all weapons, one hit kills, money, unlock everything, no movies, a free camera (F8), the polygons drawn as wires (F7, DirectX 11 only) and the engine panel (F12). **Use a separate save:** some of them change it for good.
+- **A new launcher:** a new look with Rome in the background, menu sounds, falling ash (both can be turned off), UPDATES to check for a newer version, and error messages that say what to do.
+- **New first-time settings:** DirectX 12 at 4x with sharpness high and FXAA, 16:9, 60 frames per second, full screen, the mouse turning the camera, and new standard keys (see [Keys](#keys)). Your own choices stay as they are.
+- **A log of each game** in the `logs` folder, with your Windows user name taken out. If you report a problem, attach `logs\run-1.txt`.
+- **A black box** for bug reports: when the game freezes, crashes, shows a black screen or slows down, it saves the last pictures and a short report in the `blackbox` folder. F9 saves one by hand. If you report a problem, attach the newest folder too.
+- **Fixed:** after Alt+Tab the picture stayed black until the window was moved.
 
 <p align="center">
   <img src="docs/compare-wide.svg" width="100%" alt="The same moment in 4:3 on the left and in 21:9 on the right, with more of the camp at the sides">
@@ -47,7 +53,12 @@ All the changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Screenshots
 
-In the order you meet them in the game, drawn by the video card at 4x in 16:9: the opening movie, the first chapter's title card, the game's own scenes in the Roman camp, and playing. The movies and the game's own scenes are shown 4:3, with black bars at the sides.
+<p align="center">
+  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the forest camp, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
+</p>
+<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
+
+In the order you meet them in the game, drawn by the video card at 4x in 16:9: the opening movie, the first chapter's title card, the game's own scenes in the Roman camp, and playing. These pictures are from 1.9 (new ones will come as the chapters are played), when the movies and the game's own scenes were shown 4:3, with black bars at the sides; since 2.5 only the movies are.
 
 <p align="center">
   <img src="docs/shot-1.jpg" width="24%" alt="The opening movie: the Senate">
@@ -66,23 +77,26 @@ In the order you meet them in the game, drawn by the video card at 4x in 16:9: t
 
 `ShadowOfRome.exe` starts the game. **Play** starts it: the first time, it asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Arrows and Enter, or the mouse.
 
-<p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher: Play, Options, Graphics, Controls, Mods and Quit, the line that says the game still needs full testing, and the version number">
-</p>
-
-- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x to 4x the PS2's), SHARPNESS (off, low, high), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC and OSD.
-- **OPTIONS:** the game in a window or in full screen. F11 switches while you play.
-- **CONTROLS**, for the controller: swap ✕ and ○, and invert the camera (the right stick) up and down or left and right. The keyboard keys are in [Keys](#keys).
+- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD and VIGNETTE.
+- **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, MENU SOUNDS, BACKGROUND (the falling ash), UPDATES and DEBUG.
+- **CONTROLS:** for the controller, swap ✕ and ○ and invert the camera; for the mouse, MOUSE LOOK, MOUSE SPEED and MOUSE Y; TOGGLE, to hold one button down with one press and let it go with the next; and the KEYBOARD and CONTROLLER pages, to change every key and button (see [Keys](#keys)).
 - **MODS:** texture packs on or off, and a button that opens their folder.
+- **DEBUG** (in OPTIONS), for testing: see [Keys](#keys). Use a separate save.
+
+The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, full screen, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
 
 Each page saves only with **APPLY**; BACK leaves without saving.
 
 <p align="center">
-  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page, with the default choices: the video card with DirectX 11 at 3x, sharpness low, 4:3, 60 frames per second, VSYNC on, OSD off">
+  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page with the first-time choices: DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, VIGNETTE off">
 </p>
 <p align="center">
-  <img src="docs/launcher-options.png" width="32%" alt="The launcher's OPTIONS page: the game in a window or in full screen">
-  <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: swap cross and circle, invert the camera up and down, invert it left and right">
+  <img src="docs/launcher-keyboard.png" width="49%" alt="The KEYBOARD page: each action of the PS2 pad with its key or mouse button, RESET, APPLY and BACK">
+  <img src="docs/launcher-debug.png" width="49%" alt="The DEBUG page: invincible, weapons, one hit, money, unlock all, no films, free camera, wireframe and engine panel, all off, with the warning to use a separate save">
+</p>
+<p align="center">
+  <img src="docs/launcher-options.png" width="32%" alt="The launcher's OPTIONS page: full screen, music and effects volume, menu sounds, background, updates and debug">
+  <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: the keyboard and controller pages, swap cross and circle, invert the camera, and the mouse camera with its speed">
   <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, and their folder">
 </p>
 
@@ -91,6 +105,47 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 **In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played it by hand through the Germanian Forest up to Chapter 3. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
+
+### What was tested in 2.5
+
+✅ = done, ⬜ = not yet. "By hand" means I played and looked; "script" means a test program checked it, or I only looked at a picture of it.
+
+| What | By hand | Script or picture only | Not tested yet |
+|---|:---:|:---:|:---:|
+| Changing keys and controller buttons, Delete and Backspace, swapping two keys | ✅ | | |
+| Mouse buttons and the wheel as keys | ✅ | | |
+| TOGGLE: one press holds a button, the next lets it go | ✅ | | |
+| The mouse turning the camera (MOUSE LOOK, SPEED, Y), Alt frees the pointer | ✅ | | |
+| Alt+Tab: the picture comes back by itself | ✅ | | |
+| Movies in time with their sound at 60 frames per second (long movie, 180 Hz screen) | ✅ | | |
+| Start skips every movie | ✅ | | |
+| 16:9 and 21:9: menus and scenes stretched, only the movies 4:3 | ✅ | | |
+| VIGNETTE off | ✅ | | |
+| ANTIALIASING (FXAA) | ✅ | | |
+| RESOLUTION 6x and 8x | ✅ | | |
+| BGM VOLUME and SE VOLUME | ✅ | | |
+| UPDATES, error messages, the new look and icon | ✅ | | |
+| DEBUG: invincible, weapons, one hit, money, unlock all, no films | ✅ | | |
+| DEBUG: free camera (F8), wireframe (F7), engine panel (F12) | ✅ | | |
+| The test package, unpacked into an empty folder | ✅ | | |
+| First-time settings (no `launcher.ini`) | | ✅ | |
+| The log in `logs` | ✅ | | |
+| 50 frames per second, texture packs, DirectX 11 and Vulkan in 2.5 | | | ⬜ |
+| The final 2.5 package, unpacked into an empty folder | ✅ | | |
+| Another PC, another controller | | | ⬜ |
+| The whole game, chapter by chapter (see below) | | | ⬜ |
+
+### The chapters
+
+The game has four chapters. I will play them one by one and update this table.
+
+<!-- Update when a chapter is played: ✅ played by hand to the end, 🟡 reached or partly played, ⬜ not tested yet -->
+| Chapter | State | Notes |
+|---|:---:|---|
+| 1. The Wickedness of Men | ✅ | Played by hand to the end, no problems |
+| 2. Baptism by Fire | ✅ | Played by hand to the end, no problems |
+| 3. Wrath of the Gods | ✅ | Played by hand to the end, no problems |
+| 4. Restoration to Glory | 🟡 | Being played. In the forest where you sneak past the guards, the water does not look right yet |
 
 ### How far the game goes
 
@@ -127,14 +182,18 @@ With the video card I have played by hand through the Germanian Forest on to Cha
 | 6 November 2026, 1.9 | 60 frames per second with VSYNC on DirectX 12 (180 Hz screen), SHARPNESS low and high, full screen | Works: smooth, sharp |
 | 6 November 2026, 1.9 in 16:9 | Played with movies and talks, before and after the sound fix | Works: the voices are now in time with the lips. The talks were shown 4:3: changed after this test, so that they stay wide |
 | 1.9 | Not tested by hand yet: 21:9, the talks shown wide, CONTROLS, texture packs, DirectX 11 and Vulkan in 1.9, 50 frames per second | Checked by script only, or not at all |
+| 9 November 2026, 2.5 | Long movies at 60 frames per second to the end (180 Hz screen), Start on story movies; changing keys, buttons and mouse buttons; the mouse camera and the free camera; every DEBUG option; VIGNETTE off; menus and movies in 16:9 and 21:9; BGM and SE VOLUME; Alt+Tab | Works |
+| 10 November 2026, 2.5 | TOGGLE; the final package unpacked into an empty folder; chapters 1 to 3 | Works. In chapter 4 the water in the forest shows a blurred, slightly magnified copy of the screen instead of the forest's reflection (see Known problems) |
+| 2.5 | Not tested by hand yet: the first start on another PC with the new default settings | |
 
 ### What does not work yet
 
 - **It is not playable from start to end.** Nobody has finished the game on it. I played by hand up to Chapter 3; after that, nothing has been played without forcing.
+- **The water in chapter 4 (the forest, the stealth part)** shows a blurred, slightly magnified copy of the screen, and not the forest reflected. It is the same with the video card and the processor, at 1x and 4x, in 4:3 and 16:9. The game's drawing commands were captured (F3) and look consistent: it is not known yet whether the original game shows a real reflection there.
 - **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
 - **Short pauses:** in the Roman camp of Chapter 1, the game sometimes hands a picture to the video card 30 to 49 milliseconds late, and VSYNC can then lose its step for a moment. Seen in a scripted test, not fixed yet.
 - **FRAME RATE 50** in the launcher does nothing when the game's own `settings.ini` says `video=60` (see [Settings](#settings)).
-- **The wide screens:** the life bar is stretched, and 21:9 was not made for this game, so some views may show flaws. With the processor drawing only 4:3 and 16:9 can be chosen, and the 4:3 menus and scenes were not checked there.
+- **The wide screens:** the menus, the pause menu, the game's own scenes and the life bar are stretched (only the movies keep 4:3), and 21:9 was not made for this game, so some views may show flaws. With the processor drawing only 4:3 and 16:9 can be chosen, and the 4:3 menus and scenes were not checked there.
 - **The video card part needs the Microsoft Visual C++ Redistributable** (x64), which most PCs already have. Without it the game draws on the processor, even if the launcher says video card.
 - **The sound** has not been compared with the console.
 - **The fights** were checked by a script that fights badly and by my own play, not by a good player.
@@ -178,7 +237,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 - **The sound:** I listened to it by hand on an older build: it sounds fairly good. The sound mix has changed since (see the reverb below) and has not been listened to again.
 - **The music:** the title screen, the menu and the arena have their music. Checked as numbers on a recording of the output, not by ear: the level goes from silence to about 3000-4000 RMS on the title screen and in the menu, with no clipping. In 30 seconds of title music, the short holes of exact silence went from 155 to 0.
-- **The movies:** the opening movie plays with its subtitles and sound, 30 pictures per second at 50 Hz and at 60 Hz, and goes on to the title screen at its end. Enter skips it. The title screen's attract movie and the movie after New Game play too. Checked on pictures and as numbers on a recording of the output (all 178 seconds of sound, with no holes in a 60-second sample), not by ear. They are decoded with a small part of [FFmpeg](https://ffmpeg.org), and the picture reaches the screen as a texture, as in the original game. From the second movie on, the sound used to break and the screen stayed grey with a beep after the "City Arena" title card: fixed on 2 November (patch `0016`), and tested by hand.
+- **The movies:** the opening movie plays with its subtitles and sound, 30 pictures per second at 50 Hz and at 60 Hz, and goes on to the title screen at its end. Start skips it (since 2.5, every movie). The title screen's attract movie and the movie after New Game play too. Checked on pictures and as numbers on a recording of the output (all 178 seconds of sound, with no holes in a 60-second sample), not by ear. They are decoded with a small part of [FFmpeg](https://ffmpeg.org), and the picture reaches the screen as a texture, as in the original game. From the second movie on, the sound used to break and the screen stayed grey with a beep after the "City Arena" title card: fixed on 2 November (patch `0016`), and tested by hand.
 - **The First Match, played to its end:** this win was not forced. A test script (not published) reads positions and life from the game's memory and presses the keys: it walks to the enemies, hits them, closes the tutorial pages and opens the doors with ○. All the waves die, including the last opponent (2816 life), and the game does the rest by itself: result screen, save, "Chapter 1: The Wickedness of Men", and the next stage, a Roman camp in a forest (area 050). Load Game then finds the save as "First Battle - Fini" and goes on to Chapter 1, even after closing the game. **The script had help:** it refilled Agrippa's life 18 times when it fell below 500 of 2048, because it fights badly and never guards. So nobody has won this fight without help yet. Without the refill, in one attempt Agrippa died with 1 enemy of the first group left, and in another he had 39 life left when that group was dead. The Game Over works: blood runs down the screen and Continue goes back to the waiting room. Over that whole session the median was 50 frames per second, and 5% of the seconds, loading included, were below 33 (not looked into).
 - **The forest stage, played to its end, and what comes after:** this was not forced either, and the same script played it, with the same kind of help (Agrippa's life refilled once). The stage asks you to climb the hill at the far end of the camp, talk twice to the soldier by the fence, and choose "Inform the men that we are moving out." in his menu. If you press ✕ without moving down, the menu answers "Nothing, yet." and nothing happens. Then enemies appear; when they are dead, the game goes by itself to the Forum in Rome, with Octavianus, then to a street leading to the Senate House, then to the Germanian Forest with Agrippa. That is the order the game's own story follows. The tests skipped movies, so the Senate House was not seen: it may be a movie. The Germanian Forest has not been finished: the script fought through part of it and climbed a ladder (ladders work), then **the game froze**, with the same picture staying on the screen and the game's logic stopped. Something had written drawing data over most of the game's memory, starting at address 0x4000; the cause has not been found, and it has happened once, after about 95 minutes of play. Later tests did not freeze: about 30 minutes from a forced jump to the upper walkway, 46 minutes of fighting in the stage, and 108 minutes in the stage (the script fought for the first 15 minutes or so, then walked back and forth; median 49.9 frames per second, 0.5% of the seconds below 40). From the walkway ○ on a door leads to the next area (052), where the script killed the enemy and picked up the "Germanic Tribe Fort Key". With that key, ○ opens the fort's door and the game goes by itself to the inside of the fort (area 053), reached only this way so far. The picture in the forests is very dark: it has not been compared with the original.
 - **The fort (areas 053 to 056), reached by a forced jump to 053:** in 053 the script killed two enemies, then two more came, and when they were dead the game went by itself to the next area (054), the fort wall. There the enemies on the ground die, but ○ does not open the big door: two archers stand on the wall, and the script cannot reach them. Moving Agrippa next to them by writing to the game's memory did not settle it: next to the first archer, that archer left the game's list of enemies; next to the second one, the move did not hold; walking on the wall with no life refill, Agrippa died, and Continue went back to area 050. The next two areas, 055 (behind that door, 12 enemies: the script killed none of them in 4.5 minutes) and 056, were reached only by forced jumps: they load and run, and the screenshots of 054 and 055 look right. Speed, one run each: a median of 49.9 frames per second in 053 to 056, with 1.6 to 2.3% of the seconds below 40. So 053 to 054 has been played by a script, the rest has not been played.
@@ -206,10 +265,10 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-1.9-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.5-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
-6. If you like, change the picture in **GRAPHICS** first: the video card at 3x with DirectX 11 is the default.
+6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
 
 Saves and the files read from your disc stay in that folder. Close the game with the X of its window.
 
@@ -295,34 +354,49 @@ Close the game with the X of its window.
 
 ### From the start to the first arena
 
-1. Press Enter, then X to choose the language, then X on Start Game.
+1. Press Start (Esc on the keyboard), then ✕ (the left mouse button) to choose the language, then ✕ on Start Game. The first click in the window only catches the mouse pointer: click again.
 2. The first time, with an empty memory card, the game offers to create a save file: press the left arrow to choose Yes, then X. If you choose No, it asks "Begin game anyway?": left arrow, then X.
-3. After the CAPCOM logo the opening movie starts: Enter skips it. Then press Enter at the title screen.
-4. Choose New Game and a difficulty. The briefing pages move on with X. The game asks for the left stick to walk: with a controller that is the stick, and on the keyboard the arrow keys or W A S D. Talk to the man with the mace (○, which is C or Esc on the keyboard) to enter the arena.
+3. After the CAPCOM logo the opening movie starts: Start skips it (Esc on the keyboard; every movie can be skipped). Then press Start at the title screen.
+4. Choose New Game and a difficulty. The briefing pages move on with ✕. The game asks for the left stick to walk: with a controller that is the stick, and on the keyboard the arrow keys or W A S D. Talk to the man with the mace (○, which is E on the keyboard) to enter the arena.
 
 ## Keys
 
-The keyboard always works, with or without a controller connected:
+The keyboard and the mouse always work, with or without a controller connected. These are the standard keys; every one can be changed in the launcher (CONTROLS, KEYBOARD), with a key, a mouse button or the wheel:
 
-| PS2 | Keyboard |
+| PS2 | Keyboard and mouse |
 |---|---|
 | D-pad | Arrow keys |
-| Left stick | W A S D, or the arrow keys (which move the D-pad too) |
-| Right stick | I J K L |
-| L3 / R3 (pressing the sticks) | F / O |
-| ✕ | X or Space |
-| ○ | C or Esc |
-| ▢ | Z |
-| △ | V |
-| L1 / R1 | Q / E |
-| L2 / R2 | Left Shift / Right Shift |
-| Start | Enter |
+| Left stick | W A S D |
+| Right stick (the camera) | The mouse, or I J K L |
+| L3 / R3 (pressing the sticks) | Numpad 8 / Numpad 9 |
+| ✕ | Left mouse button |
+| ○ | E |
+| ▢ | Q |
+| △ | F |
+| L1 / R1 | Left Ctrl / Right mouse button |
+| L2 / R2 | C / G |
+| Start | Esc |
 | Select | Tab |
-| Full screen on and off | F11, or Alt+Enter |
+
+While you play:
+
+| Key | What it does |
+|---|---|
+| Click in the window | The mouse turns the camera (MOUSE LOOK on) |
+| Alt | Frees the mouse pointer |
+| F11, or Alt+Enter | Full screen on and off |
+| F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it |
+| F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
+| F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
+| F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
+| F7 | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
+| F12 | The engine panel, if it is on in DEBUG |
+
+In the KEYBOARD page Delete leaves an action with no key and Backspace cancels. On the controller every button can be changed too (CONTROLS, CONTROLLER).
 
 In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
 
-To walk, W A S D is the safer choice: according to the game's list of commands, the D-pad drops your helmet and weapons, and the arrow keys press it too. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
+To walk, use W A S D: according to the game's list of commands, the D-pad (the arrow keys) drops your helmet and weapons. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
 
 ## Settings
 
@@ -330,15 +404,18 @@ The port keeps one setting of its own, in `_build/settings.ini`, next to `sor.ex
 
 ```
 video=60
+bgm=5
+se=5
 ```
 
 - `video=60` starts the game in its 60 Hz mode, `video=50` in its 50 Hz mode (PAL, the original speed of this version).
 - The game writes this file by itself when you choose a mode in Change video mode and press Start Game. You don't need to edit it.
 - With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
+- `bgm` and `se` are the music and effects volume, 0 to 10, the same values as in the game's own options and in the launcher's OPTIONS.
 - To go back to the original behaviour, delete the file.
 - The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
 
-The launcher keeps its own choices (your disc image and the GRAPHICS, OPTIONS and MODS pages) in `launcher.ini`, next to it. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
+The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Delete it to go back to the first-time settings. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
 
 ## Made with AI
 
@@ -442,21 +519,26 @@ Another example: at 60 frames per second there were short pauses. A first cause,
 
 Many names and comments in the code are in Italian. `pc/prova.sh` is the quick round used during development.
 
-## Credits
+## License
+
+GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LICENSE](LICENSE). The libraries in the ready-made package keep their own licences, in its `licenses` folder.
+
+## Credits and thanks
+
+**Thanks to [@n0l4n666](https://github.com/n0l4n666)**, the first player to send reports: the movie sound drifting at 60 frames per second ([#3](../../issues/3)), and in [#4](../../discussions/4) antialiasing, skippable movies, more frames per second and quick saves. The first three are in 2.5.
+
 
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
 - [FFmpeg](https://ffmpeg.org) (LGPL), the MPEG-2 decoder for the movies. It is downloaded and built by `pc/compila_ffmpeg.sh`: no part of it is in this repository.
 - [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0), the PS2 emulator. Its graphics chip draws the picture on the video card (`sor-gs.dll`, built from its source), with its fixes for this game from its GameIndex. The reverb follows its `SPU2/Reverb.cpp` and `SPU2/ReverbResample.cpp`, including the filter tables.
+- [Dear ImGui](https://github.com/ocornut/imgui) and [rlImGui](https://github.com/raylib-extras/rlImGui), for the engine panel (F12).
+- [pcsx2_cheats_collection](https://github.com/xs1l3n7x/pcsx2_cheats_collection) by xs1l3n7x: its codes for the American disc showed where to look for MONEY, UNLOCK ALL and NO FILMS in the European one.
 - [pcsx2_patches](https://github.com/PCSX2/pcsx2_patches): the widescreen patch for this disc by sergx12, whose values the wide camera uses, and the No-Interlacing patch.
 - The libraries in the ready-made package, each under its own licence (in its `licenses` folder): SDL3, FreeType, libpng, zlib, Zstandard, LZ4, libwebp, libjpeg-turbo, PlutoSVG and PlutoVG, rapidyaml, the DirectX Shader Compiler, shaderc, and raylib in `sor.exe`.
 
-Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. This project is not connected to Capcom or Sony.
-
-## License
-
-GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LICENSE](LICENSE). The libraries in the ready-made package keep their own licences, in its `licenses` folder.
+Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. The icon of the launcher and of the game window is a gold aureus of the emperor Nerva: photo by the [American Numismatic Society](http://numismatics.org/collection/1958.214.7), released as public domain (CC0) on [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Gold_Aureus_of_Nerva_(MANTIS).jpg), cut round. This project is not connected to Capcom or Sony.
 
 ---
 

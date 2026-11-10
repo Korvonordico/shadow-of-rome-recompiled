@@ -2,6 +2,54 @@
 
 Version numbers count the big steps of the port.
 
+## 2.5 (10 November 2026)
+
+### The movies
+
+- **In time with their sound at 60 frames per second.** Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report ([#3](../../issues/3)). The game shows a movie picture every second vblank, 30 a second by its own clock, while the movies are made at 29.97 with sound at 48 kHz; with VSYNC on a screen that is not a multiple of 60 (181.6 Hz here) the clock ran a little faster still. Now, while a movie plays, the game follows the movie's own speed and checks each picture against the sound actually played: when they drift apart it shows a picture again or leaves one out. After the movie it goes back to its normal speed. Tested by hand: a long movie at 60 frames per second on a 180 Hz screen, voices and lips together to the end.
+- **Start skips every movie.** The original game lets you skip a movie only after you have seen it once. A Start already held before the movie does not count. Asked for by [@n0l4n666](https://github.com/n0l4n666) too. Tested by hand.
+
+### Controls
+
+- **Every key and button can be changed** in CONTROLS: a KEYBOARD page and a CONTROLLER page. Choose a row and press the new key or button. If it is already used, a second press swaps the two. Delete leaves an action with no key, Backspace cancels. One key per action. The keys of the port itself (F8, F11, F12) cannot be taken. Tested by hand.
+- **Mouse buttons and the wheel** can be given to actions too: left, right, middle, the two side buttons, wheel up and down. The click that catches the pointer presses nothing. Tested by hand.
+- **The mouse turns the camera,** directly like in a PC game, not through the right stick: no speed limit, and the camera stays where you leave it, up, down and to the side. MOUSE LOOK, MOUSE SPEED (1 to 10) and MOUSE Y in CONTROLS. Click in the window to start, Alt frees the pointer. In the movies, the game's own scenes and the places where the game holds the camera, the game keeps it. The controller's right stick works as before. Tested by hand.
+- **New standard keys:** ✕ left mouse button, ○ E, ▢ Q, △ F, L1 Left Ctrl, R1 right mouse button, L2 C, R2 G, L3 and R3 Numpad 8 and 9, Start Esc. W A S D, the arrow keys, I J K L and Tab as before.
+
+### The picture
+
+- **Wide screens:** only the movies stay 4:3. The menus, the pause menu and the game's own scenes fill the screen, stretched, with no more switching between 4:3 and wide. Tested by hand in 16:9 and 21:9.
+- **TOGGLE** (CONTROLS): choose one button (for example the one that crouches): one press holds it down, the next lets it go. It works with its key, its mouse button and its controller button. Off at first.
+- **RESOLUTION 6x and 8x:** the game drawn six or eight times the PS2's size and shrunk to your screen, the smoothest edges there are. They need a strong video card.
+- **ANTIALIASING** (GRAPHICS): FXAA, PCSX2's own filter, softens the jagged edges (and the text a little), with DirectX 11, DirectX 12 and Vulkan. On by default. Asked for by [@n0l4n666](https://github.com/n0l4n666) ([#4](../../discussions/4)).
+- **VIGNETTE** (GRAPHICS): the game lays grain, a colour haze and an anti-flicker filter over the picture, as on the PS2. Off by default; ON brings them back. Tested by hand.
+- **Fixed: after Alt+Tab the picture stayed black** until the window was moved. Tested by hand.
+
+### Sound
+
+- **BGM VOLUME and SE VOLUME** in OPTIONS change the music (with the movies) and the effects, the same values as in the game's own Sound options: a change made in the game shows in the launcher too. Tested by hand.
+
+### DEBUG
+
+- **A DEBUG page** in OPTIONS (Ctrl+D also opens it), for testing and for finding bugs: INVINCIBLE, WEAPONS, ONE HIT (any hit kills, even you), MONEY, UNLOCK ALL, NO FILMS, FREE CAMERA (F8: the game stops, you fly around with the mouse, W A S D, Q / E, the arrow keys or a controller, and Ctrl+1 to 9 saves up to nine places), WIREFRAME (F7 shows the game's polygons as wires, with DirectX 11 only) and ENGINE PANEL (F12). MONEY and UNLOCK ALL change your save for good: they ask for a second press. **Use a separate save.** The game's log says which options were on. Tested by hand.
+
+### The launcher
+
+- **A new look:** a frame, Rome in the background with the Colosseum and fire, falling ash (BACKGROUND), menu sounds (MENU SOUNDS), and a Latin word under each choice. The icon is a gold aureus of the emperor Nerva (photo by the American Numismatic Society, public domain).
+- **UPDATES** (OPTIONS) asks GitHub whether a newer version is out; Enter opens its page.
+- **Error messages say what to do,** in plain words.
+- **New first-time settings:** DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, full screen, music and effects at 5 of 10, the mouse turning the camera, every DEBUG option off. Your own `launcher.ini` keeps your choices.
+- **A log of each game** in `logs` (the last 5), with your Windows user name taken out. If you report a problem, attach `run-1.txt`.
+
+### Bug reports
+
+- **A black box** in the game: it keeps the last pictures and log lines in memory and, when the game freezes, crashes, shows a black screen for a long time or slows down, saves them in `blackbox` as one picture of numbered frames and a short text report (the last 5 are kept). F9 saves one by hand. `blackbox=0` in `settings.ini` turns it off.
+- **F3 and F6, test tools** for the water in chapter 4: F3 saves what the game draws in the next 4 frames (with the processor only), F6 runs one part of the game in its exact, slower version. They found that the water is drawn the same way by both renderers; the cause is still open.
+
+### Known problems
+
+- **The water in chapter 4** (the forest) shows a blurred copy of the screen, not the forest reflected. See the README.
+
 ## 1.9 (6 November 2026)
 
 The picture moves to the video card. **The game has not been played to the end yet: it still needs full testing.**

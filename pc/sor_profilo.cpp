@@ -110,6 +110,68 @@ void sorProfiloAzzera()
     g_campioni.clear();
 }
 
+// Engine panel (SOR_DEBUG_PANEL=1, F12; pc/main_sor.cpp): with the video card picture (graphics=gpu) sor-gs.dll draws
+// in a child window that covers the whole game window, and the panel (drawn by raylib in the game window) would stay
+// hidden under it. While the panel is open that child window is hidden (the picture comes back when it closes).
+// ShowWindowAsync: the child window belongs to sor-gs.dll's own window thread, which handles its messages.
+extern "C" void *GetWindowHandle(void); // raylib
+static std::atomic<bool> g_sorPannello{false};
+// pc/sor_mouse.cpp: the pointer is never taken while the engine panel is open.
+bool sorPannelloAperto() { return g_sorPannello.load(); }
+static const wchar_t *const kFinestraGs = L"Shadow of Rome - video card (PCSX2 GS)";
+void sorPannelloSopraGs(bool pannelloAperto)
+{
+    g_sorPannello.store(pannelloAperto);
+    HWND padre = static_cast<HWND>(GetWindowHandle());
+    if (!padre)
+        return;
+    HWND gs = FindWindowExW(padre, nullptr, nullptr, kFinestraGs);
+    if (!gs)
+        return; // picture drawn by the processor (graphics=cpu): nothing covers the panel
+    ShowWindowAsync(gs, pannelloAperto ? SW_HIDE : SW_SHOWNA);
+}
+
+// The game window got the focus back (Alt+Tab, or restored from the taskbar; called by sorTurnoFinestra in
+// pc/sor_mouse.cpp). the author, 9/11: with the video card the picture was gone after Alt+Tab until the window was
+// moved. Not proved from the code (see LAVORO-SHADOW-OF-ROME.md, 09/11, mouse): the video card's child window (sor-gs.dll)
+// is drawn by Windows over the game's OpenGL window, and moving the window makes Windows put the two together again.
+// Here the same is done without moving anything, in the two ways known to work:
+// - the child window hidden and shown again (what F12 does with the engine panel, tested by the author);
+// - fitted again to the game window: after a minimize sor-gs.dll leaves it at 0x0 (SorGS.cpp ResizeIfNeeded follows
+//   the game window's client size, which is 0x0 while minimized, and after the restore the size is the same as before
+//   the minimize, so it is never fitted again).
+// Async calls: the child window belongs to sor-gs.dll's own window thread, which handles its messages.
+void sorGsRiprendi()
+{
+    HWND padre = static_cast<HWND>(GetWindowHandle());
+    if (!padre)
+        return;
+    HWND gs = FindWindowExW(padre, nullptr, nullptr, kFinestraGs);
+    if (!gs)
+    {
+        std::printf("[sor] focus back: picture drawn by the processor, nothing to restore\n");
+        std::fflush(stdout);
+        return;
+    }
+    if (g_sorPannello.load())
+    {
+        std::printf("[sor] focus back: the engine panel is open, the video card's picture comes back when it closes\n");
+        std::fflush(stdout);
+        return;
+    }
+    RECT rc = {};
+    GetClientRect(padre, &rc);
+    ShowWindowAsync(gs, SW_HIDE);
+    ShowWindowAsync(gs, SW_SHOWNA);
+    if (rc.right > 0 && rc.bottom > 0)
+        SetWindowPos(gs, nullptr, 0, 0, rc.right, rc.bottom,
+                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_ASYNCWINDOWPOS);
+    RedrawWindow(padre, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
+    std::printf("[sor] focus back: picture restored (video card window shown again, %ldx%ld)\n",
+                static_cast<long>(rc.right), static_cast<long>(rc.bottom));
+    std::fflush(stdout);
+}
+
 // Full screen (SOR_FULLSCREEN=1 and F11 / Alt+Enter, called from ps2_runtime.cpp): a borderless window over the
 // whole monitor, made one pixel taller than the screen. A window exactly the size of the screen is taken by the
 // driver as exclusive full screen and covers sor-gs.dll's picture (black screen); one pixel more avoids that.
@@ -138,4 +200,33 @@ void sorSchermoIntero(void *finestra)
                      SWP_FRAMECHANGED | SWP_NOZORDER | SWP_SHOWWINDOW);
     }
     pieno = !pieno;
+}
+
+// sor: the window icon = the launcher's icon (the gold coin). Read from ShadowOfRome.exe next to sor.exe, so
+// there is no extra file; if the launcher is not there the window keeps the default icon.
+static BOOL CALLBACK sorPrimaIcona(HMODULE, LPCWSTR, LPWSTR nome, LONG_PTR dove)
+{
+    *(LPWSTR *)dove = nome;
+    return FALSE;
+}
+void sorIcona(void *finestra)
+{
+    wchar_t p[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, p, MAX_PATH);
+    if (!n || n >= MAX_PATH) return;
+    wchar_t *b = wcsrchr(p, (wchar_t)92); // the last backslash
+    if (!b || (b - p) + 18 >= MAX_PATH) return;
+    wcscpy(b + 1, L"ShadowOfRome.exe");
+    HMODULE m = LoadLibraryExW(p, nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    if (!m) return;
+    LPWSTR nome = nullptr;
+    EnumResourceNamesW(m, MAKEINTRESOURCEW(14) /* RT_GROUP_ICON */, sorPrimaIcona, (LONG_PTR)&nome);
+    if (nome)
+    {
+        HICON grande = (HICON)LoadImageW(m, nome, IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
+        HICON piccola = (HICON)LoadImageW(m, nome, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
+        if (grande) SendMessageW((HWND)finestra, WM_SETICON, ICON_BIG, (LPARAM)grande);
+        if (piccola) SendMessageW((HWND)finestra, WM_SETICON, ICON_SMALL, (LPARAM)piccola);
+    }
+    // the icons stay in use by the window: the module is not freed.
 }

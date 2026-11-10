@@ -8,6 +8,10 @@
 #include "ps2_runtime.h"
 #include "runtime/ee_scheduler.h"
 #include "raylib.h"
+#if defined(PS2X_ENABLE_DEBUG_UI)
+#include "ps2_debug_panel.h" // PS2Recomp's "Runtime Debugger" (ImGui), only with SOR_DEBUG_PANEL=1
+void sorPannelloSopraGs(bool pannelloAperto); // sor_profilo.cpp
+#endif
 
 // sor: il gioco non deve perdere il processore a favore dei programmi in sottofondo (windows.h non puo'
 // stare insieme a raylib.h: qui bastano queste due dichiarazioni).
@@ -21,6 +25,7 @@ extern "C" __declspec(dllimport) int __stdcall SetProcessInformation(void *proce
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <io.h>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -30,17 +35,21 @@ extern "C" __declspec(dllimport) int __stdcall SetProcessInformation(void *proce
 void sorGpuMirrorClose(); // ps2xRuntime gs_pcsx2_mirror.cpp
 
 void sorInstallaSostituzioni(PS2Runtime &rt); // sor_hle.cpp
+void sorTrucchiInstalla(PS2Runtime &rt);       // sor_trucchi.cpp (debug cheats, only with SOR_CHEATS)
+void sorCameraInstalla(PS2Runtime &rt);        // sor_camera.cpp (debug free camera, only with SOR_FREECAM=1)
+void sorVignettaInstalla(PS2Runtime &rt);      // sor_vignetta.cpp (screen veil off, only with SOR_NO_VIGNETTE=1)
+void sorMouseInstalla(PS2Runtime &rt);         // sor_mouse.cpp (mouse look, SOR_MOUSE_LOOK=1 from the launcher)
 void sorStampaTraccia();                       // sor_hle.cpp (con SOR_TRACCIA)
 void sorProfiloAvvia();                        // sor_profilo.cpp (con SOR_PROFILO)
 void sorProfiloScrivi();
 void sorAlzaPrioritaThread();                   // sor_prove.cpp
 void sorProveAvvia(PS2Runtime *rt);             // sor_prove.cpp (SOR_TEMPI, SOR_TELECOMANDO)
 void sorGsRapporto();                          // gs_frontend.cpp (conteggi dei disegni)
-void sorMonitorStart();                       // sor_monitor.cpp
-void sorMonitorSetRuntime(PS2Runtime *rt);
-void sorMonitorInstall(PS2Runtime &rt);
-void sorMonitorFatal(const char *reason, const char *message);
-bool sorMonitorClosedByUser();
+void sorBlackboxStart();                       // sor_blackbox.cpp
+void sorBlackboxSetRuntime(PS2Runtime *rt);
+void sorBlackboxInstall(PS2Runtime &rt);
+void sorBlackboxFatal(const char *reason, const char *message);
+bool sorBlackboxClosedByUser();
 
 // Widescreen 16:9 (SOR_WIDESCREEN=1, from the launcher): read by the translated camera code
 // (pc/widescreen_gen.py), by the window size and by sor-gs.dll.
@@ -69,6 +78,13 @@ bool sorWideCamera()
 // A view that stays 4:3 on a wide screen: the films (MPEG.cpp, classMOVIE_TASK), the pause menu and the title
 // menus (pc/widescreen_gen.py) call this. The GS shows them 4:3 and the rest wide (gs_pcsx2_mirror.cpp).
 std::atomic<unsigned> g_sorFourThree{0};
+// Films only (MPEG.cpp): since 9/11 (the author) only the films stay 4:3; menus and the game's scenes are shown
+// wide (stretched). SOR_WIDE_AUTO=1 brings back the old automatic 4:3 for menus and scenes.
+std::atomic<unsigned> g_sorFilmFourThree{0};
+void sorFilmFourThree()
+{
+    g_sorFilmFourThree.fetch_add(1, std::memory_order_relaxed);
+}
 void sorFourThree()
 {
     g_sorFourThree.fetch_add(1, std::memory_order_relaxed);
@@ -179,7 +195,15 @@ int main(int argc, char *argv[])
         std::cerr << "uso: sor.exe <SLES_529.50> [immagine.iso] [secondi]" << std::endl;
         return 2;
     }
-    sorMonitorStart();
+    // SOR_LOG=<file> (set by the launcher, always): everything the game prints goes to that file, so a problem
+    // can be read afterwards. Unbuffered, so the last lines are there even after a crash.
+    if (const char *log = std::getenv("SOR_LOG"); log && *log && std::freopen(log, "w", stdout))
+    {
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        _dup2(_fileno(stdout), _fileno(stderr));
+        std::setvbuf(stderr, nullptr, _IONBF, 0);
+    }
+    sorBlackboxStart();
     sorProfiloAvvia();
     // Solo il thread del gioco (vedi ps2_runtime.cpp) e questo, che mostra le immagini, stanno sopra il normale:
     // con tutto il processo sopra il normale gli altri programmi del PC restavano fermi anche per decine di secondi.
@@ -221,22 +245,53 @@ int main(int argc, char *argv[])
     }
     try
     {
+#if defined(PS2X_ENABLE_DEBUG_UI)
+        PS2DebugPanel debugPanel; // before runtime: the runtime's destructor may still call its shutdown
+#endif
         PS2Runtime runtime;
         g_runtime.store(&runtime);
-        sorMonitorSetRuntime(&runtime);
+        sorBlackboxSetRuntime(&runtime);
         sorProveAvvia(&runtime);
+#if defined(PS2X_ENABLE_DEBUG_UI)
+        // Engine panel (debug tool, the launcher's hidden DEBUG page): with SOR_DEBUG_PANEL=1 F12 opens and closes
+        // PS2Recomp's "Runtime Debugger" in the game window (CPU, threads, kernel, IOP, GS, memory...). Without it
+        // nothing is registered and ImGui is never started.
+        if (const char *p = std::getenv("SOR_DEBUG_PANEL"); p && p[0] == '1')
+        {
+            debugPanel.setVisible(false);
+            runtime.setDebugUiCallbacks(
+                [](PS2Runtime &, void *u) { static_cast<PS2DebugPanel *>(u)->initialize(); },
+                [](PS2Runtime &rt, void *u)
+                {
+                    PS2DebugPanel *panel = static_cast<PS2DebugPanel *>(u);
+                    const bool before = panel->isVisible();
+                    panel->draw(rt); // F12 inside
+                    if (panel->isVisible() != before)
+                    {
+                        sorPannelloSopraGs(panel->isVisible());
+                        std::printf("[sor] engine panel %s\n", panel->isVisible() ? "opened" : "closed");
+                        std::fflush(stdout);
+                    }
+                },
+                [](PS2Runtime &, void *u) { static_cast<PS2DebugPanel *>(u)->shutdown(); },
+                &debugPanel);
+            std::printf("[sor] engine panel: on (F12 opens and closes it)\n");
+            std::fflush(stdout);
+        }
+#endif
         if (!runtime.initialize("Shadow of Rome"))
         {
             std::cerr << "[sor] runtime non inizializzato" << std::endl;
-            sorMonitorFatal("fatal", "the runtime did not start");
+            sorBlackboxFatal("fatal", "the runtime did not start");
             return 1;
         }
-        // Esc e' il tasto cerchio (ps2_pad.cpp): non deve chiudere la finestra.
+        // Esc can be an action's key (pc/sor_tasti.cpp) and frees the mouse pointer (pc/sor_mouse.cpp): it must not
+        // close the window.
         SetExitKey(KEY_NULL);
         if (!runtime.loadELF(argv[1]))
         {
             std::cerr << "[sor] ELF non caricato: " << argv[1] << std::endl;
-            sorMonitorFatal("fatal", "the game file did not load");
+            sorBlackboxFatal("fatal", "the game file did not load");
             return 1;
         }
         // Il gioco tiene lo stack del thread principale in 0x1FF8000..0x2000000 e altri
@@ -248,7 +303,11 @@ int main(int argc, char *argv[])
         // del gioco lo metterebbe subito dopo il programma, dove il gioco tiene i suoi dati.
         runtime.pinGuestHeap(0x00010000u, 0x00080000u);
         sorInstallaSostituzioni(runtime);
-        sorMonitorInstall(runtime);
+        sorTrucchiInstalla(runtime);
+        sorCameraInstalla(runtime); // after the cheats: it chains their hook on wbuf_swap
+        sorVignettaInstalla(runtime);
+        sorMouseInstalla(runtime);
+        sorBlackboxInstall(runtime);
         if (argc >= 3 && argv[2][0] != '\0')
         {
             PS2Runtime::IoPaths paths = PS2Runtime::getIoPaths();
@@ -258,8 +317,8 @@ int main(int argc, char *argv[])
         }
         runtime.run();
         std::cout << "[sor] run() finito" << std::endl;
-        if (!sorMonitorClosedByUser())
-            sorMonitorFatal("stopped", "the game stopped by itself, the window was not closed");
+        if (!sorBlackboxClosedByUser())
+            sorBlackboxFatal("stopped", "the game stopped by itself, the window was not closed");
         rapporto(-1);
         sorStampaTraccia();
         std::cout.flush();
@@ -270,12 +329,12 @@ int main(int argc, char *argv[])
     catch (const std::exception &e)
     {
         std::cerr << "[sor] eccezione: " << e.what() << std::endl;
-        sorMonitorFatal("fatal", e.what());
+        sorBlackboxFatal("fatal", e.what());
     }
     catch (...)
     {
         std::cerr << "[sor] eccezione sconosciuta" << std::endl;
-        sorMonitorFatal("fatal", "unknown C++ exception");
+        sorBlackboxFatal("fatal", "unknown C++ exception");
     }
     std::cout.flush();
     std::cerr.flush();

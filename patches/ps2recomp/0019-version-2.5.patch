@@ -1,0 +1,865 @@
+diff --git a/ps2xIOP/src/emulator/core/iop_spu2.cpp b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+index d075838..e8a24bf 100644
+--- a/ps2xIOP/src/emulator/core/iop_spu2.cpp
++++ b/ps2xIOP/src/emulator/core/iop_spu2.cpp
+@@ -112,6 +112,7 @@ namespace
+ 
+ // sor: written by the game's clock at each vblank (EeScheduler.cpp), read by the SPU2 below (the same thread).
+ std::atomic<int64_t> g_sorGiocoNs{0}, g_sorGiocoAncoraNs{0}, g_sorGiocoPeriodoNs{0};
++std::atomic<uint64_t> g_sorSpuFatti{0}; // sor: samples the SPU has made so far (MPEG.cpp: the clock a film is paced by)
+ size_t sorSpu2Coda() { return g_testa.load(std::memory_order_acquire) - g_fondo.load(std::memory_order_relaxed); }
+ size_t sorSpu2Prendi(int16_t *coppie, size_t n)
+ {
+@@ -222,6 +223,13 @@ namespace ps2x::iop::detail
+         m_reg[o >> 1u] = value;
+         if (g_spuTraccia && vecchio != value && o < 0x760u && ((o & 0x3FFu) == 0x19Au || (o & 0x3FFu) == 0x1B0u))
+             std::printf("[spux] %.3f %s c%u %04x -> %04x\n", spuOra(), (o & 0x3FFu) == 0x19Au ? "attr" : "admas", (o >> 10u) & 1u, vecchio, value);
++        // BVOL, the streamed-sound volume (core 0: 0x76C/0x76E, core 1: 0x794/0x796): the game's BGM VOLUME lands here.
++        // Written only when it changes, so the line is rare; it leaves evidence of the volume in a test's log.
++        if (vecchio != value && (o == 0x76Cu || o == 0x76Eu || o == 0x794u || o == 0x796u))
++        {
++            std::printf("[sor] spu: bgm volume core %d %s = %04x\n", o >= 0x794u ? 1 : 0, (o & 2u) ? "R" : "L", value);
++            std::fflush(stdout);
++        }
+         if (o >= 0x760u)
+             return;
+         const int c = (o >> 10u) & 1;
+@@ -659,9 +667,11 @@ namespace ps2x::iop::detail
+                 }
+                 if (a.attivo)
+                 {
++                    // The streamed sound (ADMA) enters with this core's BVOL (0x76C/0x76E), as on the real chip and in
++                    // PCSX2 (REG_P_BVOLL = InpVol). Shadow of Rome's music driver (CMS_IOP) writes the BGM VOLUME there.
+                     const uint32_t bv = static_cast<uint32_t>(c) * 0x28u;
+-                    inpL = (a.l[a.posizione] * volumeDiretto(reg(0x768u + bv))) >> 15;
+-                    inpR = (a.r[a.posizione] * volumeDiretto(reg(0x76Au + bv))) >> 15;
++                    inpL = (a.l[a.posizione] * volumeDiretto(reg(0x76Cu + bv))) >> 15;
++                    inpR = (a.r[a.posizione] * volumeDiretto(reg(0x76Eu + bv))) >> 15;
+                     ++a.posizione;
+                 }
+             }
+@@ -689,7 +699,9 @@ namespace ps2x::iop::detail
+                 diretL += ecoL;
+                 diretR += ecoR;
+             }
+-            // Volume generale del core. L'uscita del core 0 entra nel core 1 col volume BVOL del core 1; esce il core 1.
++            // Core master volume. Core 0's output enters core 1 with core 1's AVOL (0x768/0x76A + 0x28, PCSX2's
++            // REG_P_AVOLL = ExtVol); core 1 is the one heard. (AVOL and BVOL were swapped here before 9/11/2026: the
++            // BGM volume scaled core 0's sound effects and never the music.)
+             const uint16_t mL = reg(0x760u + bv), mR = reg(0x762u + bv);
+             const int32_t volL = (mL & 0x8000u) ? 0x7FFF : volumeFisso(mL);
+             const int32_t volR = (mR & 0x8000u) ? 0x7FFF : volumeFisso(mR);
+@@ -697,8 +709,8 @@ namespace ps2x::iop::detail
+             uscitaR = sat16((sat16(diretR) * static_cast<int64_t>(volR)) >> 15);
+             if (c == 0)
+             {
+-                esternoL = (uscitaL * volumeDiretto(reg(0x76Cu + 0x28u))) >> 15;
+-                esternoR = (uscitaR * volumeDiretto(reg(0x76Eu + 0x28u))) >> 15;
++                esternoL = (uscitaL * volumeDiretto(reg(0x768u + 0x28u))) >> 15;
++                esternoR = (uscitaR * volumeDiretto(reg(0x76Au + 0x28u))) >> 15;
+             }
+         }
+         outL = uscitaL;
+@@ -831,6 +843,7 @@ namespace ps2x::iop::detail
+             }
+         }
+         m_generati += fatti;
++        g_sorSpuFatti.fetch_add(fatti, std::memory_order_relaxed);
+         if (s_rapporto && ora - s_ultimoRapporto >= 1000000000)
+         {
+             s_ultimoRapporto = ora;
+diff --git a/ps2xRuntime/CMakeLists.txt b/ps2xRuntime/CMakeLists.txt
+index 19d3ac2..e57bd0b 100644
+--- a/ps2xRuntime/CMakeLists.txt
++++ b/ps2xRuntime/CMakeLists.txt
+@@ -254,10 +254,11 @@ if(NOT PS2X_ENABLE_FFMPEG)
+     message(STATUS "FFmpeg disabled; MPEG video decode falls back to stub frames")
+     add_library(ffmpeg INTERFACE)
+ elseif(SOR_FFMPEG_DIR)
+-    # sor: FFmpeg statico, solo il decodificatore MPEG-2 (pc/compila_ffmpeg.sh).
++    # sor: static FFmpeg (pc/compila_ffmpeg.sh): the MPEG-2 decoder for the game's films, and the .mp4 reader and
++    # H.264 decoder for HD replacement films (pc/sor_film_hd.cpp).
+     add_library(ffmpeg INTERFACE)
+     target_include_directories(ffmpeg INTERFACE "${SOR_FFMPEG_DIR}/include")
+-    target_link_libraries(ffmpeg INTERFACE "${SOR_FFMPEG_DIR}/lib/libavcodec.a" "${SOR_FFMPEG_DIR}/lib/libswscale.a" "${SOR_FFMPEG_DIR}/lib/libavutil.a" bcrypt)
++    target_link_libraries(ffmpeg INTERFACE "${SOR_FFMPEG_DIR}/lib/libavformat.a" "${SOR_FFMPEG_DIR}/lib/libavcodec.a" "${SOR_FFMPEG_DIR}/lib/libswscale.a" "${SOR_FFMPEG_DIR}/lib/libavutil.a" bcrypt)
+ elseif(WIN32)
+     include(ExternalProject)
+ 
+diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+index 8fb652d..08b9625 100644
+--- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
++++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
+@@ -3,6 +3,7 @@
+ std::atomic<uint32_t> g_sorVblankUs{16667u}; // sor: lo imposta sceGsResetGraph
+ extern std::atomic<int64_t> g_sorGiocoNs, g_sorGiocoAncoraNs, g_sorGiocoPeriodoNs; // ps2xIOP iop_spu2.cpp: the sound follows the game's clock
+ int64_t sorGsPaceNs(uint32_t nominalUs); // sor: gs_pcsx2_mirror.cpp, VSYNC: the screen's pace (0 = the game's own)
++int64_t sorFilmVblankNs(uint32_t nominalUs); // sor: Stubs/MPEG.cpp, while a film plays: the period that shows it at its own rate (0 = none)
+ 
+ #include "ps2_log.h"
+ #include "ps2_runtime_macros.h"
+@@ -2023,7 +2024,12 @@ void EeScheduler::processDueDeadlines()
+                 const uint32_t sorPeriodoUs = g_sorVblankUs.load(std::memory_order_relaxed);
+                 // VSYNC (sor-gs.dll): when the screen's rate is a whole multiple of the game's, the game's clock
+                 // follows the screen's, so every picture stays on screen the same time; 0 = the game's own period.
+-                const int64_t sorPassoNs = sorGsPaceNs(sorPeriodoUs);
++                // While a film plays the clock follows the film instead (MPEG.cpp): the game shows 30 pictures every 60
++                // (50) vblanks, the films are 29.97 a second and their sound is made at 48000 samples a second of
++                // this clock, so the vblank lasts 1001/60 ms (20.02 ms at 50) and pictures and sound stay together.
++                // The screen's pace is not asked for then (181.6 Hz / 3 = 60.53 a second ran the pictures 1% fast).
++                const int64_t sorFilmNs = sorFilmVblankNs(sorPeriodoUs);
++                const int64_t sorPassoNs = sorFilmNs > 0 ? sorFilmNs : sorGsPaceNs(sorPeriodoUs);
+                 const auto sorPeriodo = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                     std::chrono::nanoseconds(sorPassoNs > 0 ? sorPassoNs : static_cast<int64_t>(sorPeriodoUs) * 1000));
+                 auto sorProssimo = scheduled.hostDeadline + sorPeriodo;
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
+index 56a978e..4b5334d 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/CD.cpp
+@@ -3,6 +3,10 @@
+ #include "MPEG.h"
+ #include "runtime/ee_scheduler.h"
+ 
++void sorFilmHdStreamStart(uint32_t sector); // sor (pc/sor_film_hd.cpp): a stream (maybe a film) starts at this sector
++#include <atomic>
++std::atomic<uint32_t> g_sorStreamSector{0u}; // sor: where the last CD stream started (MPEG.cpp names the film by it in its log line)
++
+ namespace ps2_stubs
+ {
+     namespace
+@@ -925,6 +929,8 @@ namespace ps2_stubs
+ 
+     void sceCdStSeekF(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+     {
++        ::sorFilmHdStreamStart(getRegU32(ctx, 4));
++        g_sorStreamSector.store(getRegU32(ctx, 4), std::memory_order_relaxed);
+         restartCdStreamAt(getRegU32(ctx, 4), runtime);
+         setReturnS32(ctx, 1);
+     }
+@@ -939,6 +945,8 @@ namespace ps2_stubs
+             spindleControl = mode[1u];
+         }
+ 
++        ::sorFilmHdStreamStart(lbn); // the HD replacement film is chosen by this sector (pc/sor_film_hd.cpp)
++        g_sorStreamSector.store(lbn, std::memory_order_relaxed);
+         restartCdStreamAt(lbn, runtime);
+         g_cdStreamTiming.active = true;
+         g_cdStreamTiming.paused = false;
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index 2a29c9c..09448fb 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -21,7 +21,66 @@ extern "C"
+ 
+ #include "Syscalls/Helpers/State.h"
+ 
+-void sorFourThree(); // sor (pc/main_sor.cpp): a film is on, so it stays 4:3 on a wide screen
++void sorFilmFourThree(); // sor (pc/main_sor.cpp): a film is on, so it stays 4:3 on a wide screen
++// sor (pc/sor_film_hd.cpp): HD replacement films from the mods folder follow the game's own pictures.
++void sorFilmHdPicture(uint32_t index, long long pts90k);
++void sorFilmHdStop();
++
++#include <atomic>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++
++// sor: films at their own rate, in step with their sound. The game asks for a picture every 2nd vblank (at 50 Hz 3
++// every 5: classMOVIE_TASK::task_move, 0x308CA0), so it shows 30.00 pictures a second of its clock; every film on the
++// disc is 29.97 pictures a second and its sound lasts pictures / 29.97 seconds at 48000 samples a second. The sound
++// is made on the game's clock in real nanoseconds (iop_spu2.cpp), so the pictures ran 0.1% ahead of it (0.4 s at the
++// end of the longest film), and 1% with VSYNC in step on a 181.6 Hz screen (the clock at 181.6 / 3 = 60.53 Hz:
++// 4.4 s). While a film plays the game's clock now runs at the film's own rate (EeScheduler.cpp asks
++// sorFilmVblankNs), and each picture is checked against the samples the SPU has made since the film's first one: if
++// the two still part by more than 1.5 pictures (the game stopped, the sound waited) one picture is shown again or
++// left out. SOR_FILM_PACE=0: as before (the drift is still measured and written in the film's log line).
++extern std::atomic<uint64_t> g_sorSpuFatti;     // ps2xIOP iop_spu2.cpp: samples the SPU has made so far
++extern std::atomic<uint32_t> g_sorStreamSector; // CD.cpp: where the last CD stream started (the film's sector)
++extern std::atomic<uint32_t> g_sorVblankUs;     // EeScheduler.cpp: the game's own vblank (60 or 50 Hz)
++static std::atomic<int64_t> g_sorFilmPictureNs{0}; // the film on screen: its picture period (0: no film)
++static std::atomic<int64_t> g_sorFilmUltimoNs{0};  // when its last picture was handed over (steady clock)
++
++static int64_t sorFilmAdessoNs()
++{
++    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++
++static bool sorFilmPaceOn()
++{
++    static const bool on = !(std::getenv("SOR_FILM_PACE") && std::getenv("SOR_FILM_PACE")[0] == '0');
++    return on;
++}
++
++// The vblank period that shows a film of this picture period at its own rate: the game shows 30 pictures every 60
++// vblanks (60 Hz) or every 50 (50 Hz). 0 if it makes no sense.
++static int64_t sorFilmVblankFor(int64_t pictureNs, uint32_t nominalUs)
++{
++    if (pictureNs <= 0 || nominalUs == 0u)
++        return 0;
++    const int64_t hz = (1000000 + static_cast<int64_t>(nominalUs) / 2) / static_cast<int64_t>(nominalUs); // 60 or 50
++    const int64_t ns = pictureNs * 30 / hz;
++    const int64_t own = static_cast<int64_t>(nominalUs) * 1000;
++    return ns > own / 2 && ns < own * 2 ? ns : 0;
++}
++
++// EeScheduler.cpp, at each vblank: while a film plays (its last picture less than 250 ms ago), the period that shows
++// it at its own rate (16.683 ms at 60 Hz, 20.02 ms at 50 for 29.97 films); 0: the game's usual one.
++int64_t sorFilmVblankNs(uint32_t nominalUs)
++{
++    if (!sorFilmPaceOn())
++        return 0;
++    const int64_t picture = g_sorFilmPictureNs.load(std::memory_order_relaxed);
++    const int64_t ultimo = g_sorFilmUltimoNs.load(std::memory_order_relaxed);
++    if (picture <= 0 || ultimo == 0 || sorFilmAdessoNs() - ultimo > 250000000)
++        return 0;
++    return sorFilmVblankFor(picture, nominalUs);
++}
+ 
+ namespace ps2_stubs
+ {
+@@ -518,6 +577,107 @@ namespace ps2_stubs
+             uint64_t ptsPresentationBaseTickQ32 = 0u;
+         };
+ 
++        // sor: the film on screen and its pace against its sound (one film at a time; g_mpeg_stub_mutex held).
++        struct SorFilmPace
++        {
++            bool active = false;
++            uint32_t mpegAddr = 0u;
++            uint32_t sector = 0u;
++            int64_t pictureNs = 0;  // the film's picture period
++            uint64_t audio0 = 0u;   // SPU samples made when its first picture was handed over
++            uint64_t tick0 = 0u;    // the vblank of its first picture
++            uint64_t tickLast = 0u; // the vblank of its last one
++            int64_t shown = -1;     // the film's picture on screen (its place in the stream)
++            uint32_t served = 0u, dropped = 0u, repeated = 0u, calm = 0u;
++            double driftMs = 0.0;   // smoothed: > 0 when the picture is ahead of the sound
++            MpegDecodedFrame last;  // the picture on screen, to show it again
++        };
++        SorFilmPace g_sorFilm;
++
++        int64_t sorFilmPictureNs(uint64_t pictureIntervalQ32)
++        {
++            // pictureIntervalQ32 counts NTSC fields (1001/60000 s) in 32.32 fixed point
++            const uint64_t q = pictureIntervalQ32 ? pictureIntervalQ32 : (2ull << 32u);
++            return static_cast<int64_t>(static_cast<double>(q) / 4294967296.0 * 1001.0 / 60000.0 * 1e9 + 0.5);
++        }
++
++        // Writes the film's line in the log and forgets it.
++        void sorFilmFinish(const char *how)
++        {
++            if (!g_sorFilm.active)
++                return;
++            g_sorFilmPictureNs.store(0, std::memory_order_relaxed);
++            static int s_lines = 0;
++            if (s_lines < 300)
++            {
++                ++s_lines;
++                const SorFilmPace &f = g_sorFilm;
++                const double fps = f.pictureNs > 0 ? 1e9 / static_cast<double>(f.pictureNs) : 0.0;
++                const int64_t vb = sorFilmVblankFor(f.pictureNs, g_sorVblankUs.load(std::memory_order_relaxed));
++                char clock[96];
++                if (sorFilmPaceOn() && vb > 0)
++                    std::snprintf(clock, sizeof(clock), "its own clock (vblank %.3f ms) and the sound's", static_cast<double>(vb) / 1e6);
++                else
++                    std::snprintf(clock, sizeof(clock), "the game's vblanks (SOR_FILM_PACE=0: not paced)");
++                std::printf("[sor] film %u: %.2f fps, paced by %s, drift at end %+.0f ms (picture ahead of the sound: +; %s; "
++                            "%u pictures, %.2f vblanks each, %u left out, %u shown again)\n",
++                            f.sector, fps, clock, f.driftMs, how, f.served,
++                            f.served > 1u ? static_cast<double>(f.tickLast - f.tick0) / static_cast<double>(f.served - 1u) : 0.0,
++                            f.dropped, f.repeated);
++                std::fflush(stdout);
++            }
++            g_sorFilm = SorFilmPace{};
++        }
++
++        // Before a picture is handed over: measures the drift and says whether to show the picture on screen again
++        // (true); it may leave one out (pops it). The queue has a picture.
++        bool sorFilmPace(MpegPlaybackState &playback, uint32_t mpegAddr, uint64_t tick)
++        {
++            SorFilmPace &f = g_sorFilm;
++            if (f.active && f.mpegAddr != mpegAddr)
++                sorFilmFinish("stopped before its end");
++            if (!f.active)
++            {
++                f.active = true;
++                f.mpegAddr = mpegAddr;
++                f.sector = g_sorStreamSector.load(std::memory_order_relaxed);
++                f.audio0 = g_sorSpuFatti.load(std::memory_order_relaxed);
++                f.tick0 = tick;
++            }
++            f.pictureNs = sorFilmPictureNs(playback.pictureIntervalQ32);
++            f.tickLast = tick;
++            g_sorFilmPictureNs.store(f.pictureNs, std::memory_order_relaxed);
++            g_sorFilmUltimoNs.store(sorFilmAdessoNs(), std::memory_order_relaxed);
++            const double pictureMs = static_cast<double>(f.pictureNs) / 1e6;
++            const double soundMs = static_cast<double>(g_sorSpuFatti.load(std::memory_order_relaxed) - f.audio0) / 48.0;
++            const double drift = static_cast<double>(f.shown + 1) * pictureMs - soundMs; // if the next picture goes on now
++            f.driftMs += (drift - f.driftMs) / 16.0;
++            bool again = false;
++            if (f.calm > 0u)
++                --f.calm;
++            else if (sorFilmPaceOn() && f.served >= 16u && f.driftMs > 1.5 * pictureMs && !f.last.rgba.empty() &&
++                     playback.picturesServed > 0u)
++            {
++                again = true; // the picture is ahead: the one on screen stays one more picture
++                ++f.repeated;
++                f.driftMs -= pictureMs;
++                f.calm = 4u;
++            }
++            else if (sorFilmPaceOn() && f.served >= 16u && f.driftMs < -1.5 * pictureMs && playback.decodedFrames.size() >= 2u)
++            {
++                playback.decodedFrames.pop_front(); // the picture is behind: one is left out
++                playback.picturesServed += 1u;      // the game's picture number stays the film's
++                ++f.dropped;
++                ++f.shown;
++                f.driftMs += pictureMs;
++                f.calm = 4u;
++            }
++            if (!again)
++                ++f.shown;
++            ++f.served;
++            return again;
++        }
++
+         struct MpegStreamCallbackEvent
+         {
+             uint32_t mpegAddr = 0u;
+@@ -2042,8 +2202,10 @@ namespace ps2_stubs
+             return;
+         }
+ 
++        ::sorFilmHdStop(); // a new film: whatever HD film was on is over
+         {
+             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
++            sorFilmFinish("stopped before its end");
+             getPlaybackState(param_1) = makeFreshPlaybackState();
+             // sor: sceMpegCreate rebuilds the object, so the callbacks of the previous movie are gone. The game does not always
+             // call sceMpegDelete: kept here, the second movie called its sound callback twice per packet, the stream got corrupted
+@@ -2115,8 +2277,11 @@ namespace ps2_stubs
+         (void)rdram;
+ 
+         const uint32_t mpegAddr = getRegU32(ctx, 4);
++        ::sorFilmHdStop();
+         {
+             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
++            if (g_sorFilm.active && g_sorFilm.mpegAddr == mpegAddr)
++                sorFilmFinish("stopped before its end");
+             g_mpeg_stub_state.callbacksByMpeg.erase(mpegAddr);
+             g_mpeg_stub_state.playbackByMpeg.erase(mpegAddr);
+         }
+@@ -2378,7 +2543,7 @@ namespace ps2_stubs
+ 
+     void sceMpegGetPicture(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+     {
+-        ::sorFourThree();
++        ::sorFilmFourThree();
+         const uint32_t mpegAddr = getRegU32(ctx, 4);
+         const uint32_t imageAddr = getRegU32(ctx, 5);
+         uint32_t width = kStubMovieWidth;
+@@ -2493,15 +2658,23 @@ namespace ps2_stubs
+                         });
+                 }
+ 
+-                frame = std::move(playback.decodedFrames.front());
+-                playback.decodedFrames.pop_front();
++                if (sorFilmPace(playback, mpegAddr, currentTick))
++                {
++                    frame = g_sorFilm.last; // shown again: the same picture and the same number for the game
++                    frameCount = playback.picturesServed - 1u;
++                }
++                else
++                {
++                    frame = std::move(playback.decodedFrames.front());
++                    playback.decodedFrames.pop_front();
++                    frameCount = playback.picturesServed;
++                    playback.picturesServed += 1u;
++                }
+                 playback.noDataCalls = 0u;
+                 playback.width = static_cast<uint32_t>(frame.width);
+                 playback.height = static_cast<uint32_t>(frame.height);
+                 width = playback.width;
+                 height = playback.height;
+-                frameCount = playback.picturesServed;
+-                playback.picturesServed += 1u;
+                 playback.nextPictureTickQ32 = presentationTargetQ32 + frameIntervalQ32;
+                 playback.presentationEndTickQ32 = playback.nextPictureTickQ32;
+                 haveFrame = true;
+@@ -2524,6 +2697,8 @@ namespace ps2_stubs
+                 frameCount = playback.picturesServed;
+             }
+             movieOver = playback.streamEnded && playback.decodedFrames.empty();
++            if (movieOver && g_sorFilm.active && g_sorFilm.mpegAddr == mpegAddr)
++                sorFilmFinish("to its end");
+         }
+ 
+         mpegGuestWrite32(rdram, mpegAddr + 0x00u, width);
+@@ -2545,9 +2720,18 @@ namespace ps2_stubs
+             }
+         }
+ 
++        // sor: the HD replacement film (if the mods folder has one) shows this same moment over the film's band.
++        if (haveFrame)
++            ::sorFilmHdPicture(frameCount, static_cast<long long>(frame.pts90k));
++        else if (movieOver)
++            ::sorFilmHdStop();
++
+         if (haveFrame)
+         {
+             writeDecodedFrameToGuest(rdram, imageAddr, frame);
++            std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
++            if (g_sorFilm.active && g_sorFilm.mpegAddr == mpegAddr)
++                g_sorFilm.last = std::move(frame); // sor: kept to show it again if the sound falls behind
+         }
+         else if (frameCount == 0u)
+         {
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index c9e9714..72a9e39 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -1013,6 +1013,9 @@ namespace
+             std::snprintf(nome, sizeof(nome), "%s_gs%llu.txt", pre ? pre : "gstutti", static_cast<unsigned long long>(++s_tuttiQuanti));
+             s_tutti = std::fopen(nome, "w");
+             s_tuttiResto = 4;
++            std::printf(s_tutti ? "[sor] F3: every primitive of the next 4 frames goes in %s\n"
++                                : "[sor] F3: could not write %s\n", nome);
++            std::fflush(stdout);
+             g_sorGsTuttiChiesto2.store(s_tutti != nullptr);
+         }
+     }
+@@ -1087,6 +1090,15 @@ void GSBande::Reset()
+ 
+ void sorGsTuttiAdc(const GSPrimitiveBatch &batch) { tuttiPrimSeC(batch); } // sor: vertices the game sends with ADC set
+ 
++// sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
++// keyboard. It is written by this renderer only, so it works with GRAPHICS > PROCESSOR (SOR_GRAPHICS=cpu).
++void sorGsTuttiTasto()
++{
++    g_sorGsTuttiChiesto.store(true);
++    std::printf("[sor] F3: saving the drawing of the next 4 frames (only with GRAPHICS > PROCESSOR)\n");
++    std::fflush(stdout);
++}
++
+ void GSBande::Submit(const GSPrimitiveBatch &batch)
+ {
+     if (batch.vertexCount == 0u)
+diff --git a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+index 40d4e29..aaa2f5f 100644
+--- a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+@@ -49,6 +49,10 @@ namespace
+     using ShownFn = unsigned long long (*)();
+     ShownFn s_shownFn = nullptr;
+     void (*s_wideFn)(int) = nullptr; // sor-gs.dll's sorgs_wide: 1 wide, 0 4:3 (widescreen only)
++    // sor-gs.dll's sorgs_wireframe (DEBUG page, WIREFRAME): -1 not asked for, 0 this renderer cannot, 1 done.
++    // Read without the lock by F7 (sorGpuWireframeKey).
++    std::atomic<int (*)(int)> s_wireFn{nullptr};
++    std::atomic<bool> s_wireOk{false}; // the GS is open and can draw wires (DirectX 11)
+     float s_upscale = 1.0f;
+     int s_renderer = 1;
+     int s_attach = 0; // 1: draw inside the game's window; 0: a window of its own (side by side, for tests)
+@@ -116,6 +120,7 @@ namespace
+         s_close = reinterpret_cast<CloseFn>(GetProcAddress(dll, "sorgs_close"));
+         s_shownFn = reinterpret_cast<ShownFn>(GetProcAddress(dll, "sorgs_frames_shown"));
+         s_wideFn = reinterpret_cast<void (*)(int)>(GetProcAddress(dll, "sorgs_wide"));
++        s_wireFn.store(reinterpret_cast<int (*)(int)>(GetProcAddress(dll, "sorgs_wireframe")));
+         s_sorPaceFn.store(reinterpret_cast<long long (*)(unsigned int)>(GetProcAddress(dll, "sorgs_pace")));
+         if (!s_open || !s_regs || !s_gif || !s_vsync)
+             return false;
+@@ -149,6 +154,16 @@ namespace
+             s_drawsWindow.store(s_attach != 0 && !std::getenv("SOR_GPU_CPU_DRAW"), std::memory_order_release);
+             std::atexit(sorGpuMirrorClose);
+             std::fprintf(stderr, "[gpu] PCSX2 GS open (%llu packets before the window)\n", s_dropped);
++            const char *wire = std::getenv("SORGS_WIREFRAME");
++            if (wire && wire[0] == '1')
++            {   // the DEBUG page's WIREFRAME: say once whether F7 will work
++                int (*fn)(int) = s_wireFn.load();
++                const int r = fn ? fn(0) : 0;
++                s_wireOk.store(r == 1);
++                std::printf(r == 1 ? "[sor] wireframe: available (F7)\n"
++                                   : "[sor] wireframe: not available (video card with DIRECTX 11 only)\n");
++                std::fflush(stdout);
++            }
+         }
+         return true;
+     }
+@@ -271,6 +286,9 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+         extern std::atomic<unsigned> g_sorWideCamera;
+         extern std::atomic<unsigned> g_sorFourThree;
+         extern std::atomic<unsigned> g_sorCameraAny;
++        extern std::atomic<unsigned> g_sorFilmFourThree;
++        static const bool s_auto43 = [] { const char *e = std::getenv("SOR_WIDE_AUTO"); return e && e[0] == '1'; }();
++        static unsigned s_seenFilm = 0; static unsigned long long s_lastFilm = 0; static bool s_film = false;
+         static unsigned s_seen = 0, s_seen43 = 0, s_seenAny = 0, s_uses = 0;
+         static unsigned long long s_last43 = 0, s_lastGame = 0;
+         static int s_sent = -1;
+@@ -285,7 +303,11 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+         if (four) { s_last43 = s_frames; s_uses = 0; ++s_sec43; }
+         else if (game) { s_lastGame = s_frames; if (s_uses < 1000u) ++s_uses; ++s_secGame; }
+         else if (other) { ++s_secOther; if (s_frames - s_lastGame >= 15) s_uses = 0; }
+-        const int wide = sorWidescreenOn() && s_uses >= 8 && s_frames - s_last43 >= 15 ? 1 : 0;
++        const unsigned fm = g_sorFilmFourThree.load(std::memory_order_relaxed);
++        if (fm != s_seenFilm) { s_seenFilm = fm; s_lastFilm = s_frames; s_film = true; ++s_sec43; }
++        // the author, 9/11: only the films stay 4:3; menus and scenes stretched (SOR_WIDE_AUTO=1: the old rule)
++        const int wide = !sorWidescreenOn() ? 0 : s_auto43 ? (s_uses >= 8 && s_frames - s_last43 >= 15 && (!s_film || s_frames - s_lastFilm >= 15) ? 1 : 0)
++                                                 : (!s_film || s_frames - s_lastFilm >= 15 ? 1 : 0);
+         static const bool s_tempi = std::getenv("SOR_TEMPI") != nullptr;
+         if (s_wideFn && sorWidescreenOn() && wide != s_sent)
+         {
+@@ -311,6 +333,29 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+         s_snap((s_dir + "gpu-" + std::to_string(s_frames) + ".png").c_str());
+ }
+ 
++// F7 while playing (ps2_runtime.cpp, main thread): the WIREFRAME debug view on and off, only when the DEBUG page's
++// WIREFRAME is on (SORGS_WIREFRAME=1). No s_lock here: sorgs_wireframe only stores a flag that the GS thread reads
++// before its next frame.
++void sorGpuWireframeKey()
++{
++    static const bool s_asked = [] { const char *e = std::getenv("SORGS_WIREFRAME"); return e && e[0] == '1'; }();
++    if (!s_asked)
++        return;
++    static bool s_wire = false, s_toldNo = false;
++    int (*fn)(int) = s_wireFn.load();
++    if (!fn || !s_wireOk.load())
++    {
++        if (!s_toldNo)
++            std::printf("[sor] wireframe: not available (video card with DIRECTX 11 only)\n");
++        s_toldNo = true;
++        return;
++    }
++    s_wire = !s_wire;
++    fn(s_wire ? 1 : 0);
++    std::printf("[sor] wireframe %s\n", s_wire ? "on" : "off");
++    std::fflush(stdout);
++}
++
+ void sorGpuMirrorClose()
+ {
+     std::lock_guard<std::recursive_mutex> lk(s_lock);
+diff --git a/ps2xRuntime/src/lib/ps2_debug_panel.cpp b/ps2xRuntime/src/lib/ps2_debug_panel.cpp
+index c9aa2c6..0eaf0d0 100644
+--- a/ps2xRuntime/src/lib/ps2_debug_panel.cpp
++++ b/ps2xRuntime/src/lib/ps2_debug_panel.cpp
+@@ -2206,7 +2206,8 @@ void PS2DebugPanel::draw(PS2Runtime &runtime)
+         return;
+     }
+ 
+-    if (IsKeyPressed(KEY_F1))
++    // sor: F12 (F1 upstream; F11 is full screen in the game window). Only built in when SOR_DEBUG_PANEL=1 is used.
++    if (IsKeyPressed(KEY_F12))
+     {
+         toggleVisible();
+     }
+diff --git a/ps2xRuntime/src/lib/ps2_pad.cpp b/ps2xRuntime/src/lib/ps2_pad.cpp
+index c452cf9..7564448 100644
+--- a/ps2xRuntime/src/lib/ps2_pad.cpp
++++ b/ps2xRuntime/src/lib/ps2_pad.cpp
+@@ -8,38 +8,18 @@ namespace
+ {
+     constexpr uint8_t kPadAnalogMarker = 0x73;
+     constexpr uint8_t kPadStickCenter = 0x80;
+-
+-    constexpr uint16_t PAD_LEFT = 0x0080u;
+-    constexpr uint16_t PAD_DOWN = 0x0040u;
+-    constexpr uint16_t PAD_RIGHT = 0x0020u;
+-    constexpr uint16_t PAD_UP = 0x0010u;
+-    constexpr uint16_t PAD_START = 0x0008u;
+-    constexpr uint16_t PAD_R3 = 0x0004u;
+-    constexpr uint16_t PAD_L3 = 0x0002u;
+-    constexpr uint16_t PAD_SELECT = 0x0001u;
+-    constexpr uint16_t PAD_SQUARE = 0x8000u;
+-    constexpr uint16_t PAD_CROSS = 0x4000u;
+-    constexpr uint16_t PAD_CIRCLE = 0x2000u;
+-    constexpr uint16_t PAD_TRIANGLE = 0x1000u;
+-    constexpr uint16_t PAD_R1 = 0x0800u;
+-    constexpr uint16_t PAD_L1 = 0x0400u;
+-    constexpr uint16_t PAD_R2 = 0x0200u;
+-    constexpr uint16_t PAD_L2 = 0x0100u;
+ }
+ 
+ // sor: con il telecomando delle prove (pc/sor_prove.cpp) i tasti arrivano da li' e la tastiera
+ // vera non conta: e' il livello piu' basso dove il programma legge la tastiera.
+ bool sorTelecomandoAcceso();
+-bool sorTastoIniettato(int codice);
+-namespace
+-{
+-    bool tastoGiu(int codice)
+-    {
+-        return sorTelecomandoAcceso() ? sorTastoIniettato(codice) : IsKeyDown(codice);
+-    }
+-}
++// sor: the keys and controller buttons -> the PS2 pad, with the launcher's mapping (CONTROLS > KEYBOARD / CONTROLLER),
++// SWAP and the inverted right stick: pc/sor_tasti.cpp. The keyboard always counts, even with a controller connected.
++void sorTastiLeggi(bool useGamepad, int gamepad, uint16_t &btns, uint8_t *data);
++// sor: the mouse on the right stick (launcher: CONTROLS > MOUSE LOOK), added to the stick and the keys: pc/sor_mouse.cpp.
++void sorMouseStick(int port, uint8_t *data);
+ 
+-bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t size)
++bool PSPadBackend::readState(int port, int /*slot*/, uint8_t *data, size_t size)
+ {
+     if (!data || size < 32)
+         return false;
+@@ -62,108 +42,9 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
+         std::printf("[sor] controller: %s\n", useGamepad ? GetGamepadName(kGamepad) : "nessuno");
+         std::fflush(stdout);
+     }
+-    auto clearBit = [&btns](uint16_t mask)
+-    { btns &= ~mask; };
+ 
+-    // sor: the launcher's CONTROLS page (controller only): SOR_PAD_SWAP=1 swaps the bottom and right buttons
+-    // (✕ and ○), SOR_PAD_INVERT_X / SOR_PAD_INVERT_Y=1 invert the right stick (the camera).
+-    static const bool s_swap = std::getenv("SOR_PAD_SWAP") && std::getenv("SOR_PAD_SWAP")[0] == '1';
+-    static const float s_invX = std::getenv("SOR_PAD_INVERT_X") && std::getenv("SOR_PAD_INVERT_X")[0] == '1' ? -1.0f : 1.0f;
+-    static const float s_invY = std::getenv("SOR_PAD_INVERT_Y") && std::getenv("SOR_PAD_INVERT_Y")[0] == '1' ? -1.0f : 1.0f;
+-    if (useGamepad)
+-    {
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_UP))
+-            clearBit(PAD_UP);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN))
+-            clearBit(PAD_DOWN);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_LEFT))
+-            clearBit(PAD_LEFT);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_FACE_RIGHT))
+-            clearBit(PAD_RIGHT);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))
+-            clearBit(s_swap ? PAD_CIRCLE : PAD_CROSS);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+-            clearBit(s_swap ? PAD_CROSS : PAD_CIRCLE);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))
+-            clearBit(PAD_SQUARE);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_FACE_UP))
+-            clearBit(PAD_TRIANGLE);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_1))
+-            clearBit(PAD_L1);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+-            clearBit(PAD_R1);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_TRIGGER_2))
+-            clearBit(PAD_L2);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_TRIGGER_2))
+-            clearBit(PAD_R2);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_MIDDLE_RIGHT))
+-            clearBit(PAD_START);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_MIDDLE_LEFT))
+-            clearBit(PAD_SELECT);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_LEFT_THUMB))
+-            clearBit(PAD_L3);
+-        if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_THUMB))
+-            clearBit(PAD_R3);
+-
+-        float lx = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_X);
+-        float ly = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_Y);
+-        float rx = s_invX * GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_X);
+-        float ry = s_invY * GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_Y);
+-        data[6] = static_cast<uint8_t>(128 + lx * 127);
+-        data[7] = static_cast<uint8_t>(128 + ly * 127);
+-        data[4] = static_cast<uint8_t>(128 + rx * 127);
+-        data[5] = static_cast<uint8_t>(128 + ry * 127);
+-    }
+-
+-    // sor: la tastiera vale sempre, anche con un controller collegato.
+-    {
+-        // sor: le frecce fanno la croce (i menu del gioco leggono solo quella) e anche la levetta sinistra; WASD solo la
+-        // levetta. Nel gioco su, destra e sinistra della croce fanno cadere elmo e armi: con WASD si cammina senza quel rischio.
+-        if (tastoGiu(KEY_UP))
+-            clearBit(PAD_UP);
+-        if (tastoGiu(KEY_DOWN))
+-            clearBit(PAD_DOWN);
+-        if (tastoGiu(KEY_LEFT))
+-            clearBit(PAD_LEFT);
+-        if (tastoGiu(KEY_RIGHT))
+-            clearBit(PAD_RIGHT);
+-        if (tastoGiu(KEY_F))
+-            clearBit(PAD_L3);
+-        if (tastoGiu(KEY_O))
+-            clearBit(PAD_R3);
+-        if (tastoGiu(KEY_X) || tastoGiu(KEY_SPACE))
+-            clearBit(PAD_CROSS);
+-        if (tastoGiu(KEY_C) || tastoGiu(KEY_ESCAPE))
+-            clearBit(PAD_CIRCLE);
+-        if (tastoGiu(KEY_Z) || tastoGiu(KEY_KP_0))
+-            clearBit(PAD_SQUARE);
+-        if (tastoGiu(KEY_V) || tastoGiu(KEY_KP_1))
+-            clearBit(PAD_TRIANGLE);
+-        if (tastoGiu(KEY_Q))
+-            clearBit(PAD_L1);
+-        if (tastoGiu(KEY_E))
+-            clearBit(PAD_R1);
+-        if (tastoGiu(KEY_LEFT_SHIFT))
+-            clearBit(PAD_L2);
+-        if (tastoGiu(KEY_RIGHT_SHIFT))
+-            clearBit(PAD_R2);
+-        if (tastoGiu(KEY_ENTER))
+-            clearBit(PAD_START);
+-        if (tastoGiu(KEY_TAB))
+-            clearBit(PAD_SELECT);
+-
+-        // sor: nel gioco si cammina con la levetta sinistra: frecce e WASD muovono anche quella.
+-        // IJKL fanno da levetta destra.
+-        const auto levetta = [](bool meno, bool piu, uint8_t &asse)
+-        {
+-            if (meno != piu)
+-                asse = meno ? 0x00u : 0xFFu;
+-        };
+-        levetta(tastoGiu(KEY_LEFT) || tastoGiu(KEY_A), tastoGiu(KEY_RIGHT) || tastoGiu(KEY_D), data[6]);
+-        levetta(tastoGiu(KEY_UP) || tastoGiu(KEY_W), tastoGiu(KEY_DOWN) || tastoGiu(KEY_S), data[7]);
+-        levetta(tastoGiu(KEY_J), tastoGiu(KEY_L), data[4]);
+-        levetta(tastoGiu(KEY_I), tastoGiu(KEY_K), data[5]);
+-    }
++    sorTastiLeggi(useGamepad, kGamepad, btns, data);
++    sorMouseStick(port, data);
+ 
+     data[2] = static_cast<uint8_t>(btns & 0xFF);
+     data[3] = static_cast<uint8_t>(btns >> 8);
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index 2a838bf..8294c40 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -421,9 +421,11 @@ static void sorAvviaUscitaAudio()
+ uint64_t sorAudioConsegnati() { return g_sorAudioDati; }
+ uint64_t sorAudioVuoti() { return g_sorAudioVuoti; }
+ std::atomic<bool> g_sorFotoSubito{false};   // sor: comando "foto" del telecomando delle prove
+-void sorMonitorFrame(const uint8_t *rgba, uint32_t width, uint32_t height); // sor: pc/sor_monitor.cpp
+-void sorMonitorClosing();
++void sorBlackboxFrame(const uint8_t *rgba, uint32_t width, uint32_t height); // sor: pc/sor_blackbox.cpp
++void sorBlackboxClosing();
+ void sorGpuMirrorClose(); // gs_pcsx2_mirror.cpp
++void sorFilmHdShutdown(); // pc/sor_film_hd.cpp
++void sorTurnoFinestra();  // pc/sor_mouse.cpp: once per turn of the window loop
+ 
+ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint32_t &outHeight)
+ {
+@@ -439,7 +441,7 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+     static std::vector<uint8_t> s_uploadBuffer(DEFAULT_FB_SIZE, 0u);
+ 
+     const uint64_t currentTick = rt->eeScheduler().currentVSyncTick();
+-    if (sorGpuDrawsWindow()) // sor: PCSX2's GS draws in this window; each frame still counts (tests)
++    if (sorGpuDrawsWindow()) // sor: PCSX2's GS draws in this window; each frame still counts (tests, black box)
+     {
+         static uint64_t s_gpuSeen = 0;
+         uint64_t shown = 0;
+@@ -450,7 +452,7 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+             for (; s_gpuSeen < shown; ++s_gpuSeen)
+             {
+                 g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
+-                sorMonitorFrame(nullptr, 0u, 0u);
++                sorBlackboxFrame(nullptr, 0u, 0u);
+             }
+             outWidth = 0u;
+             outHeight = 0u;
+@@ -461,7 +463,7 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+         {
+             s_gpuTick = currentTick;
+             g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
+-            sorMonitorFrame(nullptr, 0u, 0u);
++            sorBlackboxFrame(nullptr, 0u, 0u);
+         }
+         outWidth = 0u;
+         outHeight = 0u;
+@@ -531,8 +533,8 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+     s_lastHeight = height;
+ 
+     g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
+-    if (!s_scratch.empty() && s_scratch.size() >= static_cast<size_t>(width) * height * 4u) // sor: monitor
+-        sorMonitorFrame(s_scratch.data(), width, height);
++    if (!s_scratch.empty() && s_scratch.size() >= static_cast<size_t>(width) * height * 4u) // sor: blackbox
++        sorBlackboxFrame(s_scratch.data(), width, height);
+     // sor: SOR_FOTO=<prefisso> salva il fotogramma presentato come <prefisso>_NN.png ogni
+     // SOR_FOTO_OGNI secondi (predefinito 5), con l'alfa a 255.
+     {
+@@ -861,6 +863,8 @@ bool PS2Runtime::initialize(const char *title)
+             extern bool sorWidescreenOn();
+             extern bool sorUltrawideOn();
+             extern bool sorSuperwideOn();
++            extern void sorIcona(void *);
++            sorIcona(GetWindowHandle()); // sor: the coin icon in the title bar and taskbar
+             if (sorWidescreenOn())
+                 SetWindowSize(HOST_WINDOW_HEIGHT * (sorSuperwideOn() ? 96 : sorUltrawideOn() ? 64 : 48) / 27, HOST_WINDOW_HEIGHT);
+             // sor: full screen (SOR_FULLSCREEN=1, from the launcher's OPTIONS): a borderless window as big as the
+@@ -2640,7 +2644,25 @@ void PS2Runtime::run()
+             m_debugUiDrawCallback(*this, m_debugUiUserData);
+         }
+         EndDrawing();
++        // sor: the mouse pointer (taken / given back, the mouse movement for the camera) and the video card's picture
++        // shown again when the focus comes back: pc/sor_mouse.cpp
++        sorTurnoFinestra();
+ 
++        if (IsKeyPressed(KEY_F3))
++        {
++            extern void sorGsTuttiTasto();
++            sorGsTuttiTasto(); // sor: every primitive of 4 frames in a file (gs/gs_bande.cpp, PROCESSOR only)
++        }
++        if (IsKeyPressed(KEY_F6))
++        {
++            extern void sorVu1ProvaTasto();
++            sorVu1ProvaTasto(); // sor: the exact VU1, checked against the fast one, on and off (vu/ps2_vu1_core.cpp)
++        }
++        if (IsKeyPressed(KEY_F7))
++        {
++            extern void sorGpuWireframeKey();
++            sorGpuWireframeKey(); // sor: the DEBUG page's WIREFRAME view on and off (gs_pcsx2_mirror.cpp)
++        }
+         if (IsKeyPressed(KEY_F11) || ((IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_ENTER)))
+         {
+             extern void sorSchermoIntero(void *);
+@@ -2648,7 +2670,7 @@ void PS2Runtime::run()
+         }
+         if (WindowShouldClose())
+         {
+-            sorMonitorClosing();
++            sorBlackboxClosing();
+             RUNTIME_LOG("[run] window close requested, breaking out of loop");
+             requestStop();
+             break;
+@@ -2663,6 +2685,8 @@ void PS2Runtime::run()
+     // PCSX2's GS (sor-gs.dll) may draw inside this window: close it while the window still exists,
+     // and before the process exit kills its thread in the middle of a frame (crash at exit).
+     sorGpuMirrorClose();
++    // sor: an HD replacement film (pc/sor_film_hd.cpp) draws in a small window owned by this one: closed first.
++    sorFilmHdShutdown();
+ 
+     if (m_debugUiInitialized && m_debugUiShutdownCallback)
+     {
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+index 3163ab7..fa07904 100644
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+@@ -5,6 +5,7 @@
+ #include "ps2_vu1_detail.h"
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cfenv>
+ #include <chrono>
+ #include <cmath>
+@@ -1659,6 +1660,21 @@ void VU1Interpreter::resume(uint8_t *vuCode, uint32_t codeSize,
+     run(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
+ }
+ 
++// sor: F6 in the game window (the author, 9/11: the water in chapter 4 is wrong with the video card and with the processor;
++// SOR_VU1LENTO from the start is too slow to get there). While it is on, every VU1 program runs as with SOR_VU1VERIFICA:
++// the exact interpreter draws (its result is kept) and the fast translation is compared with it, each difference written
++// in the log ("VU1 DIFFERENZA ingresso ..."). Slow while on; F6 again goes back to the fast way.
++static std::atomic<bool> g_sorVu1Prova{false};
++
++void sorVu1ProvaTasto()
++{
++    const bool on = !g_sorVu1Prova.load();
++    g_sorVu1Prova.store(on);
++    std::printf(on ? "[sor] F6: VU1 exact check on: the exact interpreter draws and the fast one is compared with it (slow; F6 again to stop)\n"
++                   : "[sor] F6: VU1 exact check off: the fast way again\n");
++    std::fflush(stdout);
++}
++
+ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
+                          uint8_t *vuData, uint32_t dataSize,
+                          GS &gs, PS2Memory *memory, uint32_t maxCycles)
+@@ -1672,7 +1688,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
+     // The value of SOR_VU1VERIFICA is how many seconds to wait: at the start it would slow down the way to the place to check.
+     static const char *s_sorVerifica = std::getenv("SOR_VU1VERIFICA");
+     static const auto s_sorVerificaDa = std::chrono::steady_clock::now() + std::chrono::seconds(s_sorVerifica ? std::atoi(s_sorVerifica) : 0);
+-    if (s_sorVerifica && !m_sorDentroVerifica && std::chrono::steady_clock::now() >= s_sorVerificaDa)
++    if (!m_sorDentroVerifica && (g_sorVu1Prova.load(std::memory_order_relaxed) ||
++                                 (s_sorVerifica && std::chrono::steady_clock::now() >= s_sorVerificaDa)))
+     {
+         sorVerifica(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
+         return;

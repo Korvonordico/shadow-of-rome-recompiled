@@ -45,7 +45,7 @@ void sorAlzaPrioritaThread()
 }
 void sorProfiloAzzera();                        // sor_profilo.cpp
 void sorProfiloScrivi();
-void sorMonitorCommand(const char *line);       // sor_monitor.cpp
+void sorBlackboxCommand(const char *line);       // sor_blackbox.cpp
 
 extern std::atomic<bool> g_sorGsTuttiChiesto; // gs_bande.cpp
 namespace
@@ -161,8 +161,8 @@ namespace
                 {
                     sorProfiloScrivi();
                 }
-                else if (campi >= 1 && (!std::strcmp(cmd, "monitor") || !std::strcmp(cmd, "bbtest")))
-                    sorMonitorCommand(riga.c_str());
+                else if (campi >= 1 && (!std::strcmp(cmd, "blackbox") || !std::strcmp(cmd, "bbtest")))
+                    sorBlackboxCommand(riga.c_str());
                 else if (campi >= 1 && !std::strcmp(cmd, "esci"))
                 {
                     std::printf("[sor] telecomando: esci\n");
