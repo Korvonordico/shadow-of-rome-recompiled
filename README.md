@@ -6,6 +6,17 @@
 
 <p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. The video card draws it: up to 8 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9, with the mouse and every key your own.</p>
 
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Korvonordico/shadow-of-rome-recompiled?label=release&color=e05d44" alt="release"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D6" alt="Windows 10 | 11 x64">
+  <img src="https://img.shields.io/badge/DirectX-12%20%7C%2011-5C2D91" alt="DirectX 12 | 11">
+  <img src="https://img.shields.io/badge/Vulkan-yes-AC162C" alt="Vulkan">
+  <img src="https://img.shields.io/badge/disc-SLES--52950%20(PAL)-555555" alt="disc SLES-52950 (PAL)">
+  <img src="https://img.shields.io/badge/languages-EN%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES-2E8B57" alt="languages EN FR DE IT ES">
+  <img src="https://img.shields.io/badge/status-chapter%201%20of%204%20tested-orange" alt="status: chapter 1 of 4 tested">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
+</p>
+
 <p align="center">Version 2.7 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen.</p>
