@@ -11,7 +11,7 @@
 <p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
 <p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.5: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
+  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.6: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
 </p>
 <p align="center"><sub>The launcher. It starts the game and holds every setting.</sub></p>
 
@@ -77,7 +77,7 @@ The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 1
 Each page saves only with **APPLY**; BACK leaves without saving.
 
 <p align="center">
-  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page with the first-time choices: DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, VIGNETTE off">
+  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page with the first-time choices: DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, VIGNETTE off, FIELD OF VIEW +30%">
 </p>
 <p align="center">
   <img src="docs/launcher-keyboard.png" width="49%" alt="The KEYBOARD page: each action of the PS2 pad with its key or mouse button, RESET, APPLY and BACK">
