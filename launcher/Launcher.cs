@@ -23,12 +23,13 @@ using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.6";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.7";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -37,8 +38,8 @@ class Launcher : Form
     int page = 0;                      // 0: the main menu, 1: graphics, 2: options, 3: mods, 4: controls, 5: debug (hidden, Ctrl+D)
     static readonly string[] OItems = { "DISPLAY", "BGM VOLUME", "SE VOLUME", "MENU SOUNDS", "SMOOTH AUDIO", "BACKGROUND", "UPDATES", "DEBUG", "SPEED TESTS", "APPLY", "BACK" };
     static readonly string[] OLatin = { "SPECTACVLVM", "CANTVS", "SONITVS", "STREPITVS", "LENITAS", "CINIS", "NOVA", "INSPECTIO", "PROBATIO", "CONFIRMA", "REDI" };
-    static readonly string[] MItems = { "TEXTURE MODS", "MODS FOLDER", "APPLY", "BACK" };
-    static readonly string[] MLatin = { "MVTATIONES", "APERI", "CONFIRMA", "REDI" };
+    static readonly string[] MItems = { "TEXTURE MODS", "RESHADE", "MODS FOLDER", "APPLY", "BACK" };
+    static readonly string[] MLatin = { "MVTATIONES", "COLORES", "APERI", "CONFIRMA", "REDI" };
     // page 7, SPEED TESTS (OPTIONS > SPEED TESTS, 10/11/2026): the VU1 engine (SOR_VU1) and the time measure (SOR_TEMPI)
     static readonly string[] TItems = { "VU1 ENGINE", "TIMINGS", "UPSCALE FIX", "APPLY", "BACK" };
     static readonly string[] TLatin = { "VECTORES", "TEMPORA", "ACIES", "CONFIRMA", "REDI" };
@@ -515,14 +516,14 @@ class Launcher : Form
             string latin = a >= 0 ? MapLatin[a] : r == MapVisible ? "RESTITVE" : r == MapVisible + 1 ? "CONFIRMA" : "REDI";
             string d = a >= 0 ? MapDescribe(a) : r == MapVisible ? (mapPad ? "THE STANDARD BUTTONS" : "THE STANDARD KEYS")
                 : r == MapVisible + 1 ? (changed ? "SAVE FOR THE NEXT PLAY" : "NOTHING CHANGED") : (changed ? "WITHOUT SAVING" : "");
-            Spaced(g, name, itemFont, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 4, 3);
+            Spaced(g, name, subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 6, 2);
             valueRects[r] = Rectangle.Empty;
             if (a >= 0)
             {
                 string v = capture == a ? "· · ·" : mapPad ? "‹ " + MapValueLabel(a) + " ›" : MapValueLabel(a);
                 int vw = (int)SpacedWidth(g, v, valueFont, 2);
                 // right-aligned in the row; a long name pushes it right, still left of the logo (x 470)
-                int vx = Math.Max(b.Right - 6 - vw, b.X + 6 + (int)SpacedWidth(g, name, itemFont, 3) + 14);
+                int vx = Math.Max(b.Right - 6 - vw, b.X + 6 + (int)SpacedWidth(g, name, subFont2, 3) + 14);
                 valueRects[r] = new Rectangle(vx, b.Y, vw, b.Height);
                 Spaced(g, v, valueFont, on || capture == a ? gold : bone, vx, b.Y + 9, 2);
             }
@@ -638,7 +639,7 @@ class Launcher : Form
     readonly Rectangle[] debug11Boxes = new Rectangle[Math.Max(Math.Max(DItems.Length, GItems.Length), CItems.Length)];   // the DEBUG and GRAPHICS pages: 11 rows, closer again
     Rectangle[] boxes { get { return page == 1 ? graphicsBoxes : page == 5 || page == 4 || page == 2 ? debug11Boxes : page == 6 ? debugBoxes :   // the key mapping has 10 rows, OPTIONS 11 (SPEED TESTS)
  page == 4 ? graphicsBoxes : menuBoxes; } }                                // CONTROLS: 7 rows
-    readonly Font titleFont, subFont, itemFont, latinFont, smallFont, valueFont;
+    readonly Font titleFont, subFont, subFont2, itemFont, latinFont, smallFont, valueFont;
     readonly Image logo;
 
     static readonly Color Gold = Color.FromArgb(196, 158, 92);
@@ -665,6 +666,7 @@ class Launcher : Form
         titleFont = new Font(serif, 40, FontStyle.Regular);
         subFont = new Font(serif, 10, FontStyle.Regular);
         itemFont = new Font(serif, 18, FontStyle.Regular);
+        subFont2 = new Font(serif, 13f, FontStyle.Regular);   // the rows of the sub-menus: smaller, they hold many rows (10/11/2026)
         latinFont = new Font(serif, 8.5f, FontStyle.Regular);
         valueFont = new Font(serif, 11, FontStyle.Regular);
         smallFont = new Font("Segoe UI", 8.5f);
@@ -742,7 +744,7 @@ class Launcher : Form
         if (!Ready[i]) { message = Items[i] + " - COMING SOON"; Invalidate(); return; }
         if (Items[i] == "GRAPHICS") { OpenGraphics(); return; }
         if (Items[i] == "CONTROLS") { page = 4; swap = SavedSwap; invY = SavedInvY; invX = SavedInvX; mouseLook = SavedMouseLook; mouseSpeed = SavedMouseSpeed; mouseInvY = SavedMouseInvY; toggleBtn = SavedToggle; CountChanged(); sel = 0; hover = -1; message = ControlsNote; Invalidate(); return; }
-        if (Items[i] == "OPTIONS" || Items[i] == "MODS") { page = Items[i] == "OPTIONS" ? 2 : 3; full = SavedFull; bgmVol = ReadGameVol("bgm"); seVol = ReadGameVol("se"); menuSnd = liveSnd; ashOn = liveAsh; smooth = SavedSmooth; mods = SavedMods; sel = 0; hover = -1; message = ""; Invalidate(); return; }
+        if (Items[i] == "OPTIONS" || Items[i] == "MODS") { page = Items[i] == "OPTIONS" ? 2 : 3; full = SavedFull; bgmVol = ReadGameVol("bgm"); seVol = ReadGameVol("se"); menuSnd = liveSnd; ashOn = liveAsh; smooth = SavedSmooth; mods = SavedMods; reshade = SavedReshade; sel = 0; hover = -1; message = ""; Invalidate(); return; }
         Play();
     }
 
@@ -755,6 +757,23 @@ class Launcher : Form
     int SavedWide { get { string s = ReadIni("screen"); int w = s == "16:9" ? 1 : s == "21:9" ? 2 : s == "32:9" ? 2 : s == "4:3" ? 0 : 1; return w >= 2 && !SavedGpu ? 1 : w; } }   // package default 16:9 (the author, 9/11)
     bool SavedFull { get { return ReadIni("display") == "full"; } }   // package default: a window (the author, 10/11: his settings as the defaults)
     bool SavedMods { get { return ReadIni("mods") != "0"; } }   // on, unless turned off
+    // MODS > RESHADE (10/11/2026): ReShade (reshade.me, BSD-3-Clause) ships in the package as ReShade64.dll, off. On, Play
+    // copies it as dxgi.dll next to sor.exe, so it hooks the video card's picture (DirectX 11 and 12; not Vulkan); off, Play
+    // removes that dxgi.dll if it is our copy. Its settings: ReShade.ini; the player's preset: ReShadePreset.ini (shareable).
+    bool reshade;
+    bool SavedReshade { get { return ReadIni("reshade") == "1"; } }
+    void UseReshade(bool on)
+    {
+        string rs = Path.Combine(dir, "ReShade64.dll"), dx = Path.Combine(dir, "dxgi.dll");
+        try
+        {
+            bool ours = File.Exists(dx) && File.Exists(rs) && new FileInfo(dx).Length == new FileInfo(rs).Length
+                        && File.ReadAllBytes(dx).SequenceEqual(File.ReadAllBytes(rs));
+            if (on && File.Exists(rs) && !ours) File.Copy(rs, dx, true);
+            else if (!on && ours) File.Delete(dx); // a dxgi.dll the player put there himself is left alone
+        }
+        catch (Exception) { }
+    }
     bool SavedSwap { get { return ReadIni("swap") == "1"; } }
     bool SavedMouseLook { get { return ReadIni("mouse_look") != "0"; } }
     int SavedMouseSpeed { get { int v; return int.TryParse(ReadIni("mouse_speed"), out v) && v >= 1 && v <= 10 ? v : 5; } }
@@ -865,13 +884,13 @@ class Launcher : Form
     }
 
     // ---- options and mods: one value, then APPLY and BACK (mods: also the folder) ----
-    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || menuSnd != SavedMenuSnd || ashOn != SavedAsh || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods; } }
-    int ApplyRow { get { return page == 2 ? 9 : page == 7 ? 3 : page == 3 ? 2 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
-    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 5 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : i == 0; }
+    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || menuSnd != SavedMenuSnd || ashOn != SavedAsh || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade; } }
+    int ApplyRow { get { return page == 2 ? 9 : page == 7 ? 3 : page == 3 ? 3 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
+    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 5 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 1 : i == 0; }
     void Toggle(int i)
     {
         if (page == 2) { if (i == 0) full = !full; else if (i == 1) bgmVol = (bgmVol + toggleDir + 11) % 11; else if (i == 2) seVol = (seVol + toggleDir + 11) % 11; else if (i == 3) menuSnd = !menuSnd; else if (i == 4) smooth = !smooth; else ashOn = !ashOn; }
-        else if (page == 3) mods = !mods;
+        else if (page == 3) { if (i == 0) mods = !mods; else reshade = !reshade; }
         else if (page == 7) { if (i == 0) vu1Eng = (vu1Eng + toggleDir + 3) % 3; else if (i == 1) timings = !timings; else upFix = (upFix + toggleDir + UpNames.Length) % UpNames.Length; }
         else if (page == 5) dbg[i] = !dbg[i];
         else if (i == 2) swap = !swap;      // CONTROLS: 2 BUTTONS, 3 VERTICAL, 4 HORIZONTAL
@@ -905,7 +924,7 @@ class Launcher : Form
             if (SmallChanged) { message = "OPTIONS NOT SAVED YET  \u00B7  APPLY OR GO BACK FIRST"; Invalidate(); return; }
             OpenSpeed(); return;
         }
-        if (page == 3 && i == 1)
+        if (page == 3 && i == 2)
         {
             try { Directory.CreateDirectory(ModsDir); Process.Start("explorer.exe", "\"" + ModsDir + "\""); message = "PUT PCSX2 TEXTURE PACKS FOR SLES-52950 HERE"; }
             catch (Exception) { message = "COULD NOT OPEN THE MODS FOLDER  ·  THE FOLDER MAY BE READ-ONLY: MOVE THE GAME TO DOCUMENTS"; }
@@ -917,7 +936,7 @@ class Launcher : Form
             {
                 if (page == 2) { WriteIni("display", full ? "fullscreen" : "window"); WriteGameVols(bgmVol, seVol); WriteIni("menu_sounds", menuSnd ? "1" : "0"); WriteIni("background", ashOn ? "1" : "0"); WriteIni("smoothaudio", smooth ? "1" : "0"); liveSnd = menuSnd; liveAsh = ashOn; }
                 else if (page == 7) { WriteIni("vu1engine", vu1Eng == 1 ? "pcsx2" : vu1Eng == 2 ? "confronto" : "nostro"); WriteIni("timings", timings ? "1" : "0"); WriteIni("upscalefix", upFix.ToString()); }
-                else if (page == 3) WriteIni("mods", mods ? "1" : "0");
+                else if (page == 3) { WriteIni("mods", mods ? "1" : "0"); WriteIni("reshade", reshade ? "1" : "0"); }
                 else if (page == 5) { for (int k = 0; k < DKeys.Length; k++) WriteIni(DKeys[k], dbg[k] ? "1" : "0"); }
                 else { WriteIni("swap", swap ? "1" : "0"); WriteIni("invert_y", invY ? "1" : "0"); WriteIni("invert_x", invX ? "1" : "0"); WriteIni("mouse_look", mouseLook ? "1" : "0"); WriteIni("mouse_speed", mouseSpeed.ToString()); WriteIni("mouse_invert_y", mouseInvY ? "1" : "0"); WriteIni("toggle", toggleBtn == 0 ? "none" : MapNames[toggleBtn - 1]); }
             }
@@ -973,7 +992,8 @@ class Launcher : Form
         if (i == 8 && page == 2) return "VU1 ENGINE AND TIME MEASURE";
         if (i == 6 && page == 2) return updateState == 1 ? "ASKING GITHUB..." : latestUrl != null ? "VERSION " + latestVersion + " IS OUT" : "ASK GITHUB FOR A NEWER VERSION";
         if (i == 0) return mods ? "TEXTURE PACKS IN THE FOLDER" : "ORIGINAL TEXTURES ONLY";
-        if (page == 3 && i == 1) return ModsFolderLine();
+        if (page == 3 && i == 1) return reshade ? "HOME OPENS ITS MENU IN THE GAME  \u00B7  DIRECTX 11 AND 12" : "COLOURS AND FILTERS FOR THE PICTURE";
+        if (page == 3 && i == 2) return ModsFolderLine();
         if (i == apply) return SmallChanged ? "SAVE FOR THE NEXT PLAY" : "NOTHING CHANGED";
         return SmallChanged ? "WITHOUT SAVING" : "";
     }
@@ -987,10 +1007,10 @@ class Launcher : Form
             var b = boxes[i];
             bool on = i == sel, live = i != apply || SmallChanged;
             if (on) Highlight(g, b, live, gold);
-            Spaced(g, items[i], itemFont, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 4, 3);
+            Spaced(g, items[i], subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 6, 2);
             if (IsToggle(i))
             {
-                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : (i == 3 ? menuSnd : i == 4 ? smooth : ashOn) ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : (mods ? "ON" : "OFF")) + " \u203A";
+                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : (i == 3 ? menuSnd : i == 4 ? smooth : ashOn) ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : ((i == 1 ? reshade : mods) ? "ON" : "OFF")) + " \u203A";
                 int vw = (int)SpacedWidth(g, v, valueFont, 2); valueRects[i] = new Rectangle(b.Right - 6 - vw, b.Y, vw, b.Height);
                 Spaced(g, v, valueFont, on ? gold : bone, b.Right - 6 - vw, b.Y + 9, 2);
             }
@@ -1253,6 +1273,7 @@ class Launcher : Form
         psi.EnvironmentVariables["SOR_WIDESCREEN"] = SavedWide.ToString(); // 0 4:3, 1 16:9, 2 21:9, 3 32:9
         psi.EnvironmentVariables["SOR_FULLSCREEN"] = SavedFull ? "1" : "0";
         psi.EnvironmentVariables["SORGS_MODS"] = SavedMods ? "1" : "0";
+        UseReshade(SavedReshade); // MODS > RESHADE: dxgi.dll next to sor.exe, or none
         psi.EnvironmentVariables["SOR_PAD_SWAP"] = SavedSwap ? "1" : "0";        // the controller's cross and circle
         psi.EnvironmentVariables["SOR_PAD_INVERT_Y"] = SavedInvY ? "1" : "0";    // the right stick (camera)
         psi.EnvironmentVariables["SOR_PAD_INVERT_X"] = SavedInvX ? "1" : "0";
@@ -1339,7 +1360,7 @@ class Launcher : Form
             bool on = i == sel;
             bool live = i == 0 ? GpuInstalled : i == 1 || i == 2 || i == 3 || i == 6 || i == 7 ? useGpu : i == 10 ? Changed : true;
             if (on) Highlight(g, b, live, gold);
-            Spaced(g, GItems[i], itemFont, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 4, 3);
+            Spaced(g, GItems[i], subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 5, 2);
             string value = i == 0 ? (!useGpu ? "PROCESSOR" : api == 2 ? "DIRECTX 12" : api == 3 ? "VULKAN" : "DIRECTX 11") : i == 1 ? scale + "X" : i == 2 ? (sharp == 0 ? "OFF" : sharp == 1 ? "LOW" : "HIGH") : i == 3 ? (fxaa ? "FXAA" : "OFF") : i == 4 ? ScreenNames[wide] : i == 5 ? (hz60 ? "60 FPS" : "50 FPS") : i == 6 ? (vsync ? "ON" : "OFF") : i == 7 ? (showOsd ? "ON" : "OFF") : i == 8 ? (vignette ? "ON" : "OFF") : i == 9 ? (fov == 100 ? "ORIGINAL" : "+" + (fov - 100) + "%") : "";
             if (value != "")
             {

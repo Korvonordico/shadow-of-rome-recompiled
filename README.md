@@ -6,12 +6,12 @@
 
 <p align="center">An unofficial PC version of Shadow of Rome (PS2), made by translating the game's own code into a Windows program. The video card draws it: up to 8 times the PS2's resolution, 60 frames per second, 4:3, 16:9 or 21:9, with the mouse and every key your own.</p>
 
-<p align="center">Version 2.6 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.7 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
 
 <p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.6: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
+  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.7: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
 </p>
 <p align="center"><sub>The launcher. It starts the game and holds every setting.</sub></p>
 
@@ -27,6 +27,12 @@ This is an experiment. I can't promise I'll finish it, for personal reasons, and
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
+## What's new in 2.7
+
+- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 11 and 12 (not Vulkan). In the game the **Home** key opens its menu. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Some antivirus programs warn about ReShade's `dxgi.dll` by mistake.
+- **Smaller writing in the launcher's pages**, so the longer pages are less crowded.
+- The list of the video card's effects made at the start grew to 564.
+
 ## What's new in 2.6
 
 - **Smoother play at 60 frames per second.** The PS2's VU1 programs, which turn the models into triangles, now run in PCSX2's recompiler (microVU), through the kzvu library of the [Killzone port](https://github.com/drakolordx7/KillzoneRecomp): 2.7 times faster than before. Compared program by program on 389,737 programs: no difference in the pictures.
@@ -38,7 +44,7 @@ If someone is already working on a port of this game, or is further ahead, pleas
 - **Running in a diagonal** with a controller no longer turns into a slow walk. Thanks to [@n0l4n666](https://github.com/n0l4n666) for the report.
 - **The OSD now shows** the frames a second and the video card's statistics (it never did, 2.5 included).
 
-All the details, and what came in 2.5: [CHANGELOG](CHANGELOG.md).
+All the details: [CHANGELOG](CHANGELOG.md).
 
 ## Screenshots
 
@@ -69,7 +75,7 @@ In the order you meet them in the game, drawn by the video card at 4x in 16:9: t
 - **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD, VIGNETTE and FIELD OF VIEW (the playing camera wider: +10%, +20% or +30%).
 - **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, MENU SOUNDS, SMOOTH AUDIO (when the game slows down, the sound stretches a little instead of crackling), BACKGROUND (the falling ash), UPDATES, DEBUG and SPEED TESTS (the VU1 engine, TIMINGS for the log, and UPSCALE FIX, PCSX2's other fixes for the edges of the picture; leave TIMINGS off to play).
 - **CONTROLS:** for the controller, swap ✕ and ○ and invert the camera; for the mouse, MOUSE LOOK, MOUSE SPEED and MOUSE Y; TOGGLE, to hold one button down with one press and let it go with the next; and the KEYBOARD and CONTROLLER pages, to change every key and button (see [Keys](#keys)).
-- **MODS:** texture packs on or off, and a button that opens their folder.
+- **MODS:** texture packs on or off, RESHADE on or off (colours and filters, Home opens its menu in the game), and a button that opens the texture packs folder.
 - **DEBUG** (in OPTIONS), for testing: see [Keys](#keys). Use a separate save.
 
 The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, FIELD OF VIEW +30%, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), in a window, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
@@ -86,7 +92,7 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 <p align="center">
   <img src="docs/launcher-options.png" width="32%" alt="The launcher's OPTIONS page: full screen, music and effects volume, menu sounds, background, updates and debug">
   <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: the keyboard and controller pages, swap cross and circle, invert the camera, and the mouse camera with its speed">
-  <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, and their folder">
+  <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, ReShade on or off, and the texture packs folder">
 </p>
 
 ## Status
@@ -271,7 +277,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.6-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.7-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
@@ -551,3 +557,4 @@ Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the
 ---
 
 If you'd like to support me, have a look at my other projects on my profile: [github.com/Korvonordico](https://github.com/Korvonordico).
+- [ReShade](https://reshade.me) by crosire (BSD-3-Clause) and [SweetFX](https://github.com/CeeJayDK/SweetFX) by CeeJay.dk (MIT): the colours and filters of MODS > RESHADE.

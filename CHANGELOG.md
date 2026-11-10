@@ -2,6 +2,12 @@
 
 Version numbers count the big steps of the port.
 
+## 2.7 (10 November 2026)
+
+- **ReShade in the package** (MODS > RESHADE, off by default). ReShade 6.8.0 by crosire (BSD-3-Clause) with the SweetFX effects (MIT). On, the launcher copies `ReShade64.dll` as `dxgi.dll` next to `sor.exe` before Play; off, it removes its copy (a `dxgi.dll` you put there yourself stays). Home opens ReShade's menu. The first preset is the author's (`ShadowOfRome.ini`); presets are ReShade's normal files, so they can be shared and used with any ReShade. DirectX 11 and 12 only. Tested by hand with DirectX 12.
+- **The launcher's pages use smaller writing** (the main menu stays as it was).
+- **564 effects** in the list of the video card's effects made at the start (from 555).
+
 ## 2.6 (10 November 2026)
 
 ### Smoother play
