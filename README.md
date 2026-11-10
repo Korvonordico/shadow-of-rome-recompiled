@@ -10,7 +10,11 @@
 
 <p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen.</p>
 
-<p align="center"><b>The game has not been played to the end yet: it still needs full testing.</b> Found a problem? <a href="../../issues/new/choose">Tell me here</a>: every report is read and fixed as soon as possible.</p>
+> [!IMPORTANT]
+> **This port is still being tested.** Chapter 1 has been played to the end; chapters 2, 3 and 4 have not been played by hand yet. You may find graphics glitches (for example the water in the Germanian Forest), crashes or parts that do not work: keep a separate save, and save often.
+> Found a problem? [Tell me here](../../issues/new/choose): every report is read and fixed as soon as possible.
+>
+> **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950) as an .iso file. Please don't ask for, or share, game files or disc images.
 
 <p align="center">
   <img src="docs/launcher.png" width="70%" alt="The launcher of 2.7: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
