@@ -44,6 +44,13 @@ This is an experiment. Chapter 1 can be played from start to end; the rest of th
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
+## Video: the PS2 original next to the PC port
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=2GsRxUH3Ctk"><img src="https://img.youtube.com/vi/2GsRxUH3Ctk/maxresdefault.jpg" width="80%" alt="Video: Shadow of Rome on PS2 next to Shadow of Rome Recompiled on PC, the first arena side by side (opens YouTube)"></a>
+</p>
+<p align="center">The same first arena, played twice: the original PlayStation 2 game on the left, the PC port on the right. Click the picture to watch it on YouTube.</p>
+
 ## What's new in 2.8
 
 - **The Russian version works.** The Russian translation of the European disc (SLES-52950) keeps the game's code exactly as it is and changes only the texts and the list of where the files are on the disc. The launcher used to refuse it; now it accepts the European disc and translations made the same way. Played by hand on one Russian disc. Thanks to [@Luger-git](https://github.com/Luger-git) for the request ([#5](../../issues/5)).
