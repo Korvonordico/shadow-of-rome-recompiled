@@ -159,7 +159,7 @@ Most checks below were done by **test scripts**: small programs that press the k
 | The black box: 25 real pictures with DirectX 12, DirectX 11 and Vulkan | | ✅ | |
 | Texture packs on the menus: sizes and transparency | ✅ | | |
 | A film replaced by an MP4 | ✅ | | |
-| G-SYNC coming back on a variable refresh screen | | | ⬜ |
+| G-SYNC on a 180 Hz screen (RTX 3070 Ti, 2.9.1, full screen): variable refresh on, each picture shown about 1 ms after the game makes it; lost when another program came in front (the log says which) and back on when the game came in front again | | ✅ | |
 
 ### What was tested in 2.8
 
