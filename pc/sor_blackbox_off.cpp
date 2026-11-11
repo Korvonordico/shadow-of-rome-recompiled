@@ -6,6 +6,7 @@
 
 void sorBlackboxStart() {}
 void sorBlackboxSetRuntime(PS2Runtime *) {}
+bool sorBlackboxOn() { return false; }
 void sorBlackboxInstall(PS2Runtime &) {}
 void sorBlackboxFrame(const uint8_t *, uint32_t, uint32_t) {}
 void sorBlackboxClosing() {}

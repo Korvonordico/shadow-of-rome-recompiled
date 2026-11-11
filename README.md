@@ -17,7 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
-<p align="center">Version 2.8 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.9 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><b>Languages: English, Français, Deutsch, Italiano, Español, Русский</b><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too.</p>
 
@@ -28,7 +28,7 @@
 > **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), or of its Russian translation, as an .iso file. Please don't ask for, or share, game files or disc images.
 
 <p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.7: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
+  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.9: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, Rome in the background and the version number">
 </p>
 <p align="center"><sub>The launcher. It starts the game and holds every setting.</sub></p>
 
@@ -51,13 +51,27 @@ If someone is already working on a port of this game, or is further ahead, pleas
 </p>
 <p align="center">The same first arena, played twice: the original PlayStation 2 game on the left, the PC port on the right. Click the picture to watch it on YouTube.</p>
 
+## What's new in 2.9
+
+Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666), thanks! Everything in [CHANGELOG.md](CHANGELOG.md).
+
+- **Fixed: ReShade stayed on after turning it off in the launcher.** Up to 2.8 the launcher copied `ReShade64.dll` as `dxgi.dll` next to `sor.exe` and removed the copy when RESHADE was off; for a tester the copy stayed and ReShade came back every time. Now nothing is copied: the game loads ReShade itself only when RESHADE is on (DirectX 11 and 12; never with Vulkan), and an old `dxgi.dll` left by 2.7 or 2.8 is removed. Tested in an empty folder with the 2.9 package: on changes the picture, off leaves it as the game draws it, and no `dxgi.dll` is made.
+- **ReShade keys: F1 opens its menu** (it was Home, missing on small keyboards) **and F2 turns its effects off and on** while you play, to see the difference at once. The author's preset no longer has the Levels effect, which made the picture too dark on some screens.
+- **First start: ReShade and the OSD are off.**
+- **The black box (F9) saves real pictures with the video card too** (DirectX 12, DirectX 11 and Vulkan; in 2.8 they were empty).
+- **The log no longer shows false sound "errors".**
+- **More in the log for G-SYNC screens:** when the variable refresh is lost, and which program came in front of the game.
+- **MODS > SAVE TEXTURES** (experimental, for mod makers): every texture the game uses is saved as a PNG in `textures\SLES-52950\dumps`, named as PCSX2 names them, so it can be redrawn and put in a pack. It slows the game down: leave it off to play. Texture packs were checked on the menus: replaced pictures of any size, and transparency (the PS2's scale: 128 is solid, 64 half, 0 none).
+- **A texture pack can also replace the films** with MP4 files (`movies\movie-<number>.mp4`; the log says each film's number).
+- **600 effects** in the list of the video card's effects made at the start (from 564).
+
 ## What's new in 2.8
 
 - **The Russian version works.** The Russian translation of the European disc (SLES-52950) keeps the game's code exactly as it is and changes only the texts and the list of where the files are on the disc. The launcher used to refuse it; now it accepts the European disc and translations made the same way. Played by hand on one Russian disc. Thanks to [@Luger-git](https://github.com/Luger-git) for the request ([#5](../../issues/5)).
 
 ## What's new in 2.7
 
-- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 12 or 11 (not Vulkan; tested by hand with DirectX 12). In the game the **Home** key opens its menu. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Some antivirus programs warn about ReShade's `dxgi.dll` by mistake.
+- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 12 or 11. With Vulkan it is not loaded at all, even when it is on. In the game **F1** opens its menu (Home up to 2.8) and **F2** turns its effects off and on again. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Since 2.9 the game loads `ReShade64.dll` by itself only when RESHADE is on, so turning it off always works; versions 2.7 and 2.8 put a copy named `dxgi.dll` next to the game instead, which could stay behind when RESHADE was turned off: 2.9 removes that old copy at its first start.
 - **Smaller writing in the launcher's pages**, so the longer pages are less crowded.
 - The list of the video card's effects made at the start grew to 564.
 
@@ -103,10 +117,10 @@ In the order you meet them in the game, drawn by the video card at 4x in 16:9: t
 - **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD, VIGNETTE and FIELD OF VIEW (the playing camera wider: +10%, +20% or +30%).
 - **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, MENU SOUNDS, SMOOTH AUDIO (when the game slows down, the sound stretches a little instead of crackling), BACKGROUND (the falling ash), UPDATES, DEBUG and SPEED TESTS (the VU1 engine, TIMINGS for the log, and UPSCALE FIX, PCSX2's other fixes for the edges of the picture; leave TIMINGS off to play).
 - **CONTROLS:** for the controller, swap ✕ and ○ and invert the camera; for the mouse, MOUSE LOOK, MOUSE SPEED and MOUSE Y; TOGGLE, to hold one button down with one press and let it go with the next; and the KEYBOARD and CONTROLLER pages, to change every key and button (see [Keys](#keys)).
-- **MODS:** texture packs on or off, RESHADE on or off (colours and filters, Home opens its menu in the game), and a button that opens the texture packs folder.
+- **MODS:** texture packs on or off, RESHADE on or off (colours and filters; in the game F1 opens its menu and F2 turns its effects on and off), and a button that opens the texture packs folder.
 - **DEBUG** (in OPTIONS), for testing: see [Keys](#keys). Use a separate save.
 
-The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC and OSD on, VIGNETTE off, FIELD OF VIEW +30%, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), in a window, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
+The first time, the launcher starts with DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD and VIGNETTE off, FIELD OF VIEW +30%, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), in a window, music and effects at 5 of 10, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
 
 Each page saves only with **APPLY**; BACK leaves without saving.
 
@@ -129,6 +143,19 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
 
+### What was tested in 2.9
+
+| What | By hand | Script or picture only | Not tested yet |
+|---|---|---|---|
+| The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ | |
+| The same package with the Russian disc: the game starts in Russian | | ✅ | |
+| RESHADE on changes the picture, off leaves it as the game draws it, no `dxgi.dll` made | | ✅ | |
+| F2 for ReShade (effects off and on): in a test from a script the picture did not change, to be checked by hand | | | ⬜ |
+| The black box: 25 real pictures with DirectX 12, DirectX 11 and Vulkan | | ✅ | |
+| Texture packs on the menus: sizes and transparency | ✅ | | |
+| A film replaced by an MP4 | ✅ | | |
+| G-SYNC coming back on a variable refresh screen | | | ⬜ |
+
 ### What was tested in 2.8
 
 | What | By hand | Script or picture only | Not tested yet |
@@ -141,7 +168,7 @@ Most checks below were done by **test scripts**: small programs that press the k
 
 | What | By hand | Script or picture only | Not tested yet |
 |---|---|---|---|
-| ReShade on with DirectX 12: Home opens its menu, the effects change the picture, the game stays smooth, a preset saved and loaded | ✅ | | |
+| ReShade on with DirectX 12: F1 opens its menu, the effects change the picture, the game stays smooth, a preset saved and loaded | ✅ | | |
 | The smaller writing in the launcher's pages | ✅ | | |
 | ReShade with DirectX 11, the final 2.7 package unpacked into an empty folder | | | ⬜ |
 
@@ -321,7 +348,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.8-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.9-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
@@ -442,6 +469,8 @@ While you play:
 | Alt | Frees the mouse pointer |
 | F11, or Alt+Enter | Full screen on and off |
 | F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it |
+| F1 | ReShade's menu, when RESHADE is on in MODS |
+| F2 | ReShade's effects off and on again |
 | F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
 | F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
 | F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |

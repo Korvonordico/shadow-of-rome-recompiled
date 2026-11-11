@@ -17,7 +17,7 @@
 // No standard key is a mouse button.
 // Missing, unknown or refused entries keep the standard mapping (kAzioni), so with no variables the game is as the
 // launcher's RESET.
-// Refused keys (the launcher refuses them too): F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel,
+// Refused keys (the launcher refuses them too): F1 F2 ReShade, F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel,
 // 1-9 free camera points, Alt (Alt+Enter is full screen), the Windows keys.
 //
 // How it adds up with the other CONTROLS options:
@@ -187,9 +187,9 @@ namespace
         for (const Nome &t : kTasti)
             if (n == t.nome)
             {
-                if (t.codice == KEY_F3 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F11 || t.codice == KEY_F12)
+                if (t.codice == KEY_F1 || t.codice == KEY_F2 || t.codice == KEY_F3 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F11 || t.codice == KEY_F12)
                 {
-                    *perche = "kept for F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel";
+                    *perche = "kept for F1 F2 ReShade, F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel";
                     return -1;
                 }
                 if (t.codice == KEY_LEFT_ALT || t.codice == KEY_RIGHT_ALT)

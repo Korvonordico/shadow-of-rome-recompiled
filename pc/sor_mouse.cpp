@@ -94,6 +94,7 @@ bool sorTelecomandoAcceso();          // pc/sor_prove.cpp: the test remote contr
 bool sorTastoDiUnAzione(int codice);  // pc/sor_tasti.cpp: true if an action of the keyboard mapping uses that key
 bool sorPannelloAperto();             // pc/sor_profilo.cpp: the engine panel (F12) is open
 void sorGsRiprendi();                 // pc/sor_profilo.cpp: the video card's window shown again, fitted to the game window
+void sorFocusPerso();                  // pc/sor_profilo.cpp: the window in front written in the log
 unsigned sorTastiMouseUsati();        // pc/sor_tasti.cpp: bit i = mouse input i (MOUSE_LEFT ... WHEEL_DOWN) does an action
 
 namespace
@@ -598,6 +599,8 @@ void sorTurnoFinestra()
     // The focus is back (Alt+Tab, or restored from the taskbar): the video card's picture shown again.
     if (focused && !minimized && (!g_focusWas || g_minimizedWas))
         sorGsRiprendi();
+    if (!focused && g_focusWas)
+        sorFocusPerso();
     g_focusWas = focused;
     g_minimizedWas = minimized;
     turnoMouse(focused && !minimized);

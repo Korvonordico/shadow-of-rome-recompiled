@@ -1,0 +1,276 @@
+diff --git a/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h b/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h
+index 49f8a26..dc1b423 100644
+--- a/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h
++++ b/ps2xRuntime/include/runtime/gs/gs_pcsx2_mirror.h
+@@ -1,4 +1,6 @@
+ #pragma once
++#include <vector>
++#include <cstdint>
+ #include <cstdint>
+ 
+ struct GSRegisters;
+@@ -10,6 +12,7 @@ bool sorGpuMirrorOn();
+ bool sorGpuDrawsWindow();
+ // Pictures PCSX2's GS has shown so far (its own thread); false with an older sor-gs.dll.
+ bool sorGpuFramesShown(uint64_t &shown);
++bool sorGpuGrab(std::vector<uint8_t> &rgba, uint32_t &width, uint32_t &height); // black box pictures
+ void sorGpuMirrorGif(const uint8_t *data, uint32_t sizeBytes);
+ void sorGpuMirrorReg(uint8_t reg, uint64_t value);
+ void sorGpuMirrorImage(uint64_t bitbltbuf, uint64_t trxpos, uint64_t trxreg, uint64_t trxdir, const uint8_t *data,
+diff --git a/ps2xRuntime/include/runtime/sor_times.h b/ps2xRuntime/include/runtime/sor_times.h
+index 3a2821a..f19d93d 100644
+--- a/ps2xRuntime/include/runtime/sor_times.h
++++ b/ps2xRuntime/include/runtime/sor_times.h
+@@ -1,4 +1,4 @@
+-// Where the game's time goes (the author, 10/11/2026: "make it as optimized as possible without losing quality").
++// Where the game's time goes (the author, 10/11/2026: "make it as optimized as possible without losing quality").
+ // A Scope placed at the top of a function adds the time spent inside it to one part: VU1 (the microprograms that turn
+ // models into triangles, interpreted while playing), VIF1 (unpacking the data around them), GIF (the GS packets,
+ // handed to sor-gs.dll), IOP (sound, disc and pad processor). Time is EXCLUSIVE: a part called from inside another
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index 09448fb..db84a12 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -23,7 +23,7 @@ extern "C"
+ 
+ void sorFilmFourThree(); // sor (pc/main_sor.cpp): a film is on, so it stays 4:3 on a wide screen
+ // sor (pc/sor_film_hd.cpp): HD replacement films from the mods folder follow the game's own pictures.
+-void sorFilmHdPicture(uint32_t index, long long pts90k);
++void sorFilmHdPicture(uint32_t index, long long pts90k, uint32_t filmId);
+ void sorFilmHdStop();
+ 
+ #include <atomic>
+@@ -2722,7 +2722,8 @@ namespace ps2_stubs
+ 
+         // sor: the HD replacement film (if the mods folder has one) shows this same moment over the film's band.
+         if (haveFrame)
+-            ::sorFilmHdPicture(frameCount, static_cast<long long>(frame.pts90k));
++            ::sorFilmHdPicture(frameCount, static_cast<long long>(frame.pts90k),
++                               rdram ? static_cast<uint32_t>(rdram[0x4BE2DAu]) : 0xFFFFFFFFu); // the game's film number
+         else if (movieOver)
+             ::sorFilmHdStop();
+ 
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index 784ce2f..72a9e39 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -1090,7 +1090,7 @@ void GSBande::Reset()
+ 
+ void sorGsTuttiAdc(const GSPrimitiveBatch &batch) { tuttiPrimSeC(batch); } // sor: vertices the game sends with ADC set
+ 
+-// sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
++// sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
+ // keyboard. It is written by this renderer only, so it works with GRAPHICS > PROCESSOR (SOR_GRAPHICS=cpu).
+ void sorGsTuttiTasto()
+ {
+diff --git a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+index e05943e..1c2101f 100644
+--- a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+@@ -48,6 +48,8 @@ namespace
+     CloseFn s_close = nullptr;
+     using ShownFn = unsigned long long (*)();
+     ShownFn s_shownFn = nullptr;
++    using GrabFn = unsigned long long (*)(unsigned long long, void *, unsigned int, unsigned int *, unsigned int *);
++    GrabFn s_grabFn = nullptr; // sorgs_grab: small pictures for the black box
+     void (*s_wideFn)(int) = nullptr; // sor-gs.dll's sorgs_wide: 1 wide, 0 4:3 (widescreen only)
+     // sor-gs.dll's sorgs_wireframe (DEBUG page, WIREFRAME): -1 not asked for, 0 this renderer cannot, 1 done.
+     // Read without the lock by F7 (sorGpuWireframeKey).
+@@ -63,6 +65,91 @@ namespace
+     unsigned long long s_frames = 0;
+     std::vector<uint8_t> s_buf;
+ 
++#if defined(_WIN32)
++    // MODS > RESHADE (11/11/2026). Up to 2.8 the launcher copied ReShade64.dll as dxgi.dll next to sor.exe and took
++    // the copy away at the next Play with RESHADE off; for a player the copy stayed (no message), so ReShade came back
++    // every time. Now nothing is copied: sor.exe loads ReShade64.dll itself, before sor-gs.dll brings in dxgi.dll, only
++    // when RESHADE is on (SOR_RESHADE from the launcher, or launcher.ini when the game is started some other way), and
++    // only with DirectX 11 or 12 (with Vulkan it is not loaded at all). A dxgi.dll that is a copy of ReShade64.dll, left
++    // by 2.7 or 2.8, is removed here; a dxgi.dll that is something else (the player's own) is left alone.
++    bool sameFileBytes(const std::string &a, const std::string &b)
++    {
++        FILE *fa = std::fopen(a.c_str(), "rb");
++        if (!fa)
++            return false;
++        FILE *fb = std::fopen(b.c_str(), "rb");
++        if (!fb)
++        {
++            std::fclose(fa);
++            return false;
++        }
++        bool same = true;
++        std::vector<char> ba(1 << 16), bb(1 << 16);
++        for (;;)
++        {
++            const size_t na = std::fread(ba.data(), 1, ba.size(), fa), nb = std::fread(bb.data(), 1, bb.size(), fb);
++            if (na != nb || std::memcmp(ba.data(), bb.data(), na) != 0)
++            {
++                same = false;
++                break;
++            }
++            if (na == 0)
++                break;
++        }
++        std::fclose(fa);
++        std::fclose(fb);
++        return same;
++    }
++
++    bool reshadeWanted(const std::string &dir)
++    {
++        if (const char *e = std::getenv("SOR_RESHADE"))
++            return e[0] == '1';
++        FILE *f = std::fopen((dir + "launcher.ini").c_str(), "rb");
++        if (!f)
++            return false;
++        bool on = false;
++        char line[512];
++        while (std::fgets(line, sizeof(line), f))
++            if (std::strncmp(line, "reshade=", 8) == 0)
++                on = line[8] == '1';
++        std::fclose(f);
++        return on;
++    }
++
++    void sorReshadeBeforeGs(const std::string &dir, int renderer)
++    {
++        const std::string dx = dir + "dxgi.dll", rs = dir + "ReShade64.dll";
++        if (sameFileBytes(dx, rs))
++        {
++            if (DeleteFileA(dx.c_str()))
++                std::fprintf(stderr, "[sor] reshade: the old copy dxgi.dll removed (now sor.exe loads ReShade64.dll itself)\n");
++            else
++            {
++                const std::string old = dx + ".old";
++                if (MoveFileExA(dx.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING))
++                    std::fprintf(stderr, "[sor] reshade: the old copy dxgi.dll renamed dxgi.dll.old (could not delete it: %lu)\n", GetLastError());
++                else
++                    std::fprintf(stderr, "[sor] reshade: COULD NOT remove the old copy dxgi.dll (%lu): ReShade stays on until it is deleted by hand\n", GetLastError());
++            }
++        }
++        if (!reshadeWanted(dir))
++        {
++            std::fprintf(stderr, "[sor] reshade: off\n");
++            return;
++        }
++        if (renderer != 1 && renderer != 2)
++        {
++            std::fprintf(stderr, "[sor] reshade: on in the launcher, but not loaded: it works with DirectX 11 and 12 only\n");
++            return;
++        }
++        if (HMODULE h = LoadLibraryA(rs.c_str()))
++            std::fprintf(stderr, "[sor] reshade: ReShade64.dll loaded (F1 opens its menu, F2 turns its effects on and off)\n");
++        else
++            std::fprintf(stderr, "[sor] reshade: ReShade64.dll could not be loaded (%lu)\n", GetLastError());
++    }
++#endif
++
+     bool enabledUnlocked()
+     {
+         if (s_state != 0)
+@@ -106,6 +193,7 @@ namespace
+         }
+         if (!on)
+             return false;
++        sorReshadeBeforeGs(dir, s_renderer);
+         HMODULE dll = LoadLibraryA((dir + "sor-gs.dll").c_str());
+         if (!dll)
+         {
+@@ -119,6 +207,7 @@ namespace
+         s_snap = reinterpret_cast<SnapFn>(GetProcAddress(dll, "sorgs_snapshot"));
+         s_close = reinterpret_cast<CloseFn>(GetProcAddress(dll, "sorgs_close"));
+         s_shownFn = reinterpret_cast<ShownFn>(GetProcAddress(dll, "sorgs_frames_shown"));
++        s_grabFn = reinterpret_cast<GrabFn>(GetProcAddress(dll, "sorgs_grab"));
+         s_wideFn = reinterpret_cast<void (*)(int)>(GetProcAddress(dll, "sorgs_wide"));
+         s_wireFn.store(reinterpret_cast<int (*)(int)>(GetProcAddress(dll, "sorgs_wireframe")));
+         s_sorPaceFn.store(reinterpret_cast<long long (*)(unsigned int)>(GetProcAddress(dll, "sorgs_pace")));
+@@ -190,6 +279,24 @@ bool sorGpuDrawsWindow()
+     return s_drawsWindow.load(std::memory_order_acquire);
+ }
+ 
++// A small picture of what the video card shows (about 320 wide, RGBA), for the black box: true when there is a new one
++// since the last call. The first call turns the copies on in sor-gs.dll (5 a second); without the black box, never.
++bool sorGpuGrab(std::vector<uint8_t> &rgba, uint32_t &width, uint32_t &height)
++{
++    static unsigned long long s_seen = 0;
++    if (!s_drawsWindow.load(std::memory_order_acquire) || !s_grabFn)
++        return false;
++    rgba.resize(320u * 320u * 4u);
++    unsigned int w = 0, h = 0;
++    const unsigned long long n = s_grabFn(s_seen, rgba.data(), static_cast<unsigned int>(rgba.size()), &w, &h);
++    if (n == 0 || n == s_seen || w == 0 || h == 0)
++        return false;
++    s_seen = n;
++    width = w;
++    height = h;
++    return true;
++}
++
+ bool sorGpuFramesShown(uint64_t &shown)
+ {
+     if (!s_drawsWindow.load(std::memory_order_acquire) || !s_shownFn)
+@@ -305,7 +412,7 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+         else if (other) { ++s_secOther; if (s_frames - s_lastGame >= 15) s_uses = 0; }
+         const unsigned fm = g_sorFilmFourThree.load(std::memory_order_relaxed);
+         if (fm != s_seenFilm) { s_seenFilm = fm; s_lastFilm = s_frames; s_film = true; ++s_sec43; }
+-        // the author, 9/11: only the films stay 4:3; menus and scenes stretched (SOR_WIDE_AUTO=1: the old rule)
++        // the author, 9/11: only the films stay 4:3; menus and scenes stretched (SOR_WIDE_AUTO=1: the old rule)
+         const int wide = !sorWidescreenOn() ? 0 : s_auto43 ? (s_uses >= 8 && s_frames - s_last43 >= 15 && (!s_film || s_frames - s_lastFilm >= 15) ? 1 : 0)
+                                                  : (!s_film || s_frames - s_lastFilm >= 15 ? 1 : 0);
+         static const bool s_tempi = std::getenv("SOR_TEMPI") != nullptr;
+diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
+index 45555b8..649ecc4 100644
+--- a/ps2xRuntime/src/lib/ps2_runtime.cpp
++++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
+@@ -439,6 +439,7 @@ uint64_t sorAudioConsegnati() { return g_sorAudioDati; }
+ uint64_t sorAudioVuoti() { return g_sorAudioVuoti; }
+ std::atomic<bool> g_sorFotoSubito{false};   // sor: comando "foto" del telecomando delle prove
+ void sorBlackboxFrame(const uint8_t *rgba, uint32_t width, uint32_t height); // sor: pc/sor_blackbox.cpp
++bool sorBlackboxOn(); // sor: pc/sor_blackbox.cpp
+ void sorBlackboxClosing();
+ void sorGpuMirrorClose(); // gs_pcsx2_mirror.cpp
+ void sorFilmHdShutdown(); // pc/sor_film_hd.cpp
+@@ -466,10 +467,16 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
+         {
+             if (shown > s_gpuSeen + 60u) // at most a second at once (start, long stops)
+                 s_gpuSeen = shown - 60u;
++            static std::vector<uint8_t> s_grab; // sor: a small picture from sor-gs.dll now and then, for the black box
++            uint32_t gw = 0u, gh = 0u;
++            const bool picture = s_gpuSeen < shown && sorBlackboxOn() && sorGpuGrab(s_grab, gw, gh);
+             for (; s_gpuSeen < shown; ++s_gpuSeen)
+             {
+                 g_sorContaPresent.fetch_add(1, std::memory_order_relaxed);
+-                sorBlackboxFrame(nullptr, 0u, 0u);
++                if (picture && s_gpuSeen + 1 == shown)
++                    sorBlackboxFrame(s_grab.data(), gw, gh);
++                else
++                    sorBlackboxFrame(nullptr, 0u, 0u);
+             }
+             outWidth = 0u;
+             outHeight = 0u;
+diff --git a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+index 5870fd1..1ea7a2d 100644
+--- a/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
++++ b/ps2xRuntime/src/lib/ps2_vif1_interpreter.cpp
+@@ -291,7 +291,7 @@ void PS2Memory::processVIF0Data(const uint8_t *data, uint32_t sizeBytes)
+     }
+ }
+ 
+-// sor: fast UNPACK (10/11/2026, the author: "as optimized as possible without losing quality").
++// sor: fast UNPACK (10/11/2026, the author: "as optimized as possible without losing quality").
+ // The generic loop (now sor_unpack::generic, unchanged) decided format, mask, mode and address again for every
+ // single vector, with two divisions each time: in the busiest places the VIF1 part took a quarter of the VIF
+ // thread. Here those decisions are taken once per UNPACK and every format has its own loop (fastLoop).
+diff --git a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+index 596cfe0..a18ee25 100644
+--- a/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
++++ b/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp
+@@ -1661,7 +1661,7 @@ void VU1Interpreter::resume(uint8_t *vuCode, uint32_t codeSize,
+     run(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
+ }
+ 
+-// sor: F6 in the game window (the author, 9/11: the water in chapter 4 is wrong with the video card and with the processor;
++// sor: F6 in the game window (the author, 9/11: the water in chapter 4 is wrong with the video card and with the processor;
+ // SOR_VU1LENTO from the start is too slow to get there). While it is on, every VU1 program runs as with SOR_VU1VERIFICA:
+ // the exact interpreter draws (its result is kept) and the fast translation is compared with it, each difference written
+ // in the log ("VU1 DIFFERENZA ingresso ..."). Slow while on; F6 again goes back to the fast way.

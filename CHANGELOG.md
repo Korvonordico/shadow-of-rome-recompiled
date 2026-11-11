@@ -2,6 +2,21 @@
 
 Version numbers count the big steps of the port.
 
+## 2.9 (11 November 2026)
+
+Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666) (thanks!).
+
+- **Fixed: ReShade stayed on after turning it off in the launcher.** Up to 2.8 the launcher copied `ReShade64.dll` as `dxgi.dll` next to `sor.exe` and removed the copy when RESHADE was off; for a tester the copy stayed and ReShade came back every time. Now nothing is copied: the game loads ReShade itself only when RESHADE is on (DirectX 11 and 12; never with Vulkan), and an old `dxgi.dll` left by 2.7 or 2.8 is removed. Tested in an empty folder with the 2.9 package: on changes the picture, off leaves it as the game draws it, and no `dxgi.dll` is made.
+- **ReShade keys: F1 opens its menu** (it was Home, missing on small keyboards) **and F2 turns its effects off and on** while you play, to see the difference at once. The author's preset no longer has the Levels effect, which made the picture too dark on some screens.
+- **First start: ReShade and the OSD are off.**
+- **The black box (F9) saves real pictures with the video card too** (DirectX 12, DirectX 11 and Vulkan; in 2.8 they were empty).
+- **The log no longer shows false sound "errors".**
+- **More in the log for G-SYNC screens:** when the variable refresh is lost, and which program came in front of the game.
+- **MODS > SAVE TEXTURES** (experimental, for mod makers): every texture the game uses is saved as a PNG in `textures\SLES-52950\dumps`, named as PCSX2 names them, so it can be redrawn and put in a pack. It slows the game down: leave it off to play. Texture packs were checked on the menus: replaced pictures of any size, and transparency (the PS2's scale: 128 is solid, 64 half, 0 none).
+- **A texture pack can also replace the films** with MP4 files (`movies\movie-<number>.mp4`; the log says each film's number).
+- **600 effects** in the list of the video card's effects made at the start (from 564).
+- README: ReShade does not work with Vulkan.
+
 ## 2.8 (10 November 2026)
 
 - **The Russian translation of the European disc is accepted.** Compared byte by byte, its `SLES_529.50` differs from the European one in 917 bytes, all in `Sector0_list` (where each file sits in `IMAGE0.IMG`, rebuilt with the Russian texts); the code is the same, and `IMAGE1.IMG` and `IMAGE2.IMG` too. The game reads those lists from the ELF at run time, so `sor.exe` works with them. The launcher now accepts an ELF whose SHA-1, with `Sector0_list` to `Sector2_list` (0x45B1A0-0x45C7B0) zeroed, matches the European one. Checked: the Russian and the European disc read, another game refused; the Russian disc played by hand for a while. Asked for in #5.

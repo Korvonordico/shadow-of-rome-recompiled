@@ -299,6 +299,88 @@ namespace
 
 	u64 s_gs_frames = 0;
 	std::atomic<u64> s_shown{0}; // pictures shown, read by the game (black box, tests)
+
+	// Small pictures for the game's black box (sorgs_grab, 11/11/2026: with the video card F9 saved no pictures,
+	// because the picture never reaches the game). Only after the game has asked once (no cost otherwise), 5 a second:
+	// the shown picture is scaled down on the video card and copied to a download texture without waiting; the
+	// copy is read at the next grab, when the video card has long finished it, so the game's pace is not touched.
+	std::atomic<bool> s_grab_on{false};
+	std::mutex s_grab_lock;
+	std::vector<u8> s_grab_px;   // RGBA, s_grab_w x s_grab_h
+	u32 s_grab_w = 0, s_grab_h = 0;
+	u64 s_grab_seq = 0;           // goes up with every new picture
+	GSTexture* s_grab_rt = nullptr;
+	std::unique_ptr<GSDownloadTexture> s_grab_dl;
+	u32 s_grab_rt_w = 0, s_grab_rt_h = 0;
+	bool s_grab_pending = false;
+	u32 s_grab_tick = 0;
+	bool s_grab_failed = false;
+
+	void SorGrabRelease() // once, before GSclose: given back to PCSX2's pool, as its own screenshots do
+	{
+		s_grab_dl.reset();
+		if (s_grab_rt && g_gs_device)
+			g_gs_device->Recycle(s_grab_rt);
+		s_grab_rt = nullptr;
+		s_grab_rt_w = s_grab_rt_h = 0;
+		s_grab_pending = false;
+	}
+
+	void SorGrab() // on the GS thread, right after GSvsync
+	{
+		if (!s_grab_on.load(std::memory_order_relaxed) || !g_gs_device)
+			return;
+		if (++s_grab_tick % 12 != 0) // 60 pictures a second: 5 grabs
+			return;
+		if (s_grab_pending && s_grab_dl)
+		{   // the copy asked 12 pictures ago
+			const GSVector4i rc(0, 0, static_cast<int>(s_grab_rt_w), static_cast<int>(s_grab_rt_h));
+			s_grab_dl->Flush();
+			if (s_grab_dl->Map(rc))
+			{
+				const u8* src = s_grab_dl->GetMapPointer();
+				const u32 pitch = s_grab_dl->GetMapPitch();
+				std::lock_guard<std::mutex> lk(s_grab_lock);
+				s_grab_px.resize(static_cast<size_t>(s_grab_rt_w) * s_grab_rt_h * 4);
+				for (u32 y = 0; y < s_grab_rt_h; ++y)
+					std::memcpy(s_grab_px.data() + static_cast<size_t>(y) * s_grab_rt_w * 4, src + static_cast<size_t>(y) * pitch, s_grab_rt_w * 4);
+				for (size_t i = 3; i < s_grab_px.size(); i += 4)
+					s_grab_px[i] = 255;
+				s_grab_w = s_grab_rt_w;
+				s_grab_h = s_grab_rt_h;
+				++s_grab_seq;
+				s_grab_dl->Unmap();
+			}
+			s_grab_pending = false;
+		}
+		GSTexture* const cur = g_gs_device->GetCurrent();
+		if (!cur || cur->GetWidth() <= 0 || cur->GetHeight() <= 0)
+			return;
+		// One fixed size, made once and kept until the end: never freed while the game runs (with DirectX 11 a size
+		// that followed the picture's shape froze the picture at a scene change, 11/11). The black box scales every
+		// picture to its own small cells anyway.
+		const u32 w = 320, h = 240;
+		if (!s_grab_rt)
+		{
+			if (s_grab_failed)
+				return;
+			s_grab_rt = g_gs_device->CreateRenderTarget(static_cast<int>(w), static_cast<int>(h), GSTexture::Format::Color, false, false);
+			s_grab_dl = s_grab_rt ? g_gs_device->CreateDownloadTexture(w, h, GSTexture::Format::Color) : nullptr;
+			if (!s_grab_rt || !s_grab_dl)
+			{
+				SorGrabRelease();
+				s_grab_failed = true;
+				std::fprintf(stderr, "[sor-gs] black box pictures: not available with this video card\n");
+				return;
+			}
+			s_grab_rt_w = w;
+			s_grab_rt_h = h;
+		}
+		const GSVector4i rc(0, 0, static_cast<int>(w), static_cast<int>(h));
+		g_gs_device->StretchRect(cur, GSVector4(0.0f, 0.0f, 1.0f, 1.0f), s_grab_rt, GSVector4(rc), ShaderConvert::COPY, Biln);
+		s_grab_dl->CopyFromTexture(rc, s_grab_rt, rc, 0);
+		s_grab_pending = true;
+	}
 	// Timing, for the reports: the game waiting for the GS thread, and the GS thread's own pace.
 	std::atomic<u64> s_wait_count{0}, s_wait_us{0};
 	std::chrono::steady_clock::time_point s_gs_last_vsync{};
@@ -442,6 +524,36 @@ namespace
 	// median time between refreshes over the last 64 more than 1.6 times the screen's set period (off again under
 	// 1.25 times), 64 times in a row. Then each picture is shown as soon as it is ready, the game keeps its own clock.
 	std::atomic<bool> s_vrr{false};
+
+	// Variable refresh lost while playing (11/11/2026, a tester's 165 Hz G-SYNC screen: after about a minute the screen
+	// went back to a fixed 165 Hz, so each of the 60 pictures a second stayed 3 or 2 refreshes, 18 or 12 ms: small
+	// jerks at a steady 60; it came back right after "focus back", which hides and shows this window again). Logged
+	// with what is in front, to learn the cause from the next logs; and when the game's window is the one in front,
+	// this window is hidden and shown again once (at most every 15 seconds), as "focus back" does.
+	void SorVrrLost()
+	{
+		HWND fg = GetForegroundWindow();
+		wchar_t title[96] = {};
+		DWORD pid = 0;
+		if (fg)
+			GetWindowThreadProcessId(fg, &pid);
+		const bool ours = fg && pid == GetCurrentProcessId();
+		if (fg && !ours) // never for the game's own windows: that sends a message to a thread that may be busy (it hung at exit)
+			GetWindowTextW(fg, title, 95);
+		char t8[256] = {};
+		WideCharToMultiByte(CP_UTF8, 0, title, -1, t8, sizeof(t8) - 1, nullptr, nullptr);
+		static std::chrono::steady_clock::time_point s_last{};
+		const auto now = std::chrono::steady_clock::now();
+		const bool retry = ours && s_hwnd && (s_last.time_since_epoch().count() == 0 || now - s_last > std::chrono::seconds(15));
+		std::fprintf(stderr, "[sor-gs] vsync: variable refresh lost; in front: %s \"%s\"%s\n", ours ? "the game" : "another program",
+			t8, retry ? "; the picture's window shown again to get it back" : "");
+		if (retry)
+		{
+			s_last = now;
+			ShowWindowAsync(s_hwnd, SW_HIDE);
+			ShowWindowAsync(s_hwnd, SW_SHOWNA);
+		}
+	}
 	std::atomic<s64> s_cfg_period_ns{0}; // the screen's set refresh period (EnumDisplaySettings), 0 = not known
 	std::atomic<s64> s_clk_median_ns{0};
 	u64 s_vb_ref_count = 0; // the latest refresh and when it really was (from the line); under s_vb_lock
@@ -598,8 +710,11 @@ namespace
 								"about every %.1f ms (set to %.1f Hz); each picture is shown as soon as it is ready, the game keeps its own clock\n",
 								static_cast<double>(med) / 1e6, 1e9 / static_cast<double>(cfg));
 						else
+						{
 							std::fprintf(stderr, "[sor-gs] vsync: fixed refresh again (about every %.1f ms, set to %.1f Hz): pictures in step with the screen\n",
 								static_cast<double>(med) / 1e6, 1e9 / static_cast<double>(cfg));
+							SorVrrLost();
+						}
 						std::fflush(stderr);
 					}
 				}
@@ -947,6 +1062,7 @@ namespace
 					PerformanceMetrics::Update(false, true, false);
 				}
 				GSvsync(f->field, true);
+				SorGrab(); // black box pictures, when the game asked for them
 				const auto done = std::chrono::steady_clock::now();
 				SorNotePicture(f->pushed_ns, pop_ns, busy0, w0, w1, done);
 				if (s_vsync_on || s_pacing_on)
@@ -967,6 +1083,7 @@ namespace
 			if (s_spare.size() < 4)
 				s_spare.push_back(std::move(f->data));
 		}
+		SorGrabRelease();
 		GSclose();
 	}
 
@@ -1348,6 +1465,22 @@ SORGS_API long long sorgs_pace(unsigned int game_us)
 	const s64 own = static_cast<s64>(game_us) * 1000;
 	const s64 ns = step * period + s_nudge_ns.exchange(0, std::memory_order_relaxed);
 	return std::clamp<s64>(ns, own - own / 50, own + own / 50);
+}
+
+// A small copy of the picture shown (RGBA, about 320 wide), for the black box: copied to `out` (room for `room`
+// bytes) when there is one newer than `seen`; returns its number (0: none yet). The first call turns the copies on.
+SORGS_API unsigned long long sorgs_grab(unsigned long long seen, void* out, unsigned int room, unsigned int* width, unsigned int* height)
+{
+	s_grab_on.store(true, std::memory_order_relaxed);
+	std::lock_guard<std::mutex> lk(s_grab_lock);
+	if (s_grab_seq == 0 || s_grab_seq == seen || !out || s_grab_px.size() > room)
+		return s_grab_seq == seen ? seen : 0;
+	std::memcpy(out, s_grab_px.data(), s_grab_px.size());
+	if (width)
+		*width = s_grab_w;
+	if (height)
+		*height = s_grab_h;
+	return s_grab_seq;
 }
 
 SORGS_API void sorgs_snapshot(const char* path)

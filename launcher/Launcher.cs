@@ -29,7 +29,7 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.8";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.9";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -38,8 +38,8 @@ class Launcher : Form
     int page = 0;                      // 0: the main menu, 1: graphics, 2: options, 3: mods, 4: controls, 5: debug (hidden, Ctrl+D)
     static readonly string[] OItems = { "DISPLAY", "BGM VOLUME", "SE VOLUME", "MENU SOUNDS", "SMOOTH AUDIO", "BACKGROUND", "UPDATES", "DEBUG", "SPEED TESTS", "APPLY", "BACK" };
     static readonly string[] OLatin = { "SPECTACVLVM", "CANTVS", "SONITVS", "STREPITVS", "LENITAS", "CINIS", "NOVA", "INSPECTIO", "PROBATIO", "CONFIRMA", "REDI" };
-    static readonly string[] MItems = { "TEXTURE MODS", "RESHADE", "MODS FOLDER", "APPLY", "BACK" };
-    static readonly string[] MLatin = { "MVTATIONES", "COLORES", "APERI", "CONFIRMA", "REDI" };
+    static readonly string[] MItems = { "TEXTURE MODS", "RESHADE", "SAVE TEXTURES", "MODS FOLDER", "APPLY", "BACK" };
+    static readonly string[] MLatin = { "MVTATIONES", "COLORES", "IMAGINES", "APERI", "CONFIRMA", "REDI" };
     // page 7, SPEED TESTS (OPTIONS > SPEED TESTS, 10/11/2026): the VU1 engine (SOR_VU1) and the time measure (SOR_TEMPI)
     static readonly string[] TItems = { "VU1 ENGINE", "TIMINGS", "UPSCALE FIX", "APPLY", "BACK" };
     static readonly string[] TLatin = { "VECTORES", "TEMPORA", "ACIES", "CONFIRMA", "REDI" };
@@ -150,6 +150,7 @@ class Launcher : Form
     // Why the game cannot take a key, "" if it can. Every message says what to do (the author, 9/11).
     static string Refused(string n)
     {
+        if (n == "F1" || n == "F2") return n + " IS FOR RESHADE  ·  PRESS ANOTHER KEY";
         if (n == "F3" || n == "F6") return n + " IS A TEST TOOL  ·  PRESS ANOTHER KEY";
         if (n == "F7") return "F7 IS THE WIREFRAME VIEW  ·  PRESS ANOTHER KEY";
         if (n == "F8") return "F8 IS THE FREE CAMERA  ·  PRESS ANOTHER KEY";
@@ -744,7 +745,7 @@ class Launcher : Form
         if (!Ready[i]) { message = Items[i] + " - COMING SOON"; Invalidate(); return; }
         if (Items[i] == "GRAPHICS") { OpenGraphics(); return; }
         if (Items[i] == "CONTROLS") { page = 4; swap = SavedSwap; invY = SavedInvY; invX = SavedInvX; mouseLook = SavedMouseLook; mouseSpeed = SavedMouseSpeed; mouseInvY = SavedMouseInvY; toggleBtn = SavedToggle; CountChanged(); sel = 0; hover = -1; message = ControlsNote; Invalidate(); return; }
-        if (Items[i] == "OPTIONS" || Items[i] == "MODS") { page = Items[i] == "OPTIONS" ? 2 : 3; full = SavedFull; bgmVol = ReadGameVol("bgm"); seVol = ReadGameVol("se"); menuSnd = liveSnd; ashOn = liveAsh; smooth = SavedSmooth; mods = SavedMods; reshade = SavedReshade; sel = 0; hover = -1; message = ""; Invalidate(); return; }
+        if (Items[i] == "OPTIONS" || Items[i] == "MODS") { page = Items[i] == "OPTIONS" ? 2 : 3; full = SavedFull; bgmVol = ReadGameVol("bgm"); seVol = ReadGameVol("se"); menuSnd = liveSnd; ashOn = liveAsh; smooth = SavedSmooth; mods = SavedMods; reshade = SavedReshade; texDump = SavedTexDump; sel = 0; hover = -1; message = ""; Invalidate(); return; }
         Play();
     }
 
@@ -757,22 +758,108 @@ class Launcher : Form
     int SavedWide { get { string s = ReadIni("screen"); int w = s == "16:9" ? 1 : s == "21:9" ? 2 : s == "32:9" ? 2 : s == "4:3" ? 0 : 1; return w >= 2 && !SavedGpu ? 1 : w; } }   // package default 16:9 (the author, 9/11)
     bool SavedFull { get { return ReadIni("display") == "full"; } }   // package default: a window (the author, 10/11: his settings as the defaults)
     bool SavedMods { get { return ReadIni("mods") != "0"; } }   // on, unless turned off
-    // MODS > RESHADE (10/11/2026): ReShade (reshade.me, BSD-3-Clause) ships in the package as ReShade64.dll, off. On, Play
-    // copies it as dxgi.dll next to sor.exe, so it hooks the video card's picture (DirectX 11 and 12; not Vulkan); off, Play
-    // removes that dxgi.dll if it is our copy. Its settings: ReShade.ini; the player's preset: ReShadePreset.ini (shareable).
+    // MODS > RESHADE (10/11/2026; changed 11/11/2026). ReShade (reshade.me, BSD-3-Clause) ships in the package as
+    // ReShade64.dll. Up to 2.8, Play copied it as dxgi.dll next to sor.exe and removed the copy with RESHADE off; for a
+    // tester the copy stayed and ReShade came back every time. Now nothing is copied: Play passes SOR_RESHADE and sor.exe
+    // loads ReShade64.dll itself (DirectX 11 and 12 only). An old copy dxgi.dll is still removed here, and sor.exe
+    // removes it as well. Its settings: ReShade.ini; the player's preset: ShadowOfRome.ini (shareable).
     bool reshade;
+    // MODS > SAVE TEXTURES (11/11/2026): every texture the game uses is saved as a PNG in textures\SLES-52950\dumps (named
+    // by its hash, as in PCSX2), so a mod maker can redo it and put it in a pack folder under replacements. Off by default:
+    // saving slows the game down.
+    bool texDump;
+    bool SavedTexDump { get { return ReadIni("texdump") == "1"; } }
+    // The MODS FOLDER, sorted in packs (11/11/2026): replacements\<pack>\ for each kind of picture. Every folder under
+    // replacements is read (PCSX2 looks in all of them); one whose name starts with _ is off (sor-gs.dll skips it).
+    static readonly string[,] Packs = {
+        { "hud", "The bars, numbers and icons drawn over the game while you play." },
+        { "menus", "Menus, title screens, loading screens and the texts in them." },
+        { "fonts", "The letters and numbers: the small menu font and the big outlined one." },
+        { "characters", "Gladiators, soldiers, Romans: skin, faces, clothes, armour." },
+        { "weapons", "Swords, axes, spears, shields, bows and their arrows." },
+        { "world", "Arenas, streets, walls, floors, buildings, trees, sky." },
+        { "effects", "Blood, fire, sparks, smoke, dust, glows." },
+    };
+    // Sorting the saved textures (11/11/2026): the dumps are hundreds of PNGs named by a hash. textures\SLES-52950\
+    // texture-list.tsv (kind <tab> file name, made by looking at them) tells what each one is; MODS FOLDER copies every
+    // dump into dumps-sorted\<kind>\ (hud, menus, fonts, characters, weapons, world, effects, other), the ones not in
+    // the list into dumps-sorted\to-sort\. Copies, not moves: PCSX2 saves a texture again when its dump is missing.
+    // Returns how many were copied now.
+    int SortDumps()
+    {
+        string tex = Path.Combine(dir, @"textures\SLES-52950"), dumps = Path.Combine(tex, "dumps");
+        if (!Directory.Exists(dumps)) return 0;
+        var kinds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string list = Path.Combine(tex, "texture-list.tsv");
+        if (File.Exists(list))
+            foreach (string line in File.ReadAllLines(list))
+            {
+                if (line.StartsWith("#") || line.StartsWith("kind\t")) continue;
+                string[] p = line.Split('\t');
+                if (p.Length >= 2 && p[0] != "" && p[0].IndexOfAny(Path.GetInvalidFileNameChars()) < 0) kinds[p[1]] = p[0];
+            }
+        int n = 0;
+        foreach (string f in Directory.GetFiles(dumps, "*.png"))
+        {
+            string name = Path.GetFileName(f), kind;
+            if (!kinds.TryGetValue(name, out kind)) kind = "to-sort";
+            string to = Path.Combine(tex, "dumps-sorted", kind);
+            string dest = Path.Combine(to, name);
+            if (File.Exists(dest)) continue;
+            Directory.CreateDirectory(to);
+            File.Copy(f, dest);
+            n++;
+        }
+        // a texture sorted later (a newer list) leaves its old copy in to-sort: drop it
+        string toSort = Path.Combine(tex, @"dumps-sorted\to-sort");
+        if (Directory.Exists(toSort))
+            foreach (string f in Directory.GetFiles(toSort, "*.png"))
+                if (kinds.ContainsKey(Path.GetFileName(f))) File.Delete(f);
+        return n;
+    }
+    void MakePackFolders()
+    {
+        Directory.CreateDirectory(ModsDir);
+        File.WriteAllText(Path.Combine(ModsDir, "README.txt"),
+            "Shadow of Rome Recompiled - texture mods\r\n" +
+            "\r\n" +
+            "Put PNG pictures here, named as the game's textures (the names PCSX2 gives them, for example\r\n" +
+            "4f07e7f9b8a2d2c1-00003a54.png). Any size works: a bigger picture is used as it is.\r\n" +
+            "\r\n" +
+            "One folder per pack: hud, menus, fonts, characters, weapons, world, effects, or any folder you make.\r\n" +
+            "A folder whose name starts with _ is turned off (rename hud to _hud and its pictures are not used).\r\n" +
+            "If the same texture is in two packs, only one of them is used: keep each texture in one pack.\r\n" +
+            "\r\n" +
+            "To get the game's textures: launcher, MODS, SAVE TEXTURES ON, then play. Every texture seen on screen\r\n" +
+            "is saved in textures\\SLES-52950\\dumps. Open this MODS FOLDER from the launcher again and they are\r\n" +
+            "copied, sorted by kind, into textures\\SLES-52950\\dumps-sorted (hud, menus, fonts, characters, weapons,\r\n" +
+            "world, effects; to-sort for the ones not known yet). Copy the one you want into the pack of the same kind,\r\n" +
+            "draw over it (any size, PNG), keep its name.\r\n" +
+            "Turn SAVE TEXTURES off again to play: it slows the game down.\r\n" +
+            "\r\n" +
+            "movies holds HD films (movie-<number>.mp4: the opening film is movie-0), not textures. A pack can\r\n" +
+            "hold films too, in its own movies folder.\r\n");
+        for (int k = 0; k < Packs.GetLength(0); k++)
+        {
+            string on = Path.Combine(ModsDir, Packs[k, 0]), off = Path.Combine(ModsDir, "_" + Packs[k, 0]);
+            if (Directory.Exists(off)) continue;   // the player turned it off: leave it so
+            Directory.CreateDirectory(on);
+            string about = Path.Combine(on, "ABOUT.txt");
+            if (!File.Exists(about)) File.WriteAllText(about, Packs[k, 1] + Environment.NewLine);
+        }
+    }
     bool SavedReshade { get { return ReadIni("reshade") == "1"; } }
-    void UseReshade(bool on)
+    string RemoveOldReshadeCopy()
     {
         string rs = Path.Combine(dir, "ReShade64.dll"), dx = Path.Combine(dir, "dxgi.dll");
         try
         {
             bool ours = File.Exists(dx) && File.Exists(rs) && new FileInfo(dx).Length == new FileInfo(rs).Length
                         && File.ReadAllBytes(dx).SequenceEqual(File.ReadAllBytes(rs));
-            if (on && File.Exists(rs) && !ours) File.Copy(rs, dx, true);
-            else if (!on && ours) File.Delete(dx); // a dxgi.dll the player put there himself is left alone
+            if (ours) { File.SetAttributes(dx, FileAttributes.Normal); File.Delete(dx); } // a dxgi.dll the player put there himself is left alone
+            return "";
         }
-        catch (Exception) { }
+        catch (Exception) { return "COULD NOT REMOVE THE OLD RESHADE COPY DXGI.DLL  \u00B7  CLOSE THE GAME, OR DELETE IT BY HAND"; }
     }
     bool SavedSwap { get { return ReadIni("swap") == "1"; } }
     bool SavedMouseLook { get { return ReadIni("mouse_look") != "0"; } }
@@ -792,8 +879,9 @@ class Launcher : Form
     DateTime modsCountedAt = DateTime.MinValue;
     static bool IsFilmName(string name)
     {
-        if (!name.StartsWith("film-", StringComparison.OrdinalIgnoreCase) || !name.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) return false;
-        string n = name.Substring(5, name.Length - 9);
+        int skip = name.StartsWith("movie-", StringComparison.OrdinalIgnoreCase) ? 6 : name.StartsWith("film-", StringComparison.OrdinalIgnoreCase) ? 5 : 0;
+        if (skip == 0 || !name.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) return false;
+        string n = name.Substring(skip, name.Length - skip - 4);
         if (n.Length == 0) return false;
         foreach (char c in n) if (c < '0' || c > '9') return false;
         return true;
@@ -810,7 +898,7 @@ class Launcher : Form
                 if (Directory.Exists(ModsDir))
                     foreach (string f in Directory.GetFiles(ModsDir, "*", SearchOption.AllDirectories))
                     {
-                        if (!f.StartsWith(movies, StringComparison.OrdinalIgnoreCase)) modTextures++;
+                        if (!f.StartsWith(movies, StringComparison.OrdinalIgnoreCase) && f.IndexOf(@"\_", ModsDir.Length, StringComparison.Ordinal) < 0 && (f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))) modTextures++;   // pictures in packs that are on
                         else if (Path.GetDirectoryName(f) + "\\" == movies && IsFilmName(Path.GetFileName(f))) modFilms++;
                     }
             }
@@ -822,7 +910,7 @@ class Launcher : Form
         return modTextures > 0 ? "OPEN IT  ·  TEXTURES FOUND" : "OPEN IT  ·  EMPTY FOR NOW";
     }
         bool Saved60 { get { return ReadIni("framerate") != "50"; } }
-        bool SavedOsd { get { return ReadIni("osd") != "0"; } }   // package default: on
+        bool SavedOsd { get { return ReadIni("osd") == "1"; } }   // package default: off
         int SavedFov { get { int f; return int.TryParse(ReadIni("fov"), out f) && Array.IndexOf(Fovs, f) >= 0 ? f : 130; } } // FIELD OF VIEW: +30% at the first start (the author, 10/11); 100 as on the PS2
         bool SavedVignette { get { return ReadIni("vignette") == "1"; } } // the game's own grain/haze filters: off unless turned on (the author, 9/11)
         bool SavedVsync { get { return ReadIni("vsync") != "0"; } } // on, unless turned off
@@ -884,13 +972,13 @@ class Launcher : Form
     }
 
     // ---- options and mods: one value, then APPLY and BACK (mods: also the folder) ----
-    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || menuSnd != SavedMenuSnd || ashOn != SavedAsh || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade; } }
-    int ApplyRow { get { return page == 2 ? 9 : page == 7 ? 3 : page == 3 ? 3 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
-    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 5 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 1 : i == 0; }
+    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || menuSnd != SavedMenuSnd || ashOn != SavedAsh || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade || texDump != SavedTexDump; } }
+    int ApplyRow { get { return page == 2 ? 9 : page == 7 ? 3 : page == 3 ? 4 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
+    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 5 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 2 : i == 0; }
     void Toggle(int i)
     {
         if (page == 2) { if (i == 0) full = !full; else if (i == 1) bgmVol = (bgmVol + toggleDir + 11) % 11; else if (i == 2) seVol = (seVol + toggleDir + 11) % 11; else if (i == 3) menuSnd = !menuSnd; else if (i == 4) smooth = !smooth; else ashOn = !ashOn; }
-        else if (page == 3) { if (i == 0) mods = !mods; else reshade = !reshade; }
+        else if (page == 3) { if (i == 0) mods = !mods; else if (i == 1) reshade = !reshade; else texDump = !texDump; }
         else if (page == 7) { if (i == 0) vu1Eng = (vu1Eng + toggleDir + 3) % 3; else if (i == 1) timings = !timings; else upFix = (upFix + toggleDir + UpNames.Length) % UpNames.Length; }
         else if (page == 5) dbg[i] = !dbg[i];
         else if (i == 2) swap = !swap;      // CONTROLS: 2 BUTTONS, 3 VERTICAL, 4 HORIZONTAL
@@ -924,9 +1012,20 @@ class Launcher : Form
             if (SmallChanged) { message = "OPTIONS NOT SAVED YET  \u00B7  APPLY OR GO BACK FIRST"; Invalidate(); return; }
             OpenSpeed(); return;
         }
-        if (page == 3 && i == 2)
+        if (page == 3 && i == 3)
         {
-            try { Directory.CreateDirectory(ModsDir); Process.Start("explorer.exe", "\"" + ModsDir + "\""); message = "PUT PCSX2 TEXTURE PACKS FOR SLES-52950 HERE"; }
+            try
+            {
+                // the folders per kind and the sorting stay private until they are complete (the author, 11/11/2026):
+                // they run only where the private texture-list.tsv is, which the package does not ship
+                bool sorting = File.Exists(Path.Combine(dir, "textures", "SLES-52950", "texture-list.tsv"));
+                int sorted = 0;
+                if (sorting) { MakePackFolders(); sorted = SortDumps(); } else Directory.CreateDirectory(ModsDir);
+                Process.Start("explorer.exe", "\"" + ModsDir + "\"");
+                message = sorted > 0 ? sorted + " SAVED TEXTURES SORTED BY KIND  ·  IN dumps-sorted"
+                        : sorting ? "ONE FOLDER PER PACK  ·  A NAME STARTING WITH _ TURNS IT OFF"
+                        : "PUT PCSX2 TEXTURE PACKS FOR SLES-52950 HERE";
+            }
             catch (Exception) { message = "COULD NOT OPEN THE MODS FOLDER  ·  THE FOLDER MAY BE READ-ONLY: MOVE THE GAME TO DOCUMENTS"; }
             Invalidate(); return;
         }
@@ -936,7 +1035,7 @@ class Launcher : Form
             {
                 if (page == 2) { WriteIni("display", full ? "fullscreen" : "window"); WriteGameVols(bgmVol, seVol); WriteIni("menu_sounds", menuSnd ? "1" : "0"); WriteIni("background", ashOn ? "1" : "0"); WriteIni("smoothaudio", smooth ? "1" : "0"); liveSnd = menuSnd; liveAsh = ashOn; }
                 else if (page == 7) { WriteIni("vu1engine", vu1Eng == 1 ? "pcsx2" : vu1Eng == 2 ? "confronto" : "nostro"); WriteIni("timings", timings ? "1" : "0"); WriteIni("upscalefix", upFix.ToString()); }
-                else if (page == 3) { WriteIni("mods", mods ? "1" : "0"); WriteIni("reshade", reshade ? "1" : "0"); }
+                else if (page == 3) { WriteIni("mods", mods ? "1" : "0"); WriteIni("reshade", reshade ? "1" : "0"); WriteIni("texdump", texDump ? "1" : "0"); RemoveOldReshadeCopy(); }
                 else if (page == 5) { for (int k = 0; k < DKeys.Length; k++) WriteIni(DKeys[k], dbg[k] ? "1" : "0"); }
                 else { WriteIni("swap", swap ? "1" : "0"); WriteIni("invert_y", invY ? "1" : "0"); WriteIni("invert_x", invX ? "1" : "0"); WriteIni("mouse_look", mouseLook ? "1" : "0"); WriteIni("mouse_speed", mouseSpeed.ToString()); WriteIni("mouse_invert_y", mouseInvY ? "1" : "0"); WriteIni("toggle", toggleBtn == 0 ? "none" : MapNames[toggleBtn - 1]); }
             }
@@ -992,8 +1091,9 @@ class Launcher : Form
         if (i == 8 && page == 2) return "VU1 ENGINE AND TIME MEASURE";
         if (i == 6 && page == 2) return updateState == 1 ? "ASKING GITHUB..." : latestUrl != null ? "VERSION " + latestVersion + " IS OUT" : "ASK GITHUB FOR A NEWER VERSION";
         if (i == 0) return mods ? "TEXTURE PACKS IN THE FOLDER" : "ORIGINAL TEXTURES ONLY";
-        if (page == 3 && i == 1) return reshade ? "HOME OPENS ITS MENU IN THE GAME  \u00B7  DIRECTX 11 AND 12" : "COLOURS AND FILTERS FOR THE PICTURE";
-        if (page == 3 && i == 2) return ModsFolderLine();
+        if (page == 3 && i == 1) return reshade ? "F1 MENU  ·  F2 EFFECTS ON AND OFF" : "COLOURS AND FILTERS FOR THE PICTURE";
+        if (page == 3 && i == 2) return texDump ? "SAVED IN dumps  ·  SLOWER" : "FOR MOD MAKERS  ·  OFF TO PLAY";
+        if (page == 3 && i == 3) return ModsFolderLine();
         if (i == apply) return SmallChanged ? "SAVE FOR THE NEXT PLAY" : "NOTHING CHANGED";
         return SmallChanged ? "WITHOUT SAVING" : "";
     }
@@ -1010,7 +1110,7 @@ class Launcher : Form
             Spaced(g, items[i], subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 6, 2);
             if (IsToggle(i))
             {
-                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : (i == 3 ? menuSnd : i == 4 ? smooth : ashOn) ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : ((i == 1 ? reshade : mods) ? "ON" : "OFF")) + " \u203A";
+                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : (i == 3 ? menuSnd : i == 4 ? smooth : ashOn) ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : ((page == 3 && i == 2 ? texDump : i == 1 ? reshade : mods) ? "ON" : "OFF")) + " \u203A";
                 int vw = (int)SpacedWidth(g, v, valueFont, 2); valueRects[i] = new Rectangle(b.Right - 6 - vw, b.Y, vw, b.Height);
                 Spaced(g, v, valueFont, on ? gold : bone, b.Right - 6 - vw, b.Y + 9, 2);
             }
@@ -1286,7 +1386,10 @@ class Launcher : Form
         psi.EnvironmentVariables["SOR_WIDESCREEN"] = SavedWide.ToString(); // 0 4:3, 1 16:9, 2 21:9, 3 32:9
         psi.EnvironmentVariables["SOR_FULLSCREEN"] = SavedFull ? "1" : "0";
         psi.EnvironmentVariables["SORGS_MODS"] = SavedMods ? "1" : "0";
-        UseReshade(SavedReshade); // MODS > RESHADE: dxgi.dll next to sor.exe, or none
+        psi.EnvironmentVariables["SORGS_TEXDUMP"] = SavedTexDump ? "1" : "0";   // MODS > SAVE TEXTURES
+        psi.EnvironmentVariables["SOR_RESHADE"] = SavedReshade ? "1" : "0"; // MODS > RESHADE: sor.exe loads ReShade64.dll itself
+        string rsMsg = RemoveOldReshadeCopy();
+        if (rsMsg != "") { message = rsMsg; Invalidate(); }
         psi.EnvironmentVariables["SOR_PAD_SWAP"] = SavedSwap ? "1" : "0";        // the controller's cross and circle
         psi.EnvironmentVariables["SOR_PAD_INVERT_Y"] = SavedInvY ? "1" : "0";    // the right stick (camera)
         psi.EnvironmentVariables["SOR_PAD_INVERT_X"] = SavedInvX ? "1" : "0";
@@ -1724,6 +1827,10 @@ class Launcher : Form
             return;
         }
         var f = new Launcher();
+        if (args.Length == 1 && args[0] == "--sort-dumps")
+        {   // sorts the saved textures as MODS FOLDER does, without the window; the exit code is how many were copied
+            Environment.Exit(f.SortDumps());
+        }
         if (args.Length >= 2 && args[0] == "--picture")
         {   // draws the window into a PNG (used for docs/launcher.png) and exits;
             // with a third word "play", draws what Play would say before asking for the disc

@@ -270,6 +270,25 @@ void sorGsRiprendi()
     std::fflush(stdout);
 }
 
+// The game window lost the focus (11/11/2026). A G-SYNC / FreeSync screen keeps its variable refresh in a window only
+// for the window in front, and a controller keeps playing without the focus: written down with what took it, so a
+// log tells when the screen went back to a fixed refresh because another window was in front.
+void sorFocusPerso()
+{
+    HWND fg = GetForegroundWindow();
+    wchar_t title[96] = {};
+    DWORD pid = 0;
+    if (fg)
+        GetWindowThreadProcessId(fg, &pid);
+    const bool ours = fg && pid == GetCurrentProcessId();
+    if (fg && !ours)
+        GetWindowTextW(fg, title, 95); // another program's window: read without sending it a message
+    char t8[256] = {};
+    WideCharToMultiByte(CP_UTF8, 0, title, -1, t8, sizeof(t8) - 1, nullptr, nullptr);
+    std::printf("[sor] focus lost: in front now %s \"%s\"\n", !fg ? "nothing" : ours ? "a window of the game" : "another program", t8);
+    std::fflush(stdout);
+}
+
 // Full screen (SOR_FULLSCREEN=1 and F11 / Alt+Enter, called from ps2_runtime.cpp): a borderless window over the
 // whole monitor, made one pixel taller than the screen. A window exactly the size of the screen is taken by the
 // driver as exclusive full screen and covers sor-gs.dll's picture (black screen); one pixel more avoids that.

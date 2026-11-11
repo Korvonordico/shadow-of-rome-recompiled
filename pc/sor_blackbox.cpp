@@ -154,6 +154,7 @@ void sorBlackboxStart()
 }
 
 void sorBlackboxSetRuntime(PS2Runtime *rt) { g_runtime.store(rt); }
+bool sorBlackboxOn() { return g_on; } // the runtime asks sor-gs.dll for pictures only then
 
 namespace
 {

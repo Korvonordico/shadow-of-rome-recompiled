@@ -1,9 +1,12 @@
 // HD replacement films (a mod: the files are the player's own, never part of the port).
 //
 // When the game starts a film, the port looks for
-//     <folder of sor.exe>\textures\SLES-52950\replacements\movies\film-<sector>.mp4
-// where <sector> is the disc sector the film's stream starts at (the number the game gives sceCdStStart; the
-// opening film is film-637451). That folder is the launcher's MODS FOLDER. strumenti/film_hd.py makes these files.
+//     <folder of sor.exe>\textures\SLES-52950\replacements\movies\movie-<number>.mp4
+// where <number> is the game's own number of the film (the opening film is movie-0; the log says the number of each
+// film it plays). The old name film-<sector>.mp4 (the disc sector given to sceCdStStart) still works when the game
+// streams a film that way, which Shadow of Rome does not seem to do: its films are inside IMAGE*.IMG.
+// That folder is the launcher's MODS FOLDER. A pack can hold films too: replacements\<pack>\movies\ comes first
+// (packs in name order; '_' packs are off). strumenti/film_hd.py makes these files.
 //
 // The game keeps playing its own film underneath, exactly as without the mod: its sound, its timing, the button
 // that skips it and what comes after do not change. Each time the game asks for its next picture, the HD frame of
@@ -108,6 +111,42 @@ namespace
     std::shared_ptr<Session> g_session;
     std::atomic<uint32_t> g_streamSector{0};
     std::set<uint32_t> g_toldMissing; // "not found" is said once per film
+    std::set<uint32_t> g_toldLate;    // "joined late" is said once per film
+
+    bool isFile(const std::wstring &path)
+    {
+        const DWORD attr = GetFileAttributesW(path.c_str());
+        return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+    }
+
+    // The film's file: first in the mod packs (replacements\<pack>\movies\, packs in name order; a pack whose name
+    // starts with '_' is off, as for the textures), then in replacements\movies\. Empty if there is none.
+    std::wstring findFilm(const std::wstring &file)
+    {
+        const std::wstring rep = exeFolder() + L"\\textures\\SLES-52950\\replacements\\";
+        std::vector<std::wstring> packs;
+        WIN32_FIND_DATAW fd;
+        HANDLE h = FindFirstFileW((rep + L"*").c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                const std::wstring n = fd.cFileName;
+                if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && n != L"." && n != L".." && n[0] != L'_' &&
+                    _wcsicmp(n.c_str(), L"movies") != 0)
+                    packs.push_back(n);
+            } while (FindNextFileW(h, &fd));
+            FindClose(h);
+        }
+        std::sort(packs.begin(), packs.end(),
+                  [](const std::wstring &a, const std::wstring &b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+        for (const std::wstring &pk : packs)
+            if (isFile(rep + pk + L"\\movies\\" + file))
+                return rep + pk + L"\\movies\\" + file;
+        if (isFile(rep + L"movies\\" + file))
+            return rep + L"movies\\" + file;
+        return std::wstring();
+    }
 
     // ---- the window ------------------------------------------------------------------------------------------
 
@@ -495,8 +534,9 @@ void sorFilmHdStreamStart(uint32_t sector)
 }
 
 // sceMpegGetPicture (MPEG.cpp): the game takes its picture number `index` (0 = the first of a film); `pts90k` is its
-// time stamp (-1 if none).
-void sorFilmHdPicture(uint32_t index, long long pts90k)
+// time stamp (-1 if none); `filmId` is the game's own number of the film (byte 0x4BE2DA, classMOVIE_TASK; the opening
+// film is 0), 0xFFFFFFFF if unknown.
+void sorFilmHdPicture(uint32_t index, long long pts90k, uint32_t filmId)
 {
     if (!enabled())
         return;
@@ -504,22 +544,46 @@ void sorFilmHdPicture(uint32_t index, long long pts90k)
     if (index == 0 || !g_session)
     {
         stopLocked();
+        // The film's name: movie-<the game's film number>.mp4 (the opening film is movie-0). The films sit inside the
+        // disc's big IMAGE*.IMG archives and are read with plain reads, so the stream sector (film-<sector>.mp4, the
+        // first way) is usually unknown; it is still tried when the game gave one.
+        const uint32_t key = filmId <= 0xFFu ? filmId : 0x10000u + g_streamSector.load();
         if (index != 0)
-            return; // a film already running when nothing was found for it
-        const uint32_t sector = g_streamSector.load();
-        if (!sector)
-            return;
-        const std::string name = "film-" + std::to_string(sector);
-        const std::wstring wpath = exeFolder() + L"\\textures\\SLES-52950\\replacements\\movies\\" +
-                                   std::wstring(name.begin(), name.end()) + L".mp4";
-        const DWORD attr = GetFileAttributesW(wpath.c_str());
-        if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY))
         {
-            if (g_toldMissing.insert(sector).second)
-                say("not found, the original film plays (to replace it: %s)", name,
-                    "textures\\SLES-52950\\replacements\\movies\\" + name + ".mp4");
+            // a film already running when nothing was found for it, or one whose first picture never came here
+            if (g_toldMissing.count(key) == 0 && g_toldLate.insert(key).second)
+                say("joined at picture %s, not at its start: the original film plays",
+                    filmId <= 0xFFu ? "movie-" + std::to_string(filmId) : std::string("(a film)"), std::to_string(index));
             return;
         }
+        std::string name;
+        std::wstring wpath;
+        if (filmId <= 0xFFu)
+        {
+            name = "movie-" + std::to_string(filmId);
+            wpath = findFilm(std::wstring(name.begin(), name.end()) + L".mp4");
+        }
+        const uint32_t sector = g_streamSector.load();
+        if (wpath.empty() && sector)
+        {
+            const std::string old = "film-" + std::to_string(sector);
+            wpath = findFilm(std::wstring(old.begin(), old.end()) + L".mp4");
+            if (!wpath.empty() || name.empty())
+                name = old;
+        }
+        if (wpath.empty())
+        {
+            if (g_toldMissing.insert(key).second)
+            {
+                if (name.empty())
+                    say("%s", "(a film)", "started, but the game gave neither its number nor a disc sector: the original plays");
+                else
+                    say("not found, the original film plays (to replace it: %s)", name,
+                        "textures\\SLES-52950\\replacements\\<pack>\\movies\\" + name + ".mp4");
+            }
+            return;
+        }
+        say("found: %s", name, utf8(wpath));
         auto s = std::make_shared<Session>();
         s->name = name;
         s->path = utf8(wpath);
@@ -574,7 +638,7 @@ void sorFilmHdShutdown()
 #else
 
 void sorFilmHdStreamStart(uint32_t) {}
-void sorFilmHdPicture(uint32_t, long long) {}
+void sorFilmHdPicture(uint32_t, long long, uint32_t) {}
 void sorFilmHdStop() {}
 void sorFilmHdShutdown() {}
 

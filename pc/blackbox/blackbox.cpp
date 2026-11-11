@@ -199,8 +199,16 @@ namespace blackbox
                 for (; (*w)[j] && j < sizeof(word) - 1; ++j)
                     word[j] = static_cast<char>(std::tolower(static_cast<unsigned char>((*w)[j])));
                 word[j] = 0;
-                if (j && std::strstr(lower, word))
-                    return true;
+                // Every place the word appears, but not a count of nothing: "missing 0", "errors 0" (a report
+                // line saying all is well, as [sor-audio]'s "given 240000, missing 0") is not an error.
+                for (const char *at = j ? std::strstr(lower, word) : nullptr; at; at = std::strstr(at + 1, word))
+                {
+                    const char *after = at + j;
+                    while (*after == ' ' || *after == ':' || *after == '=')
+                        ++after;
+                    if (!(after[0] == '0' && !std::isdigit(static_cast<unsigned char>(after[1])) && after[1] != '.'))
+                        return true;
+                }
             }
             return false;
         }
