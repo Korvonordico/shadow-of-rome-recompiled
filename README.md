@@ -150,7 +150,7 @@ Most checks below were done by **test scripts**: small programs that press the k
 | The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ | |
 | The same package with the Russian disc: the game starts in Russian | | ✅ | |
 | RESHADE on changes the picture, off leaves it as the game draws it, no `dxgi.dll` made | | ✅ | |
-| F2 for ReShade (effects off and on): in a test from a script the picture did not change, to be checked by hand | | | ⬜ |
+| F1 and F2 for ReShade: F2 turns the effects off and on | ✅ | | |
 | The black box: 25 real pictures with DirectX 12, DirectX 11 and Vulkan | | ✅ | |
 | Texture packs on the menus: sizes and transparency | ✅ | | |
 | A film replaced by an MP4 | ✅ | | |
