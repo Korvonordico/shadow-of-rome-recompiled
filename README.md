@@ -19,7 +19,7 @@
 
 <p align="center">Version 2.9 · <a href="CHANGELOG.md">What changed</a></p>
 
-<p align="center"><span title="English, Français, Deutsch, Italiano, Español, Русский">🇬🇧 🇫🇷 🇩🇪 🇮🇹 🇪🇸 🇷🇺</span><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too.</p>
+<p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too.</p>
 
 > [!IMPORTANT]
 > **This port is still being tested.** Chapter 1 has been played to the end; chapters 2, 3 and 4 have not been played by hand yet. You may find graphics glitches (for example the water in the Germanian Forest), crashes or parts that do not work: keep a separate save, and save often.
