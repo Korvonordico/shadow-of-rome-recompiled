@@ -17,7 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
-<p align="center">Version 2.9 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.9.1 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too.</p>
 
@@ -50,6 +50,10 @@ If someone is already working on a port of this game, or is further ahead, pleas
   <a href="https://www.youtube.com/watch?v=2GsRxUH3Ctk"><img src="https://img.youtube.com/vi/2GsRxUH3Ctk/maxresdefault.jpg" width="80%" alt="Video: Shadow of Rome on PS2 next to Shadow of Rome Recompiled on PC, the first arena side by side (opens YouTube)"></a>
 </p>
 <p align="center">The same first arena, played twice: the original PlayStation 2 game on the left, the PC port on the right. Click the picture to watch it on YouTube.</p>
+
+## What's new in 2.9.1
+
+- **Fixed: FULL SCREEN in OPTIONS never stuck**: the game always started in a window. Thanks to [@Luger-git](https://github.com/Luger-git).  
 
 ## What's new in 2.9
 
@@ -147,6 +151,7 @@ Most checks below were done by **test scripts**: small programs that press the k
 
 | What | By hand | Script or picture only | Not tested yet |
 |---|---|---|---|
+| 2.9.1: FULL SCREEN saved in OPTIONS, the game starts in full screen (Russian disc, Vulkan) | | ✅ | |
 | The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ | |
 | The same package with the Russian disc: the game starts in Russian | | ✅ | |
 | RESHADE on changes the picture, off leaves it as the game draws it, no `dxgi.dll` made | | ✅ | |
@@ -348,7 +353,7 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.9-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.9.1-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.

@@ -29,7 +29,7 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.9";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.9.1";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -756,7 +756,8 @@ class Launcher : Form
     int SavedApi { get { int a; return int.TryParse(ReadIni("api"), out a) && a >= 1 && a <= 3 ? a : 2; } }   // package default DirectX 12 (the author, 9/11 21:07)
     int SavedScale { get { int s; return int.TryParse(ReadIni("scale"), out s) && Array.IndexOf(Scales, s) >= 0 ? s : 4; } }   // package default 4X (the author, 10/11: "the best")
     int SavedWide { get { string s = ReadIni("screen"); int w = s == "16:9" ? 1 : s == "21:9" ? 2 : s == "32:9" ? 2 : s == "4:3" ? 0 : 1; return w >= 2 && !SavedGpu ? 1 : w; } }   // package default 16:9 (the author, 9/11)
-    bool SavedFull { get { return ReadIni("display") == "full"; } }   // package default: a window (the author, 10/11: his settings as the defaults)
+    bool SavedFull { get { string d = ReadIni("display"); return d == "fullscreen" || d == "full"; } }   // 2.9.1: APPLY writes "fullscreen"; up to 2.9 this read only "full", so FULL SCREEN never stuck (thanks Luger-git)
+      // package default: a window (the author, 10/11: his settings as the defaults)
     bool SavedMods { get { return ReadIni("mods") != "0"; } }   // on, unless turned off
     // MODS > RESHADE (10/11/2026; changed 11/11/2026). ReShade (reshade.me, BSD-3-Clause) ships in the package as
     // ReShade64.dll. Up to 2.8, Play copied it as dxgi.dll next to sor.exe and removed the copy with RESHADE off; for a

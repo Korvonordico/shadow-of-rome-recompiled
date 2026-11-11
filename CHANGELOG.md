@@ -2,6 +2,10 @@
 
 Version numbers count the big steps of the port.
 
+## 2.9.1 (11 November 2026)
+
+- **Fixed: FULL SCREEN in OPTIONS never stuck.** APPLY saved it, but the launcher read it back wrongly, so the game always started in a window. Thanks to [@Luger-git](https://github.com/Luger-git), whose log showed it. Tested: the game now starts in full screen.
+
 ## 2.9 (11 November 2026)
 
 Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666) (thanks!).
