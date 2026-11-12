@@ -79,7 +79,7 @@ Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666), thanks! Everyt
 
 ## What's new in 2.7
 
-- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 12 or 11. With Vulkan the game cannot load it by itself: it works only if ReShade's own setup installed it for Vulkan games, and then RESHADE in MODS still turns it on and off (since 2.9.2). In the game **F1** opens its menu (Home up to 2.8) and **F2** turns its effects off and on again. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Since 2.9 the game loads `ReShade64.dll` by itself only when RESHADE is on, so turning it off always works; versions 2.7 and 2.8 put a copy named `dxgi.dll` next to the game instead, which could stay behind when RESHADE was turned off: 2.9 removes that old copy at its first start.
+- **ReShade comes with the game** (MODS > RESHADE, off at first). On, it adds colours and filters to the picture with DirectX 12 or 11. With Vulkan the ReShade in the package does not work: use DirectX 12 or 11. A ReShade installed separately with ReShade's own setup can still start with Vulkan; since 2.9.2, RESHADE off turns it off. In the game **F1** opens its menu (Home up to 2.8) and **F2** turns its effects off and on again. It starts with the author's preset (`ShadowOfRome.ini`): change anything, save your own presets and share them, or add effects downloaded from the internet to the `reshade-shaders` folder, as with any other game. Since 2.9 the game loads `ReShade64.dll` by itself only when RESHADE is on, so turning it off always works; versions 2.7 and 2.8 put a copy named `dxgi.dll` next to the game instead, which could stay behind when RESHADE was turned off: 2.9 removes that old copy at its first start.
 - **Smaller writing in the launcher's pages**, so the longer pages are less crowded.
 - The list of the video card's effects made at the start grew to 564.
 
@@ -155,6 +155,8 @@ Most checks below were done by **test scripts**: small programs that press the k
 
 | What | By hand | Script or picture only | Not tested yet |
 |---|---|---|---|
+| 2.9.2: the published package unpacked into an empty folder: the launcher says 2.9.2; DirectX 12 with RESHADE off, F1 does nothing; RESHADE on, F1 opens ReShade's menu and F2 turns its effects off and on | ✅ | | |
+| 2.9.2: Vulkan with RESHADE off and on, in the author's own game folder (same launcher as the package): the game starts; ReShade does not appear, as expected with Vulkan | ✅ | | |
 | 2.9.2: Vulkan with a ReShade installed for Vulkan games (added by hand as ReShade's setup does): RESHADE off, ReShade does not start (with 2.9.1 it did); on, it starts | | ✅ | |
 | 2.9.1: FULL SCREEN saved in OPTIONS, the game starts in full screen (Russian disc, Vulkan) | | ✅ | |
 | The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ | |
