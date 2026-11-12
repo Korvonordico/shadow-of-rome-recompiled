@@ -2,6 +2,11 @@
 
 Version numbers count the big steps of the port.
 
+## 2.9.2 (12 November 2026)
+
+- **Fixed: with Vulkan, ReShade started even with RESHADE off.** A ReShade installed with its own setup for Vulkan games starts in every Vulkan program that has a `ReShade.ini` next to it, and the package has one. Now RESHADE off turns it off for this game too. Thanks to [@n0l4n666](https://github.com/n0l4n666), who saw it. Tested with that kind of ReShade added by hand: with 2.9.1 it started with RESHADE off, with 2.9.2 it does not, and with RESHADE on it still starts.
+- README: ReShade and Vulkan explained right (2.9 said ReShade does not work with Vulkan: it works when ReShade's own setup installed it).
+
 ## 2.9.1 (11 November 2026)
 
 - **Fixed: FULL SCREEN in OPTIONS never stuck.** APPLY saved it, but the launcher read it back wrongly, so the game always started in a window. Thanks to [@Luger-git](https://github.com/Luger-git), whose log showed it. Tested: the game now starts in full screen.

@@ -29,7 +29,7 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.9.1";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.9.2";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -1389,6 +1389,10 @@ class Launcher : Form
         psi.EnvironmentVariables["SORGS_MODS"] = SavedMods ? "1" : "0";
         psi.EnvironmentVariables["SORGS_TEXDUMP"] = SavedTexDump ? "1" : "0";   // MODS > SAVE TEXTURES
         psi.EnvironmentVariables["SOR_RESHADE"] = SavedReshade ? "1" : "0"; // MODS > RESHADE: sor.exe loads ReShade64.dll itself
+        // 2.9.2: a ReShade installed for Vulkan with ReShade's own setup is a layer Windows puts in every Vulkan program, and
+        // it starts wherever a ReShade.ini sits next to the program, as ours does: with RESHADE off, this switches it off
+        // (the disable_environment of its manifest, setup/ReShade64.json in crosire/reshade). A tester saw it start each time.
+        if (!SavedReshade) psi.EnvironmentVariables["DISABLE_VK_LAYER_reshade_1"] = "1";
         string rsMsg = RemoveOldReshadeCopy();
         if (rsMsg != "") { message = rsMsg; Invalidate(); }
         psi.EnvironmentVariables["SOR_PAD_SWAP"] = SavedSwap ? "1" : "0";        // the controller's cross and circle
