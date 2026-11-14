@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 
 // windows.h cannot stay together with raylib.h.
 extern "C" __declspec(dllimport) int __stdcall VirtualProtect(void *address, size_t size, unsigned long protection, unsigned long *old);
@@ -105,8 +106,8 @@ namespace
             return;
         const uint8_t *ram = rt->memory().getRDRAM();
         uint16_t area = 0, number = 0;
-        std::memcpy(&area, ram + 0x4be2e8u, 2);
-        std::memcpy(&number, ram + 0x4be2e0u, 2);
+        std::memcpy(&area, ram + SA(0x4be2e8u), 2);
+        std::memcpy(&number, ram + SA(0x4be2e0u), 2);
         std::snprintf(out, n, "area %03x scene %u", area, number);
     }
 
@@ -183,9 +184,9 @@ void sorBlackboxInstall(PS2Runtime &rt)
 {
     if (!g_on)
         return;
-    g_cdRead = rt.lookupFunction(0x120DD8u); // sceCdRead
+    g_cdRead = rt.lookupFunction(SA(0x120DD8u)); // sceCdRead
     if (g_cdRead)
-        rt.registerFunction(0x120DD8u, cdRead);
+        rt.registerFunction(SA(0x120DD8u), cdRead);
 }
 
 // From ps2_runtime.cpp, with every frame shown. This is the one place that changes when drawing moves to the GPU.

@@ -2,6 +2,7 @@
 //
 // When the game starts a film, the port looks for
 //     <folder of sor.exe>\textures\SLES-52950\replacements\movies\movie-<number>.mp4
+// (sor-usa.exe, the American disc: textures\SLUS-20902\... instead)
 // where <number> is the game's own number of the film (the opening film is movie-0; the log says the number of each
 // film it plays). The old name film-<sector>.mp4 (the disc sector given to sceCdStStart) still works when the game
 // streams a film that way, which Shadow of Rome does not seem to do: its films are inside IMAGE*.IMG.
@@ -20,6 +21,7 @@
 // Only Windows (the port's only platform today); elsewhere the hooks do nothing.
 
 #include <cstdint>
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 
 #if defined(_WIN32)
 
@@ -123,7 +125,7 @@ namespace
     // starts with '_' is off, as for the textures), then in replacements\movies\. Empty if there is none.
     std::wstring findFilm(const std::wstring &file)
     {
-        const std::wstring rep = exeFolder() + L"\\textures\\SLES-52950\\replacements\\";
+        const std::wstring rep = exeFolder() + L"\\textures\\" SOR_DISC_SERIAL "\\replacements\\"; // the disc's serial: pc/sor_indirizzi.h
         std::vector<std::wstring> packs;
         WIN32_FIND_DATAW fd;
         HANDLE h = FindFirstFileW((rep + L"*").c_str(), &fd);
@@ -536,6 +538,12 @@ void sorFilmHdStreamStart(uint32_t sector)
 // sceMpegGetPicture (MPEG.cpp): the game takes its picture number `index` (0 = the first of a film); `pts90k` is its
 // time stamp (-1 if none); `filmId` is the game's own number of the film (byte 0x4BE2DA, classMOVIE_TASK; the opening
 // film is 0), 0xFFFFFFFF if unknown.
+// MPEG.cpp reads the film number here: Global+0xDA, 0x4BE2DA in the European executable (SA(), pc/sor_indirizzi.h).
+uint32_t sorFilmNumberAddress()
+{
+    return SA(0x4BE2DAu);
+}
+
 void sorFilmHdPicture(uint32_t index, long long pts90k, uint32_t filmId)
 {
     if (!enabled())
@@ -579,7 +587,7 @@ void sorFilmHdPicture(uint32_t index, long long pts90k, uint32_t filmId)
                     say("%s", "(a film)", "started, but the game gave neither its number nor a disc sector: the original plays");
                 else
                     say("not found, the original film plays (to replace it: %s)", name,
-                        "textures\\SLES-52950\\replacements\\<pack>\\movies\\" + name + ".mp4");
+                        "textures\\" SOR_DISC_SERIAL "\\replacements\\<pack>\\movies\\" + name + ".mp4");
             }
             return;
         }

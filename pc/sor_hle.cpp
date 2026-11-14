@@ -25,6 +25,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 
 namespace
 {
@@ -341,7 +342,7 @@ namespace
             }
         }
         // Le interruzioni non entrano nell'anello: quando il gioco si blocca coprirebbero tutto.
-        const bool diInterruzione = pc == 0x1e8f50u || pc == 0x281e30u || pc == 0x10fba8u || pc == 0x10ec20u || pc == 0x119c50u || pc == 0x119a00u || pc == 0x119690u;
+        const bool diInterruzione = pc == SA(0x1e8f50u) || pc == SA(0x281e30u) || pc == SA(0x10fba8u) || pc == SA(0x10ec20u) || pc == SA(0x119c50u) || pc == SA(0x119a00u) || pc == SA(0x119690u);
         if (!diInterruzione)
         {
             g_anello[g_numChiamate % kAnello] = {pc, GPR_U32(ctx, 31), GPR_U32(ctx, 4), GPR_U32(ctx, 5)};
@@ -449,9 +450,9 @@ namespace
         rdram[compito + 1u] = 0u;
         rdram[compito + 2u] = 0u;
         rdram[compito + 3u] = 0u;
-        const uint32_t film = rdram[0x4BE2DAu];
+        const uint32_t film = rdram[SA(0x4BE2DAu)];
         uint32_t visti;
-        const uint32_t dove = 0x551A44u + (film >> 5) * 4u;
+        const uint32_t dove = SA(0x551A44u) + (film >> 5) * 4u;
         std::memcpy(&visti, rdram + dove, 4);
         visti |= 1u << (film & 31u);
         std::memcpy(rdram + dove, &visti, 4);
@@ -469,7 +470,7 @@ namespace
     // 4. La scelta dei 60 Hz resta fra un avvio e l'altro. Il gioco la tiene nel byte 0x551402 (1 = 60 Hz, 2 = 50 Hz) e
     //    classPALSELECT_TASK::move_init la applica: basta metterla li' prima del primo move_init. Si scrive quando il
     //    giocatore ha premuto Start Game. Senza il file e senza scegliere 60 Hz non cambia niente e il file non nasce.
-    const uint32_t kByteFrequenza = 0x551402u;
+    const uint32_t kByteFrequenza = SA(0x551402u);
     PS2Runtime::RecompiledFunction g_palInit = nullptr, g_palAvviso = nullptr, g_palCard = nullptr;
     int g_videoNelFile = 0; // 0 = niente file, 1 = 60 Hz, 2 = 50 Hz
 
@@ -490,6 +491,12 @@ namespace
             else if (riga.rfind("video=50", 0) == 0)
                 g_videoNelFile = 2;
         }
+#if defined(SOR_REGION_USA)
+        // The American game (NTSC) runs at 60 Hz only and has no "Change video mode" screen: a 50 Hz choice made in the
+        // European game (settings.ini is shared, next to both programs) is not put into its video mode byte.
+        if (g_videoNelFile == 2)
+            g_videoNelFile = 0;
+#endif
     }
 
     void palInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *rt)
@@ -545,7 +552,7 @@ namespace
     //    applies them: at start-up and when the player leaves the game's own options. Before its first call the values
     //    of settings.ini (bgm=, se=, written by the launcher) are put there; after every call, if the player changed
     //    them in the game, they go back to settings.ini, so the launcher shows the same numbers. Other lines are kept.
-    const uint32_t kByteBgm = 0x551409u, kByteSe = 0x55140Au;
+    const uint32_t kByteBgm = SA(0x551409u), kByteSe = SA(0x55140Au);
     PS2Runtime::RecompiledFunction g_cfgUpdate = nullptr;
     int g_bgmFile = -1, g_seFile = -1;
 
@@ -653,14 +660,14 @@ namespace
             bool messo = false;   // the bit was set here (first viewing)
         };
         static Stato s;
-        if (rdram[0x5558E0u] == 1u) // the film task (Movie_task_main, 0x5558E0) is in task_move
+        if (rdram[SA(0x5558E0u)] == 1u) // the film task (Movie_task_main, 0x5558E0) is in task_move
         {
             const uint64_t tick = rt->eeScheduler().currentVSyncTick();
             const uint32_t flusso = GPR_U32(ctx, 4);
             uint32_t quadri = 0; // the film's picture count (sceMpeg.frameCount, CMS_MOVIE_STREAM + 0x90)
             std::memcpy(&quadri, rdram + ((flusso + 0x90u) & PS2_RAM_MASK), 4);
-            const uint8_t film = rdram[0x4BE2DAu];
-            const uint32_t dove = 0x551A44u + (film >> 5) * 4u;
+            const uint8_t film = rdram[SA(0x4BE2DAu)];
+            const uint32_t dove = SA(0x551A44u) + (film >> 5) * 4u;
             const uint32_t bit = 1u << (film & 31u);
             uint32_t visti = 0;
             std::memcpy(&visti, rdram + dove, 4);
@@ -673,7 +680,7 @@ namespace
             s.ultimoTick = tick;
             s.quadri = quadri;
             uint32_t tasti = 0; // the virtual pad's "on" field (0x4BD2EC): the keys held now
-            std::memcpy(&tasti, rdram + 0x4BD2ECu, 4);
+            std::memcpy(&tasti, rdram + SA(0x4BD2ECu), 4);
             const bool tenuto = (tasti & 0x8u) != 0u;
             s.suDa = tenuto ? 0 : s.suDa + 1;
             if (!s.armato)
@@ -712,35 +719,35 @@ namespace
 // The movies are skipped (SOR_SENZAFILMATI for the tests, and the "nofilms" debug cheat of pc/sor_trucchi.cpp).
 void sorSaltaFilmati(PS2Runtime &rt)
 {
-    rt.registerFunction(0x30F9F0u, filmatoFinito); // Cms_MovieGetPicture
-    rt.registerFunction(0x309620u, filmatoNiente); // classMOVIE_TASK::task_init
+    rt.registerFunction(SA(0x30F9F0u), filmatoFinito); // Cms_MovieGetPicture
+    rt.registerFunction(SA(0x309620u), filmatoNiente); // classMOVIE_TASK::task_init
 }
 
 void sorInstallaSostituzioni(PS2Runtime &rt)
 {
-    rt.registerFunction(0x120190u, cercaFile); // sceCdSearchFile
-    rt.registerFunction(0x11FE90u, cercaFile); // sceCdLayerSearchFile
+    rt.registerFunction(SA(0x120190u), cercaFile); // sceCdSearchFile
+    rt.registerFunction(SA(0x11FE90u), cercaFile); // sceCdLayerSearchFile
     if (std::getenv("SOR_SENZAFILMATI")) // for tests: the movies are skipped, the same keys always land on the same screens
         sorSaltaFilmati(rt);
     leggiImpostazioni();
-    g_palInit = rt.lookupFunction(0x32B7D0u);
-    g_palAvviso = rt.lookupFunction(0x32B170u);
-    g_palCard = rt.lookupFunction(0x32B330u);
-    rt.registerFunction(0x32B7D0u, palInit);   // classPALSELECT_TASK::move_init
-    rt.registerFunction(0x32B170u, palAvviso); // classPALSELECT_TASK::move_alert_disp
-    rt.registerFunction(0x32B330u, palCard);   // classPALSELECT_TASK::move_memcd_check
-    g_cfgUpdate = rt.lookupFunction(0x2F2520u);
+    g_palInit = rt.lookupFunction(SA(0x32B7D0u));
+    g_palAvviso = rt.lookupFunction(SA(0x32B170u));
+    g_palCard = rt.lookupFunction(SA(0x32B330u));
+    rt.registerFunction(SA(0x32B7D0u), palInit);   // classPALSELECT_TASK::move_init
+    rt.registerFunction(SA(0x32B170u), palAvviso); // classPALSELECT_TASK::move_alert_disp
+    rt.registerFunction(SA(0x32B330u), palCard);   // classPALSELECT_TASK::move_memcd_check
+    g_cfgUpdate = rt.lookupFunction(SA(0x2F2520u));
     if (g_cfgUpdate && !std::getenv("SOR_NO_VOLUMI"))
-        rt.registerFunction(0x2F2520u, cfgUpdate); // classCONFIGDATA::config_update: volumes shared with the launcher
-    g_setBgm = rt.lookupFunction(0x2F7460u);
-    g_setSe = rt.lookupFunction(0x229890u);
+        rt.registerFunction(SA(0x2F2520u), cfgUpdate); // classCONFIGDATA::config_update: volumes shared with the launcher
+    g_setBgm = rt.lookupFunction(SA(0x2F7460u));
+    g_setSe = rt.lookupFunction(SA(0x229890u));
     if (g_setBgm)
-        rt.registerFunction(0x2F7460u, setBgm); // classBGM_TASK::set_bgm_volume: log only
+        rt.registerFunction(SA(0x2F7460u), setBgm); // classBGM_TASK::set_bgm_volume: log only
     if (g_setSe)
-        rt.registerFunction(0x229890u, setSe); // classSNDDRV::set_mastervol: log only
-    g_movieSetImage = rt.lookupFunction(0x30EC50u);
+        rt.registerFunction(SA(0x229890u), setSe); // classSNDDRV::set_mastervol: log only
+    g_movieSetImage = rt.lookupFunction(SA(0x30EC50u));
     if (g_movieSetImage && !(std::getenv("SOR_FILM_START") && std::getenv("SOR_FILM_START")[0] == '0'))
-        rt.registerFunction(0x30EC50u, filmatoImmagine); // Cms_MovieSetImage: START skips every film (point 7)
+        rt.registerFunction(SA(0x30EC50u), filmatoImmagine); // Cms_MovieSetImage: START skips every film (point 7)
 
     const char *mappa = std::getenv("SOR_TRACCIA");
     if (!mappa || !*mappa)
@@ -773,7 +780,7 @@ void sorInstallaSostituzioni(PS2Runtime &rt)
         if (!fn || fn == involucro)
             continue;
         g_originali[s] = fn;
-        rt.registerFunction(a, a == 0x124028u ? exitTracciato : involucro);
+        rt.registerFunction(a, a == SA(0x124028u) ? exitTracciato : involucro);
         ++avvolte;
     }
     std::printf("[sor] traccia attiva su %zu funzioni\n", avvolte);

@@ -12,7 +12,15 @@ import sys, re, tomllib
 # del runtime ancora da fare (lanciano un errore).
 ESCLUSI = {"_calloc_r", "_free_r", "_malloc_trim_r", "malloc_extend_top", "_malloc_r",
            "__malloc_lock", "__malloc_unlock", "fflush", "InitThread", "iWakeupThread",
-           "iRotateThreadReadyQueue", "StartThread", "InitTLB", "sceGsSetDefLoadImage"}
+           "iRotateThreadReadyQueue", "StartThread", "InitTLB", "sceGsSetDefLoadImage",
+           "cos", "fabs", "floor", "rand", "srand"}
+# cos/fabs/floor translated (sor-correzioni, 10/11/2026): in the game they are the software DOUBLE libm
+# (argument in $a0, result in $v0); the runtime handlers are float ($f12 -> $f0), so the caller got its own
+# argument back (cos is used by om05_gate_open, fabs/floor by the double pio2 reduction). Same bug as the
+# "sin(x)=x" camera in KIexster/god-of-war-recomp, which rejects stubs on the double libm.
+# rand/srand translated (sor-correzioni, 10/11/2026): the game's newlib rand (64-bit LCG, state in _reent)
+# returns 0..0x7FFFFFFF; the runtime handler returned 0..0x7FFF, so effects that divide by 0x7FFFFFFF got
+# almost the same value every time (cxldsakeb/GoW2-nativo-PS2, blocker 25).
 # InitAlarm tolta (sor-menu, 30/10): tradotta, chiamava SetSyscall(0xFC, codice
 # copiato nella memoria del kernel) e il runtime rispondeva KE_ERROR a ogni SetAlarm.
 # sceGsSetDefLoadImage tradotta (sor-tappa1, 30/10): il gioco (classVRAM::tex_trans_set)

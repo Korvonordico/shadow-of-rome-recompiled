@@ -93,20 +93,20 @@ namespace
     const Azione kAzioni[A_COUNT] = {
         {"cross", PAD_CROSS, "MOUSE_LEFT", "A"},
         {"circle", PAD_CIRCLE, "E", "B"},
-        {"square", PAD_SQUARE, "Q", "X"},
+        {"square", PAD_SQUARE, "MOUSE_RIGHT", "X"},
         {"triangle", PAD_TRIANGLE, "F", "Y"},
-        {"l1", PAD_L1, "LEFT_CONTROL", "LB"},
-        {"r1", PAD_R1, "MOUSE_RIGHT", "RB"},
+        {"l1", PAD_L1, "LEFT_SHIFT", "LB"},
+        {"r1", PAD_R1, "Q", "RB"},
         {"l2", PAD_L2, "C", "LT"},
-        {"r2", PAD_R2, "G", "RT"},
-        {"l3", PAD_L3, "KP_8", "LS"},
-        {"r3", PAD_R3, "KP_9", "RS"},
+        {"r2", PAD_R2, "SPACE", "RT"},
+        {"l3", PAD_L3, "V", "LS"},
+        {"r3", PAD_R3, "X", "RS"},
         {"start", PAD_START, "ESCAPE", "START"},
         {"select", PAD_SELECT, "TAB", "BACK"},
-        {"up", PAD_UP, "UP", "DPAD_UP"},
-        {"down", PAD_DOWN, "DOWN", "DPAD_DOWN"},
-        {"left", PAD_LEFT, "LEFT", "DPAD_LEFT"},
-        {"right", PAD_RIGHT, "RIGHT", "DPAD_RIGHT"},
+        {"up", PAD_UP, "1,UP", "DPAD_UP"},
+        {"down", PAD_DOWN, "2,DOWN", "DPAD_DOWN"},
+        {"left", PAD_LEFT, "3,LEFT", "DPAD_LEFT"},
+        {"right", PAD_RIGHT, "4,RIGHT", "DPAD_RIGHT"},
         {"move_up", 0, "W", nullptr},
         {"move_down", 0, "S", nullptr},
         {"move_left", 0, "A", nullptr},
@@ -141,6 +141,10 @@ namespace
         {"BACKSLASH", KEY_BACKSLASH}, {"RIGHT_BRACKET", KEY_RIGHT_BRACKET}, {"GRAVE", KEY_GRAVE},
         {"WORLD_2", 162}, // GLFW_KEY_WORLD_2: the extra key next to left Shift on European keyboards (< >); raylib has no name
         {"KP_0", KEY_KP_0}, {"KP_1", KEY_KP_1}, {"KP_2", KEY_KP_2}, {"KP_3", KEY_KP_3}, {"KP_4", KEY_KP_4},
+        // the digits on the top row (14/11, the author: 1 to 9 usable as keys; the free camera's points take them
+        // only while the free camera is on, pc/sor_camera.cpp)
+        {"0", KEY_ZERO}, {"1", KEY_ONE}, {"2", KEY_TWO}, {"3", KEY_THREE}, {"4", KEY_FOUR}, {"5", KEY_FIVE},
+        {"6", KEY_SIX}, {"7", KEY_SEVEN}, {"8", KEY_EIGHT}, {"9", KEY_NINE},
         {"KP_5", KEY_KP_5}, {"KP_6", KEY_KP_6}, {"KP_7", KEY_KP_7}, {"KP_8", KEY_KP_8}, {"KP_9", KEY_KP_9},
         {"KP_DECIMAL", KEY_KP_DECIMAL}, {"KP_DIVIDE", KEY_KP_DIVIDE}, {"KP_MULTIPLY", KEY_KP_MULTIPLY},
         {"KP_SUBTRACT", KEY_KP_SUBTRACT}, {"KP_ADD", KEY_KP_ADD}, {"KP_ENTER", KEY_KP_ENTER}, {"KP_EQUAL", KEY_KP_EQUAL},
@@ -173,23 +177,16 @@ namespace
         if (n.size() == 1 && n[0] >= 'A' && n[0] <= 'Z')
             return KEY_A + (n[0] - 'A');
         if (n.size() == 1 && n[0] >= '0' && n[0] <= '9')
-        {
-            if (n[0] != '0')
-            {
-                *perche = "kept for the free camera's points";
-                return -1;
-            }
-            return KEY_ZERO;
-        }
+            return KEY_ZERO + (n[0] - '0'); // 1-9 are free for the player (the free camera's points only work with F8)
         for (const Nome &t : kTopo)
             if (n == t.nome)
                 return t.codice;
         for (const Nome &t : kTasti)
             if (n == t.nome)
             {
-                if (t.codice == KEY_F1 || t.codice == KEY_F2 || t.codice == KEY_F3 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F11 || t.codice == KEY_F12)
+                if (t.codice == KEY_F1 || t.codice == KEY_F2 || t.codice == KEY_F3 || t.codice == KEY_F4 || t.codice == KEY_F5 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F11 || t.codice == KEY_F12)
                 {
-                    *perche = "kept for F1 F2 ReShade, F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel";
+                    *perche = "kept for F1 F2 ReShade, F3 drawing dump, F4 F5 quick save, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel";
                     return -1;
                 }
                 if (t.codice == KEY_LEFT_ALT || t.codice == KEY_RIGHT_ALT)

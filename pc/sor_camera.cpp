@@ -61,6 +61,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 
 bool sorTelecomandoAcceso();         // pc/sor_prove.cpp: the test remote control holds the keys
 bool sorTastoIniettato(int codice);
@@ -69,17 +70,17 @@ bool sorMouseFreeCamera(float &yaw, float &pitch);
 
 namespace
 {
-    const uint32_t kSwap = 0x1E92D0u;       // classSYSTEM::wbuf_swap, once per frame before TASK::manager
-    const uint32_t kCtrlMove = 0x269450u;   // classCAMERA_CTRL::move(this)
-    const uint32_t kCameraSet = 0x146F90u;  // classCAMERA::set(this, ushort type)
-    const uint32_t kCamera = 0x4C8B40u;     // classCAMERA Camera
+    const uint32_t kSwap = SA(0x1E92D0u);       // classSYSTEM::wbuf_swap, once per frame before TASK::manager
+    const uint32_t kCtrlMove = SA(0x269450u);   // classCAMERA_CTRL::move(this)
+    const uint32_t kCameraSet = SA(0x146F90u);  // classCAMERA::set(this, ushort type)
+    const uint32_t kCamera = SA(0x4C8B40u);     // classCAMERA Camera
     const uint32_t kCameraSize = 112u;
-    const uint32_t kStopFlg0 = 0x4EA170u;   // System.mStop_flg[0]
+    const uint32_t kStopFlg0 = SA(0x4EA170u);   // System.mStop_flg[0]
     const uint32_t kFreezeBits = 0xFFE98000u; // what classSUB_TASK::task_init ORs for the overlay menus (kinds 4, 7, 11)
     const uint32_t kCamCtrlStop = 0x08000000u; // the bit classCAMERA_CTRL::move tests to stand still
-    const uint32_t kWorldScreen = 0x4D3930u; // FMATRIX world -> screen (view-screen x world-view)
-    const uint32_t kArea = 0x4BE2E8u;       // Global.Area_no (ushort)
-    const uint32_t kScene = 0x4BE2E0u;      // Global.Scene_no (ushort)
+    const uint32_t kWorldScreen = SA(0x4D3930u); // FMATRIX world -> screen (view-screen x world-view)
+    const uint32_t kArea = SA(0x4BE2E8u);       // Global.Area_no (ushort)
+    const uint32_t kScene = SA(0x4BE2E0u);      // Global.Scene_no (ushort)
 
     struct V3
     {
@@ -508,6 +509,11 @@ namespace
                 }
                 if (!g_detached)
                 {
+                    // 14/11: 1 to 9 can be the player's keys, so from the game they jump only in the tests
+                    // (the remote control, pc/sor_prove.cpp); a player presses F8 first.
+                    static const bool s_tests = std::getenv("SOR_TELECOMANDO") != nullptr;
+                    if (!s_tests)
+                        continue;
                     if (!canDetach())
                     {
                         std::printf("[sor] camera point %d: not now (only while playing: not in films, events, menus "
@@ -531,7 +537,10 @@ namespace
                 }
             }
         }
-        if (g_detached)
+        // Test option SOR_FREECAM_RUN=1: the world keeps running while the camera is detached (14/11: to watch the
+        // river water flow from a camera point, strumenti/acqua2/fiume_raffica.py scorre). Off for players.
+        static const bool s_run = std::getenv("SOR_FREECAM_RUN") && std::getenv("SOR_FREECAM_RUN")[0] == '1';
+        if (g_detached && !s_run)
         {
             // The game's own freeze for overlay menus, for this frame (main_loop clears it at the end of the frame).
             const uint32_t v = rd32(rdram, kStopFlg0) | kFreezeBits;

@@ -681,8 +681,29 @@ void sorVu1Installa(PS2Memory &memoria)
     // PCSX2's GameIndex. This thread is bound too, so every thread that touches VU1 sees the same register file.
     g_memoria = &memoria;
     lega();
+    // SOR_VU1_CLAMP=0..3 or vu1clamp=0..3 in launcher.ini (14/11/2026, test for the stretched crowd in arena 105):
+    // PCSX2's vuClampMode, 0 none, 1 normal, 2 extra, 3 extra + preserve sign.
+    int clamp = 1;
+    {
+        const char *ce = std::getenv("SOR_VU1_CLAMP");
+        char riga[128] = {};
+        if (!ce)
+            if (FILE *ini = std::fopen("launcher.ini", "r"))
+            {
+                while (std::fgets(riga, sizeof(riga), ini))
+                    if (!std::strncmp(riga, "vu1clamp=", 9))
+                    {
+                        ce = riga + 9;
+                        break;
+                    }
+                std::fclose(ini);
+            }
+        if (ce && ce[0] >= '0' && ce[0] <= '3')
+            clamp = ce[0] - '0';
+    }
+    static const char *const kClamp[] = {"none", "normal", "extra", "extra + preserve sign"};
     char errore[256] = {};
-    if (!g_api.init(1, 1, 1, 0, &xgkick, nullptr, errore, static_cast<int>(sizeof(errore))))
+    if (!g_api.init(1, clamp, 1, 0, &xgkick, nullptr, errore, static_cast<int>(sizeof(errore))))
     {
         std::printf("[sor-vu] PCSX2's VU1 not used (microVU did not start: %s): ours runs\n", errore[0] ? errore : "no reason given");
         std::fflush(stdout);
@@ -712,8 +733,8 @@ void sorVu1Installa(PS2Memory &memoria)
     sorSetVu1Host(ospite);
     g_pcsx2Riga.store(adessoNs());
     if (pcsx2)
-        std::printf("[sor-vu] VU1 engine: PCSX2 microVU (sor-vu.dll version %d; processor: %s; clamp mode normal, flag hack "
-                    "on, I-bit hack off)\n", g_api.version(), cpu.c_str());
+        std::printf("[sor-vu] VU1 engine: PCSX2 microVU (sor-vu.dll version %d; processor: %s; clamp mode %s, flag hack "
+                    "on, I-bit hack off)\n", g_api.version(), cpu.c_str(), kClamp[clamp]);
     else
         std::printf("[sor-vu] VU1 engine: ours, compared with PCSX2 microVU on about 1 program in %u (sor-vu.dll version %d; "
                     "processor: %s). Slower than normal: for checks only\n", g_ogni, g_api.version(), cpu.c_str());

@@ -31,6 +31,7 @@ To undo them: `git -C thirdparty/PS2Recomp checkout -- . && git -C thirdparty/PS
 | `0019-version-2.5.patch` | The changes of 2.5 (see [CHANGELOG.md](../CHANGELOG.md)). |
 | `0020-version-2.6.patch` | The changes of 2.6: the VU1 programs handed to `sor-vu.dll` (`runtime/sor_vu1_host.h`, source in `pc/sorvu` and `pc/kzvu`), a faster VIF unpack, the time measures of TIMINGS (`runtime/sor_times.h`, `SOR_TEMPI`), and the other fixes in [CHANGELOG.md](../CHANGELOG.md). |
 | `0021-version-2.9.patch` | The changes of 2.7 to 2.9 in the runtime: the black box pictures taken from the video card (`gs_pcsx2_mirror`), the films a texture pack can replace, and the other fixes in [CHANGELOG.md](../CHANGELOG.md). |
+| `0022-version-2.9.3.patch` | The changes of 2.9.3: the VU0 instruction `vclipw` and three others now give the PS2's numbers (the forest's water, the stretched crowd), the film number read where the European or the American game keeps it, and the other fixes in [CHANGELOG.md](../CHANGELOG.md). |
 
 Outside the patches, in `pc/`: `sor_hle.cpp` finds files by reading the disc image's
 ISO9660 index, can skip the movies for tests (`SOR_SENZAFILMATI`): `classMOVIE_TASK::task_init` closes the task at once, and keeps the video mode in `settings.ini`; `main_sor.cpp` places the

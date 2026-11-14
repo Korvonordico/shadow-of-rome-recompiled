@@ -21,6 +21,9 @@ extern "C" __declspec(dllimport) int __stdcall SetPriorityClass(void *processo, 
 // raylib asks for is then ignored, the game's clock wakes up to 15 ms late and pictures come late (small pauses).
 // The game asks not to be slowed down (ProcessPowerThrottling: full speed, its timer resolution always honoured).
 extern "C" __declspec(dllimport) int __stdcall SetProcessInformation(void *processo, int classe, void *dati, unsigned long misura);
+// sor: the disc this program was built for (SOR_DISC_SERIAL, pc/sor_indirizzi.h), handed to sor-gs.dll for its textures.
+extern "C" __declspec(dllimport) int __stdcall SetEnvironmentVariableA(const char *nome, const char *valore);
+#include "sor_indirizzi.h"
 
 #include <atomic>
 #include <chrono>
@@ -36,6 +39,7 @@ void sorGpuMirrorClose(); // ps2xRuntime gs_pcsx2_mirror.cpp
 
 void sorInstallaSostituzioni(PS2Runtime &rt); // sor_hle.cpp
 void sorTrucchiInstalla(PS2Runtime &rt);       // sor_trucchi.cpp (debug cheats, only with SOR_CHEATS)
+void sorSalvaRapidoInstalla(PS2Runtime &rt);   // sor_salvarapido.cpp (debug quick save F5/F4, only with quicksave.on)
 void sorCameraInstalla(PS2Runtime &rt);        // sor_camera.cpp (debug free camera, only with SOR_FREECAM=1)
 void sorVignettaInstalla(PS2Runtime &rt);      // sor_vignetta.cpp (screen veil off, only with SOR_NO_VIGNETTE=1)
 void sorMouseInstalla(PS2Runtime &rt);         // sor_mouse.cpp (mouse look, SOR_MOUSE_LOOK=1 from the launcher)
@@ -221,6 +225,15 @@ int main(int argc, char *argv[])
         _dup2(_fileno(stdout), _fileno(stderr));
         std::setvbuf(stderr, nullptr, _IONBF, 0);
     }
+    // sor-gs.dll keeps replacement and saved textures in textures\<serial> (SORGS_SERIAL): the disc this program was
+    // built for (sor.exe SLES-52950, sor-usa.exe SLUS-20902), unless the launcher already set it. Put in both the C
+    // library's and Windows' own list, before sor-gs.dll is loaded (gs_pcsx2_mirror.cpp, LoadLibraryA).
+    if (const char *s = std::getenv("SORGS_SERIAL"); !s || !*s)
+    {
+        _putenv("SORGS_SERIAL=" SOR_DISC_SERIAL);
+        SetEnvironmentVariableA("SORGS_SERIAL", SOR_DISC_SERIAL);
+    }
+    std::printf("[sor] disc %s\n", SOR_DISC_SERIAL);
     sorBlackboxStart();
     sorProfiloAvvia();
     // Solo il thread del gioco (vedi ps2_runtime.cpp) e questo, che mostra le immagini, stanno sopra il normale:
@@ -326,6 +339,7 @@ int main(int argc, char *argv[])
         sorInstallaSostituzioni(runtime);
         sorTrucchiInstalla(runtime);
         sorCameraInstalla(runtime); // after the cheats: it chains their hook on wbuf_swap
+        sorSalvaRapidoInstalla(runtime); // after the free camera: it chains the same hook
         sorVignettaInstalla(runtime);
         sorMouseInstalla(runtime);
         sorBlackboxInstall(runtime);

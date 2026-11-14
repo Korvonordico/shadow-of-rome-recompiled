@@ -1,0 +1,236 @@
+diff --git a/ps2xRecomp/src/lib/vu_translation_helpers.cpp b/ps2xRecomp/src/lib/vu_translation_helpers.cpp
+index 4475f43..7de5240 100644
+--- a/ps2xRecomp/src/lib/vu_translation_helpers.cpp
++++ b/ps2xRecomp/src/lib/vu_translation_helpers.cpp
+@@ -75,14 +75,14 @@ namespace ps2recomp
+         uint8_t fs_reg = inst.rd;
+         uint8_t ft_reg = inst.rt;
+ 
+-        return fmt::format("{{ float fs = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); float ft = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); ctx->vu0_q = (ft != 0.0f) ? (fs / ft) : 0.0f; }}", fs_reg, fs_reg, fsf, ft_reg, ft_reg, ftf);
++        return fmt::format("{{ float fs = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); float ft = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); ctx->vu0_q = ps2_fdiv(fs, ft); }}", fs_reg, fs_reg, fsf, ft_reg, ft_reg, ftf);
+     }
+ 
+     std::string CodeGenerator::translateVU_VSQRT(const Instruction &inst)
+     {
+         uint8_t ftf = inst.vectorInfo.ftf;
+         uint8_t ft_reg = inst.rt;
+-        return fmt::format("{{ float ft = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); ctx->vu0_q = sqrtf(std::max(0.0f, ft)); }}", ft_reg, ft_reg, ftf);
++        return fmt::format("{{ float ft = _mm_cvtss_f32(_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], _MM_SHUFFLE(0,0,0,{}))); ctx->vu0_q = ps2_fsqrt(ft); }}", ft_reg, ft_reg, ftf);
+     }
+ 
+     std::string CodeGenerator::translateVU_VRSQRT(const Instruction &inst)
+@@ -765,7 +765,7 @@ namespace ps2recomp
+ 
+         return fmt::format("{{ __m128 src = ctx->vu0_vf[{}]; "
+                            "src = _mm_mul_ps(src, _mm_set1_ps({})); "
+-                           "__m128i res_i = _mm_cvttps_epi32(src); "
++                           "__m128i res_i = ps2_vftoi(src); "
+                            "__m128 res = _mm_castsi128_ps(res_i); "
+                            "__m128i mask = _mm_set_epi32({}, {}, {}, {}); "
+                            "ctx->vu0_vf[{}] = _mm_blendv_ps(ctx->vu0_vf[{}], res, _mm_castsi128_ps(mask)); }}",
+diff --git a/ps2xRecomp/src/lib/vu_translator.cpp b/ps2xRecomp/src/lib/vu_translator.cpp
+index d0fc95d..412f9ca 100644
+--- a/ps2xRecomp/src/lib/vu_translator.cpp
++++ b/ps2xRecomp/src/lib/vu_translator.cpp
+@@ -263,22 +263,26 @@ namespace ps2recomp
+                 }
+                 case VU0_S2_VCLIPw:
+                 {
+-                    uint8_t field = inst.function & 0x3;
+-                    std::string shuffle_pattern = fmt::format("_MM_SHUFFLE({},{},{},{})", field, field, field, field);
+-
++                    // CLIP as on the VU (same as PCSX2 _vuCLIP and our VU1 interpreter): fs.xyz against |ft.w|,
++                    // bit 0 = +x (x > |w|), bit 1 = -x (x < -|w|), then +y, -y, +z, -z. The compare is done on the
++                    // float bits (sign flipped for the minus side), and a denormal/zero w becomes the largest
++                    // denormal, so only normal values exceed it. The old code swapped + and - and used the signed w:
++                    // with w < 0 (a vertex behind the camera) ScissorTriangle clipped the wrong side (sor-acqua2).
++                    // In the R5900 encoding fs is in rd and ft in rt.
+                     return fmt::format(
+-                        "{{ __m128 fs = ctx->vu0_vf[{}]; "
+-                        "__m128 ft = _mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], {}); "
+-                        "__m128 neg_ft = _mm_xor_ps(ft, _mm_castsi128_ps(_mm_set1_epi32(0x80000000))); "
+-                        "__m128 gt = _mm_cmpgt_ps(fs, ft); "
+-                        "__m128 lt = _mm_cmplt_ps(fs, neg_ft); "
+-                        "uint32_t gt_mask = (uint32_t)_mm_movemask_ps(gt); "
+-                        "uint32_t lt_mask = (uint32_t)_mm_movemask_ps(lt); "
+-                        "uint32_t flags = ((lt_mask & 0x1) << 0) | ((gt_mask & 0x1) << 1) | "
+-                        "((lt_mask & 0x2) << 1) | ((gt_mask & 0x2) << 2) | "
+-                        "((lt_mask & 0x4) << 2) | ((gt_mask & 0x4) << 3); "
+-                        "ctx->vu0_clip_flags = ((ctx->vu0_clip_flags << 6) | (flags & 0x3F)) & 0xFFFFFF; }}",
+-                        inst.rd, inst.rt, inst.rt, shuffle_pattern);
++                        "{{ alignas(16) uint32_t s_[4]; alignas(16) uint32_t t_[4]; "
++                        "_mm_store_si128(reinterpret_cast<__m128i *>(s_), _mm_castps_si128(ctx->vu0_vf[{}])); "
++                        "_mm_store_si128(reinterpret_cast<__m128i *>(t_), _mm_castps_si128(ctx->vu0_vf[{}])); "
++                        "const int32_t lim_ = (t_[3] & 0x7F800000u) != 0u ? static_cast<int32_t>(t_[3] & 0x7FFFFFFFu) : 0x007FFFFF; "
++                        "uint32_t flags = 0u; "
++                        "if (static_cast<int32_t>(s_[0]) > lim_) flags |= 0x01u; "
++                        "if (static_cast<int32_t>(s_[0] ^ 0x80000000u) > lim_) flags |= 0x02u; "
++                        "if (static_cast<int32_t>(s_[1]) > lim_) flags |= 0x04u; "
++                        "if (static_cast<int32_t>(s_[1] ^ 0x80000000u) > lim_) flags |= 0x08u; "
++                        "if (static_cast<int32_t>(s_[2]) > lim_) flags |= 0x10u; "
++                        "if (static_cast<int32_t>(s_[2] ^ 0x80000000u) > lim_) flags |= 0x20u; "
++                        "ctx->vu0_clip_flags = ((ctx->vu0_clip_flags << 6) | flags) & 0xFFFFFFu; }}",
++                        inst.rd, inst.rt);
+                 }
+                 case VU0_S2_VNOP:
+                     return fmt::format("// NOP operation, no action needed for VU0");
+diff --git a/ps2xRuntime/include/ps2_runtime_macros.h b/ps2xRuntime/include/ps2_runtime_macros.h
+index 04e49ff..6a4e3bd 100644
+--- a/ps2xRuntime/include/ps2_runtime_macros.h
++++ b/ps2xRuntime/include/ps2_runtime_macros.h
+@@ -394,6 +394,15 @@ inline __m128 ps2_vmul(__m128 a, __m128 b)
+ #define PS2_VMUL(a, b) ps2_vmul((__m128)(a), (__m128)(b))
+ #define PS2_VDIV(a, b) _mm_div_ps((__m128)(a), (__m128)(b))
+ #define PS2_VMULQ(a, q) _mm_mul_ps((__m128)(a), _mm_set1_ps(q))
++// sor (14/11/2026): VU FTOI saturates: +2^31 and more give 0x7FFFFFFF, as on the PS2 (PCSX2 does the same). SSE
++// gives 0x80000000 there, so a far point (Vu0_rot_trans_pers_NClip: near the camera plane) jumped to the other
++// side of the screen and stretched the polygon (arena 105, the crowd).
++inline __m128i ps2_vftoi(__m128 s)
++{
++    const __m128i r = _mm_cvttps_epi32(s);
++    const __m128i over = _mm_castps_si128(_mm_cmpge_ps(s, _mm_set1_ps(2147483648.0f)));
++    return _mm_xor_si128(r, over);
++}
+ #define PS2_VBLEND(a, b, mask) PS2_BLENDV_PS((__m128)(a), (__m128)(b), (__m128)(mask))
+ 
+ // Memory access helpers - Hybrid Fast/Slow Path
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+index db84a12..6c85547 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp
+@@ -25,6 +25,7 @@ void sorFilmFourThree(); // sor (pc/main_sor.cpp): a film is on, so it stays 4:3
+ // sor (pc/sor_film_hd.cpp): HD replacement films from the mods folder follow the game's own pictures.
+ void sorFilmHdPicture(uint32_t index, long long pts90k, uint32_t filmId);
+ void sorFilmHdStop();
++uint32_t sorFilmNumberAddress(); // sor (pc/sor_film_hd.cpp): where the game keeps its film number (European or American)
+ 
+ #include <atomic>
+ #include <chrono>
+@@ -2723,7 +2724,7 @@ namespace ps2_stubs
+         // sor: the HD replacement film (if the mods folder has one) shows this same moment over the film's band.
+         if (haveFrame)
+             ::sorFilmHdPicture(frameCount, static_cast<long long>(frame.pts90k),
+-                               rdram ? static_cast<uint32_t>(rdram[0x4BE2DAu]) : 0xFFFFFFFFu); // the game's film number
++                               rdram ? static_cast<uint32_t>(rdram[::sorFilmNumberAddress()]) : 0xFFFFFFFFu); // the game's film number
+         else if (movieOver)
+             ::sorFilmHdStop();
+ 
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index 784ce2f..ca25a94 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -1031,6 +1031,11 @@ namespace
+                      c.tex0.tbp0, c.tex0.tbw, c.tex0.psm, st.textureWidth, st.textureHeight, c.tex0.tfx, c.tex0.tcc,
+                      static_cast<unsigned long long>(c.alpha), static_cast<unsigned long long>(c.clamp),
+                      c.scissor.x0, c.scissor.x1, c.scissor.y0, c.scissor.y1, c.xyoffset.ofx >> 4, c.xyoffset.ofy >> 4);
++        // registers that change the pixels but not the triangles (strumenti/acqua2/gsdump.py writes the same for PCSX2)
++        std::fprintf(s_tutti, " texa=%x,%d,%x fba=%llx pabe=%d dthe=%llx colclamp=%llx tex1=%llx fog=%02x%02x%02x",
++                     st.texa.ta0, st.texa.aem ? 1 : 0, st.texa.ta1, static_cast<unsigned long long>(c.fba), st.pabe ? 1 : 0,
++                     static_cast<unsigned long long>(st.dthe), static_cast<unsigned long long>(st.colclamp),
++                     static_cast<unsigned long long>(c.tex1), st.fogR, st.fogG, st.fogB);
+         for (uint32_t i = 0; i < b.vertexCount; ++i)
+         {
+             const GSVertex &p = b.vertices[static_cast<size_t>(i)];
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 429fa2d..60ccf57 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -575,10 +575,31 @@ GSPresentationRequest GS::buildPresentationRequestUnlocked() const
+     return request;
+ }
+ 
++// sor: test remote control "vram" (pc/sor_prove.cpp): at the next vblank the whole GS memory goes to <SOR_FOTO>_vramN.bin,
++// the same moment a PCSX2 GS dump saves as its start state (strumenti/acqua2/vramcmp.py compares the two)
++std::atomic<bool> g_sorVramChiesta{false};
++
+ void GS::sorVblank()
+ {
+     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+     sorGpuMirrorVblank(m_privRegs);
++    if (m_backend && g_sorVramChiesta.exchange(false))
++    {
++        static unsigned s_n = 0;
++        std::vector<uint8_t> mem;
++        m_backend->SnapshotVram(mem); // the band renderer finishes its queue first
++        const char *pre = std::getenv("SOR_FOTO");
++        char nome[300];
++        std::snprintf(nome, sizeof(nome), "%s_vram%u.bin", pre ? pre : "gs", ++s_n);
++        FILE *f = std::fopen(nome, "wb");
++        if (f)
++        {
++            std::fwrite(mem.data(), 1, mem.size(), f);
++            std::fclose(f);
++        }
++        std::printf("[sor] vram: %zu bytes in %s%s\n", mem.size(), nome, f ? "" : " (NOT written)");
++        std::fflush(stdout);
++    }
+     if (m_backend)
+         m_backend->SegnaVblank();
+ }
+diff --git a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+index 41c1408..468626a 100644
+--- a/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_pcsx2_mirror.cpp
+@@ -345,6 +345,10 @@ void sorGpuMirrorImage(uint64_t bitbltbuf, uint64_t trxpos, uint64_t trxreg, uin
+     s_gif(s_buf.data(), static_cast<unsigned>(s_buf.size() / 16));
+ }
+ 
++// Test remote control "gpufoto N" (pc/sor_prove.cpp): the next N frames are saved one after the other as
++// gpu-<frame>.png, so a test saves a few seconds at one spot instead of every frame from the start.
++std::atomic<int> g_sorGpuFotoRaffica{0};
++
+ void sorGpuMirrorVblank(const GSRegisters *priv)
+ {
+     std::lock_guard<std::recursive_mutex> lk(s_lock);
+@@ -436,7 +440,10 @@ void sorGpuMirrorVblank(const GSRegisters *priv)
+     ++s_frames; // the GS window pumps its own messages on its own thread (sor-gs.dll)
+     // test: SOR_GPU_SNAP_EVERY=300 -> gpu-300.png, gpu-600.png... next to sor.exe
+     static const unsigned long long s_every = std::getenv("SOR_GPU_SNAP_EVERY") ? std::strtoull(std::getenv("SOR_GPU_SNAP_EVERY"), nullptr, 10) : 0;
+-    if (s_snap && s_every && s_frames % s_every == 0)
++    const int burst = g_sorGpuFotoRaffica.load(std::memory_order_relaxed);
++    if (burst > 0)
++        g_sorGpuFotoRaffica.fetch_sub(1, std::memory_order_relaxed);
++    if (s_snap && ((s_every && s_frames % s_every == 0) || burst > 0))
+         s_snap((s_dir + "gpu-" + std::to_string(s_frames) + ".png").c_str());
+ }
+ 
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index a115694..aa6bb34 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1705,6 +1705,8 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+ 
+                     int tagsProcessed = 0;
+                     uint32_t lastTagUpper = (chcr >> 16) & 0xFFFFu;
++                    uint32_t sorUltimoId = 99u, sorPrimoTag = tagAddr; // sor: F3 report of the chains (14/11/2026)
++                    bool sorUltimoIrq = false;
+ 
+                     while (tagsProcessed < kMaxChainTags)
+                     {
+@@ -1742,6 +1744,8 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                         uint32_t addr = static_cast<uint32_t>((tag >> 32) & 0x7FFFFFFF);
+                         lastTagUpper = static_cast<uint32_t>((tag >> 16) & 0xFFFFu);
+                         ++tagsProcessed;
++                        sorUltimoId = id;
++                        sorUltimoIrq = irq;
+                         // sor: SOR_DMADUMP=<n> stampa <n> tag DMA dopo SOR_GIFDUMP_DA secondi dall'avvio.
+                         {
+                             static const long s_n = std::getenv("SOR_DMADUMP") ? std::atol(std::getenv("SOR_DMADUMP")) : 0;
+@@ -1837,6 +1841,17 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                             break;
+                     }
+ 
++                    {
++                        // sor: while F3 records (the flicker in area 105, 14/11/2026): every chain, how it ended
++                        extern std::atomic<bool> g_sorGsTuttiChiesto2;
++                        if (g_sorGsTuttiChiesto2.load(std::memory_order_relaxed))
++                        {
++                            std::printf("[sor-catena] ch=%x da %x a %x: %d tag, %zu byte, ultimo id %u irq %d tie %d\n",
++                                        channelBase, sorPrimoTag, tagAddr, tagsProcessed, chainBuf.size(), sorUltimoId,
++                                        sorUltimoIrq ? 1 : 0, tieEnabled ? 1 : 0);
++                            std::fflush(stdout);
++                        }
++                    }
+                     m_ioRegisters[channelBase + 0x30] = tagAddr;
+                     m_ioRegisters[channelBase + 0x40] = asr0;
+                     m_ioRegisters[channelBase + 0x50] = asr1;

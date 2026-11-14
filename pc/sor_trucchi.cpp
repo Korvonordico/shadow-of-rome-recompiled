@@ -46,6 +46,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 
 void sorSaltaFilmati(PS2Runtime &rt); // pc/sor_hle.cpp
 
@@ -69,17 +70,17 @@ namespace
         bool films; // skip the films (no per-frame write)
     };
 
-    const uint32_t kCheatUseFlag = 0x4BE564u; // Global.mCheat_use_flag (classGLOBAL at 0x4BE200, +0x364)
+    const uint32_t kCheatUseFlag = SA(0x4BE564u); // Global.mCheat_use_flag (classGLOBAL at 0x4BE200, +0x364)
     const Write kInvincible[] = {{kCheatUseFlag, 0x800u, 1, true}};
     const Write kWeapons[] = {{kCheatUseFlag, 0x080u, 1, true}};
     const Write kOneHit[] = {{kCheatUseFlag, 0x100u, 1, true}};
-    const Write kSalvo[] = {{0x4FF5C0u, 99999999u, 1, false}};   // Audience.mAud_point
-    const Write kGold[] = {{0x551C00u, 9999u, 4, false}};         // Savedata.mGold[4]
-    const Write kUnlock[] = {{0x551418u, 0xFFFFFFFFu, 1, false}}; // Configdata.mCheat_flag[0]
+    const Write kSalvo[] = {{SA(0x4FF5C0u), 99999999u, 1, false}};   // Audience.mAud_point
+    const Write kGold[] = {{SA(0x551C00u), 9999u, 4, false}};         // Savedata.mGold[4]
+    const Write kUnlock[] = {{SA(0x551418u), 0xFFFFFFFFu, 1, false}}; // Configdata.mCheat_flag[0]
     const Write kAllSalvos[] = {
-        {0x551A54u, 0xFFFFFFFFu, 8, false},   // Configdata.mSalvo_flg
-        {0x551A74u, 0xFFFFFFFFu, 8, false},   // Configdata.mSalvo_new
-        {0x552010u, 0xA70FA70Fu, 126, false}, // Savedata.mSalvo_num[0..251]
+        {SA(0x551A54u), 0xFFFFFFFFu, 8, false},   // Configdata.mSalvo_flg
+        {SA(0x551A74u), 0xFFFFFFFFu, 8, false},   // Configdata.mSalvo_new
+        {SA(0x552010u), 0xA70FA70Fu, 126, false}, // Savedata.mSalvo_num[0..251]
     };
     const Cheat kCheats[] = {
         {"invincible", "health", "0x4BE564 bit 0x800", kInvincible, 1, false},
@@ -92,7 +93,7 @@ namespace
         {"nofilms", "nofmv", "0x1099A8 sceMpegIsEnd: films skipped", nullptr, 0, true},
     };
     const char kKnown[] = "invincible, weapons, onehit, salvo, gold, unlock, allsalvos, nofilms";
-    const uint32_t kPerFrameHook = 0x1E92D0u; // classSYSTEM::wbuf_swap
+    const uint32_t kPerFrameHook = SA(0x1E92D0u); // classSYSTEM::wbuf_swap
 
     std::vector<Write> g_writes; // what is written every frame
     PS2Runtime::RecompiledFunction g_swap = nullptr;

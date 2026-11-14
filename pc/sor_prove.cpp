@@ -30,6 +30,7 @@
 extern std::atomic<uint64_t> g_sorContaPad;     // Stubs/Pad.cpp
 extern std::atomic<uint64_t> g_sorContaPresent; // ps2_runtime.cpp
 extern std::atomic<bool> g_sorFotoSubito;       // ps2_runtime.cpp
+extern std::atomic<int> g_sorGpuFotoRaffica;    // gs_pcsx2_mirror.cpp: "gpufoto N"
 void sorGpuMirrorClose();                       // gs_pcsx2_mirror.cpp
 extern uint64_t g_sorGsTipi[10], g_sorGsTipiUs[10], g_sorTrasferimenti[2], g_sorEeFermoUs, g_sorEeRitmoUs;
 extern uint64_t g_sorBandaAttesa[8], g_sorBandaVuoto[8], g_sorBandaPixel[8];
@@ -48,6 +49,7 @@ void sorProfiloScrivi();
 void sorBlackboxCommand(const char *line);       // sor_blackbox.cpp
 
 extern std::atomic<bool> g_sorGsTuttiChiesto; // gs_bande.cpp
+extern std::atomic<bool> g_sorVramChiesta;     // gs_frontend.cpp: "vram" = the whole GS memory at the next vblank
 namespace
 {
     struct Tasto
@@ -60,7 +62,12 @@ namespace
         {"su", 265}, {"giu", 264}, {"sx", 263}, {"dx", 262}, {"w", 87}, {"a", 65}, {"s", 83}, {"d", 68},
         {"i", 73}, {"j", 74}, {"k", 75}, {"l", 76}, {"x", 88}, {"spazio", 32}, {"c", 67}, {"esc", 256},
         {"z", 90}, {"v", 86}, {"q", 81}, {"e", 69}, {"lshift", 340}, {"rshift", 344},
-        {"invio", 257}, {"tab", 258}, {"f", 70}, {"o", 79}};
+        {"invio", 257}, {"tab", 258}, {"f", 70}, {"o", 79},
+        // the debug tools' keys (F4/F5 quick save, F7 wireframe, F8 free camera...), for testing them hidden
+        {"f1", 290}, {"f2", 291}, {"f3", 292}, {"f4", 293}, {"f5", 294}, {"f6", 295}, {"f7", 296}, {"f8", 297},
+        {"f9", 298}, {"f10", 299}, {"f11", 300}, {"f12", 301},
+        // digits: the free camera's points 1..9 (pc/sor_camera.cpp), so a hidden test can look from a saved view
+        {"1", 49}, {"2", 50}, {"3", 51}, {"4", 52}, {"5", 53}, {"6", 54}, {"7", 55}, {"8", 56}, {"9", 57}};
 
     PS2Runtime *g_rt = nullptr;
     std::atomic<bool> g_telecomando{false};
@@ -149,9 +156,24 @@ namespace
                 {
                     g_sorFotoSubito.store(true);
                 }
+                else if (campi >= 1 && !std::strcmp(cmd, "gpufoto"))
+                {
+                    // gpufoto <n>: the next n frames of the GPU graphics, one after the other (at most 600)
+                    int n = 60;
+                    std::sscanf(riga.c_str(), "%*s %d", &n);
+                    n = std::max(0, std::min(n, 600));
+                    g_sorGpuFotoRaffica.store(n);
+                    std::printf("[sor] telecomando: gpufoto %d\n", n);
+                    std::fflush(stdout);
+                }
                 else if (campi >= 1 && !std::strcmp(cmd, "gstutti"))
                 {
                     g_sorGsTuttiChiesto.store(true);
+                }
+                else if (campi >= 1 && !std::strcmp(cmd, "vram"))
+                {
+                    // the 4 MB of GS memory at the end of a frame, to compare with the start state of a PCSX2 GS dump
+                    g_sorVramChiesta.store(true);
                 }
                 else if (campi >= 1 && !std::strcmp(cmd, "prof0"))
                 {

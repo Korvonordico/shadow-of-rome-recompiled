@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Disassembla un modulo IOP (.IRX) con i nomi delle funzioni importate.
-Usa il disassemblatore di rogue-galaxy-recomp (tools/mipsdis.py, non incluso qui): la
-variabile RG_TOOLS dice dov'e' la sua cartella tools. Indirizzi relativi all'inizio del
-modulo (come nel registro: base+offset).
+Usa il disassemblatore di rogue-galaxy-recomp (~/sor/rogue-galaxy-recomp/tools/mipsdis.py,
+solo letto). Indirizzi relativi all'inizio del modulo (come nel registro: base+offset).
 Uso: python3 irx_dis.py FILE.IRX [INIZIO FINE]   (senza intervallo: entry e importazioni)
      python3 irx_dis.py FILE.IRX stringhe          (stringhe con il loro indirizzo)
 """
 import os, sys, struct
-sys.path.insert(0, os.environ.get("RG_TOOLS", "."))
+sys.path.insert(0, os.path.expanduser("~/sor/rogue-galaxy-recomp/tools"))
 import mipsdis
 
 NOMI = {

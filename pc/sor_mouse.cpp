@@ -78,6 +78,7 @@
 // Log: in "[sor] keys:" (sor_tasti.cpp) the mouse inputs used; "[sor] mouse: first MOUSE_LEFT press passed to the game".
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
+#include "sor_indirizzi.h" // SA(): the game's addresses, European or American build
 #include "raylib.h"
 
 #include <algorithm>
@@ -109,15 +110,15 @@ namespace
     uint8_t *g_rdram = nullptr;  // the game's memory (for the dead zone and the direct camera)
 
     // Direct mouse camera (see the top of the file)
-    const uint32_t kCtrlMove = 0x269450u;      // classCAMERA_CTRL::move(this)
-    const uint32_t kCamCtrl = 0x523230u;       // classCAMERA_CTRL Camera_ctrl
-    const uint32_t kCamera = 0x4C8B40u;        // classCAMERA Camera
+    const uint32_t kCtrlMove = SA(0x269450u);      // classCAMERA_CTRL::move(this)
+    const uint32_t kCamCtrl = SA(0x523230u);       // classCAMERA_CTRL Camera_ctrl
+    const uint32_t kCamera = SA(0x4C8B40u);        // classCAMERA Camera
     const uint32_t kPitch = kCamera + 0x20u;   // Camera.mDir_x (sshort)
     const uint32_t kYaw = kCamera + 0x22u;     // Camera.mDir_y (sshort)
-    const uint32_t kStopFlg0 = 0x4EA170u;      // System.mStop_flg[0]
+    const uint32_t kStopFlg0 = SA(0x4EA170u);      // System.mStop_flg[0]
     const uint32_t kCamCtrlStop = 0x08000000u; // the bit classCAMERA_CTRL::move tests to stand still
-    const uint32_t kWorldScreen = 0x4D3930u;   // FMATRIX world -> screen
-    const uint32_t kArea = 0x4BE2E8u, kScene = 0x4BE2E0u; // Global.Area_no, Global.Scene_no (ushort)
+    const uint32_t kWorldScreen = SA(0x4D3930u);   // FMATRIX world -> screen
+    const uint32_t kArea = SA(0x4BE2E8u), kScene = SA(0x4BE2E0u); // Global.Area_no, Global.Scene_no (ushort)
     const uint8_t kNormalType = 6;             // mCtrl_type of the normal camera (move_type07)
     // mCtrl_type 0x0A = move_type16 (0x262020), the camera while crouching (L2): free_move's table 0x49FEE0 entry 0x0A
     // -> 0x2681A0 -> jal 0x262020. Same angles as move_type07: yaw read from Camera.mDir_y into +0xFE, turned by
@@ -352,7 +353,7 @@ namespace
     {
         if (!g_rdram)
             return 0;
-        const uint32_t base = 0x4BC400u;
+        const uint32_t base = SA(0x4BC400u);
         const uint32_t idx = rd32(base + 0xF24u);
         if (idx > 7u)
             return 0;

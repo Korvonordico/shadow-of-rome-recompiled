@@ -66,6 +66,7 @@ add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_S
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_mouse.cpp"    # mouse look (launcher: CONTROLS > MOUSE LOOK), the pointer, the picture after Alt+Tab
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_film_hd.cpp"  # HD replacement films from the mods folder (a mod: no film is shipped)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_trucchi.cpp"  # debug cheats, only with SOR_CHEATS (the launcher's hidden DEBUG page)
+    "${CMAKE_CURRENT_SOURCE_DIR}/sor_salvarapido.cpp" # debug quick save F5/F4, only with quicksave.on
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_camera.cpp"   # debug free camera, only with SOR_FREECAM=1 (same page)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_vignetta.cpp"   # screen veil off, only with SOR_NO_VIGNETTE=1 (GRAPHICS page, VIGNETTE)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_vu1.cpp"        # SOR_VU1: PCSX2's microVU from sor-vu.dll (loaded at run time), or both VU1s compared
@@ -89,4 +90,14 @@ if(PS2X_ENABLE_DEBUG_UI AND TARGET rlImGui)
     target_link_libraries(sor PRIVATE rlImGui imgui)
     target_compile_definitions(sor PRIVATE PS2X_ENABLE_DEBUG_UI=1)
 endif()
-target_link_options(sor PRIVATE -static -Wl,--allow-multiple-definition -Wl,-Map=sor.map)
+# The American disc (SLUS_209.02, built from its own translation; its build script is not in this repository yet): the port's
+# code takes the American addresses (SA() in pc/sor_indirizzi.h, table pc/sor_indirizzi_usa.h made by
+# strumenti/rimappa_usa.py) and the program is sor-usa.exe. OFF: the European sor.exe, as before.
+option(SOR_REGION_USA "Build sor-usa.exe for the American executable SLUS_209.02" OFF)
+set(SOR_EXE_NAME sor)
+if(SOR_REGION_USA)
+    set(SOR_EXE_NAME sor-usa)
+    target_compile_definitions(sor PRIVATE SOR_REGION_USA=1)
+    set_target_properties(sor PROPERTIES OUTPUT_NAME sor-usa)
+endif()
+target_link_options(sor PRIVATE -static -Wl,--allow-multiple-definition -Wl,-Map=${SOR_EXE_NAME}.map)
