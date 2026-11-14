@@ -51,6 +51,32 @@ If someone is already working on a port of this game, or is further ahead, pleas
 </p>
 <p align="center">The same first arena, played twice: the original PlayStation 2 game on the left, the PC port on the right. Click the picture to watch it on YouTube.</p>
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the streets of Rome, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
+</p>
+<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
+
+New pictures from 2.9.3, drawn by the video card at 4x in 16:9, with VIGNETTE off and UPSCALE FIX on SPECIAL + NATIVE:
+
+<p align="center">
+  <img src="docs/shot-1.jpg" width="49%" alt="The title screen">
+  <img src="docs/shot-2.jpg" width="49%" alt="Playing in the streets of Rome">
+</p>
+<p align="center">
+  <img src="docs/shot-3.jpg" width="49%" alt="A fight in the high arena">
+  <img src="docs/shot-4.jpg" width="49%" alt="Inside the Roman camp">
+</p>
+<p align="center">
+  <img src="docs/shot-5.jpg" width="49%" alt="The wooden fort">
+  <img src="docs/shot-6.jpg" width="49%" alt="By the river">
+</p>
+<p align="center">
+  <img src="docs/shot-7.jpg" width="49%" alt="In a cave, by a torch">
+  <img src="docs/shot-8.jpg" width="49%" alt="The Germanian Forest at night">
+</p>
+
 ## What's new in 2.9.3
 
 - **Chapters 1 and 2 played by hand from start to end, without any problem.** The game is still being tested: if you find a problem, please report it in the [issues](../../issues).
@@ -112,32 +138,6 @@ Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666), thanks! Everyt
 - **The OSD now shows** the frames a second and the video card's statistics (it never did, 2.5 included).
 
 All the details: [CHANGELOG](CHANGELOG.md).
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the streets of Rome, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
-</p>
-<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
-
-New pictures from 2.9.3, drawn by the video card at 4x in 16:9, with VIGNETTE off and UPSCALE FIX on SPECIAL + NATIVE:
-
-<p align="center">
-  <img src="docs/shot-1.jpg" width="49%" alt="The title screen">
-  <img src="docs/shot-2.jpg" width="49%" alt="Playing in the streets of Rome">
-</p>
-<p align="center">
-  <img src="docs/shot-3.jpg" width="49%" alt="A fight in the high arena">
-  <img src="docs/shot-4.jpg" width="49%" alt="Inside the Roman camp">
-</p>
-<p align="center">
-  <img src="docs/shot-5.jpg" width="49%" alt="The wooden fort">
-  <img src="docs/shot-6.jpg" width="49%" alt="By the river">
-</p>
-<p align="center">
-  <img src="docs/shot-7.jpg" width="49%" alt="In a cave, by a torch">
-  <img src="docs/shot-8.jpg" width="49%" alt="The Germanian Forest at night">
-</p>
 
 ## The launcher
 
