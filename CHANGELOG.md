@@ -2,6 +2,16 @@
 
 Version numbers count the big steps of the port.
 
+## 2.9.3 (14 November 2026)
+
+- **The American disc works** (NTSC, SLUS-20902): `sor-usa.exe`, chosen by the launcher from the disc.
+- **Fixed: the water in the Germanian Forest** (the VU0 instruction `vclipw` now works as on the PS2).
+- **Fixed: huge, stretched people in the high arena's crowd** (three VU0 instructions now give the PS2's numbers).
+- Sharper water with UPSCALE FIX; VIGNETTE OFF also removes the near fog, the depth of field, the caves' soft copy and the streets' blur; new UPSCALE FIX choice SPECIAL + NATIVE; OSD sharp with ReShade on; the author's ReShade preset and launcher settings are the defaults.
+- New standard keys (D-pad on 1 2 3 4 and the arrow keys); the keys 1 to 9 can be given to actions; the free camera's points 1 to 9 only work with the free camera (F8).
+- The launcher shows what is happening while the game starts; its sounds and falling ash are two buttons at its bottom left.
+- Chapters 1 and 2 played by hand to the end. README: new pictures, supported discs, the American flag.
+
 ## 2.9.2 (12 November 2026)
 
 - **Fixed: with Vulkan, ReShade started even with RESHADE off.** A ReShade installed with its own setup for Vulkan games starts in every Vulkan program that has a `ReShade.ini` next to it, and the package has one. Now RESHADE off turns it off for this game too. Thanks to [@n0l4n666](https://github.com/n0l4n666), who saw it. Tested with that kind of ReShade added by hand: with 2.9.1 it started with RESHADE off, with 2.9.2 it does not, and with RESHADE on it still starts.

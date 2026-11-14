@@ -29,15 +29,15 @@ using System.Windows.Forms;
 
 class Launcher : Form
 {
-    const string Version = "2.9.2";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.9.3";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
     int sel = 0, hover = -1;
     string message = "";
     int page = 0;                      // 0: the main menu, 1: graphics, 2: options, 3: mods, 4: controls, 5: debug (hidden, Ctrl+D)
-    static readonly string[] OItems = { "DISPLAY", "BGM VOLUME", "SE VOLUME", "MENU SOUNDS", "SMOOTH AUDIO", "BACKGROUND", "UPDATES", "DEBUG", "SPEED TESTS", "APPLY", "BACK" };
-    static readonly string[] OLatin = { "SPECTACVLVM", "CANTVS", "SONITVS", "STREPITVS", "LENITAS", "CINIS", "NOVA", "INSPECTIO", "PROBATIO", "CONFIRMA", "REDI" };
+    static readonly string[] OItems = { "DISPLAY", "BGM VOLUME", "SE VOLUME", "SMOOTH AUDIO", "UPDATES", "DEBUG", "SPEED TESTS", "APPLY", "BACK" };
+    static readonly string[] OLatin = { "SPECTACVLVM", "CANTVS", "SONITVS", "LENITAS", "NOVA", "INSPECTIO", "PROBATIO", "CONFIRMA", "REDI" };
     static readonly string[] MItems = { "TEXTURE MODS", "RESHADE", "SAVE TEXTURES", "MODS FOLDER", "APPLY", "BACK" };
     static readonly string[] MLatin = { "MVTATIONES", "COLORES", "IMAGINES", "APERI", "CONFIRMA", "REDI" };
     // page 7, SPEED TESTS (OPTIONS > SPEED TESTS, 10/11/2026): the VU1 engine (SOR_VU1) and the time measure (SOR_TEMPI)
@@ -63,7 +63,7 @@ class Launcher : Form
     static readonly string[] MapItems = { "CROSS", "CIRCLE", "SQUARE", "TRIANGLE", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SELECT", "UP", "DOWN", "LEFT", "RIGHT", "MOVE UP", "MOVE DOWN", "MOVE LEFT", "MOVE RIGHT", "LOOK UP", "LOOK DOWN", "LOOK LEFT", "LOOK RIGHT" };
     static readonly string[] MapLatin = { "CRVX", "CIRCVLVS", "QVADRATVM", "TRIANGVLVM", "LAEVA I", "DEXTRA I", "LAEVA II", "DEXTRA II", "LAEVA III", "DEXTRA III", "INITIVM", "ELECTIO", "SVRSVM", "DEORSVM", "SINISTRORSVM", "DEXTRORSVM", "GRADVS", "GRADVS", "GRADVS", "GRADVS", "ASPECTVS", "ASPECTVS", "ASPECTVS", "ASPECTVS" };
     // the keys the game always had (pc/sor_tasti.cpp, kAzioni): with nothing saved the game is exactly as before
-    static readonly string[] KeyDefaults = { "MOUSE_LEFT", "E", "Q", "F", "LEFT_CONTROL", "MOUSE_RIGHT", "C", "G", "KP_8", "KP_9", "ESCAPE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "W", "S", "A", "D", "I", "K", "J", "L" };
+    static readonly string[] KeyDefaults = { "MOUSE_LEFT", "E", "MOUSE_RIGHT", "F", "LEFT_SHIFT", "Q", "C", "SPACE", "V", "X", "ESCAPE", "TAB", "1,UP", "2,DOWN", "3,LEFT", "4,RIGHT", "W", "S", "A", "D", "I", "K", "J", "L" }; // the author's layout of 14/11 (pc/sor_tasti.cpp kAzioni: keep equal)
     // the controller's buttons, in MapNames' order: this order is also the standard mapping
     static readonly string[] PadNames = { "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "LS", "RS", "START", "BACK", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT" };
     static readonly string[] PadLabels = { "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "L STICK", "R STICK", "START", "BACK", "D-PAD UP", "D-PAD DOWN", "D-PAD LEFT", "D-PAD RIGHT" };
@@ -157,7 +157,8 @@ class Launcher : Form
         if (n == "F9") return "F9 IS THE BLACK BOX  ·  PRESS ANOTHER KEY";
         if (n == "F11") return "F11 IS FULL SCREEN  ·  PRESS ANOTHER KEY";
         if (n == "F12") return "F12 IS THE ENGINE PANEL  ·  PRESS ANOTHER KEY";
-        if (n.Length == 1 && n[0] >= '1' && n[0] <= '9') return "1 TO 9 ARE THE FREE CAMERA'S POINTS  ·  PRESS ANOTHER KEY";
+        // 1 to 9 (top row and keypad) are free for the player since 14/11: the free camera's points use them only
+        // while the free camera is on (F8).
         if (n == "LEFT_ALT" || n == "RIGHT_ALT") return "ALT STAYS FREE FOR ALT+ENTER (FULL SCREEN)  ·  PRESS ANOTHER KEY";
         if (n == "LEFT_SUPER" || n == "RIGHT_SUPER") return "THE WINDOWS KEY OPENS THE START MENU  ·  PRESS ANOTHER KEY";
         if (n == "CAPS_LOCK" || n == "NUM_LOCK" || n == "PAUSE" || n == "PRINT_SCREEN") return "THE GAME CANNOT HOLD THIS KEY DOWN  ·  PRESS ANOTHER KEY";
@@ -600,15 +601,18 @@ class Launcher : Form
     int SavedVu1 { get { string v = ReadIni("vu1engine"); return v == "nostro" ? 0 : v == "confronto" ? 2 : 1; } }   // SPEED TESTS > VU1 ENGINE: PCSX2 unless vu1engine=nostro|confronto (the author, 10/11 15:01: same pictures, 2.7x faster)
     // SPEED TESTS > UPSCALE FIX (10/11/2026, the soft double outline seen at 8x): PCSX2's half pixel offset and native
     // scaling, passed as SORGS_HALFPIXEL / SORGS_NATIVESCALING. 0 = as now (PCSX2's fixes for this game: 5 and 2).
-    static readonly string[] UpNames = { "SPECIAL", "OFF", "NORMAL", "PCSX2'S OLD FIX", "SPECIAL AGGRESSIVE", "NATIVE, NO SCALING", "NATIVE + TEXTURE" };
-    static readonly string[] UpHp = { "", "0", "1", "5", "3", "5", "4" };
-    static readonly string[] UpNs = { "", "0", "0", "2", "0", "0", "2" };
+    static readonly string[] UpNames = { "SPECIAL", "OFF", "NORMAL", "PCSX2'S OLD FIX", "SPECIAL AGGRESSIVE", "NATIVE, NO SCALING", "NATIVE + TEXTURE", "NATIVE + ROUND SPRITE", "NATIVE + MERGE SPRITE", "NATIVE + SHARP BILINEAR", "NATIVE + ALL THREE", "SPECIAL + NATIVE" };
+    static readonly string[] UpHp = { "", "0", "1", "5", "3", "5", "4", "4", "4", "4", "4", "2" }; // 14/11: SPECIAL + NATIVE = half pixel 2 (no far double outline) with native scaling 2 (torch glows in place)
+    static readonly string[] UpRs = { "", "", "", "", "", "", "", "2", "", "", "2", "" }; // SORGS_ROUNDSPRITE
+    static readonly string[] UpMs = { "", "", "", "", "", "", "", "", "1", "", "1", "" }; // SORGS_MERGESPRITE
+    static readonly string[] UpBl = { "", "", "", "", "", "", "", "", "", "2", "2", "" }; // SORGS_BILINEAR
+    static readonly string[] UpNs = { "", "0", "0", "2", "0", "0", "2", "2", "2", "2", "2", "2" };
     int upFix;
-    int SavedUpFix { get { int v; return int.TryParse(ReadIni("upscalefix"), out v) && v >= 0 && v < UpNames.Length ? v : 0; } }
+    int SavedUpFix { get { int v; return int.TryParse(ReadIni("upscalefix"), out v) && v >= 0 && v < UpNames.Length ? v : 6; } } // NATIVE + TEXTURE when not saved: glows and lights stay in place (13/11)
     bool SavedTimings { get { return ReadIni("timings") == "1"; } }   // SPEED TESTS > TIMINGS: off unless timings=1
     bool liveSnd = true, liveAsh = true;   // what the launcher itself uses now
-    bool UseSnd { get { return page == 2 ? menuSnd : liveSnd; } }
-    bool UseAsh { get { return page == 2 ? ashOn : liveAsh; } }
+    bool UseSnd { get { return liveSnd; } }
+    bool UseAsh { get { return liveAsh; } }
     int toggleDir = 1;
     readonly Rectangle[] valueRects = new Rectangle[12];
     bool full; bool mods = true;       // options: full screen; mods: replacement textures used
@@ -690,6 +694,7 @@ class Launcher : Form
         MouseUp += (s, e) => { eatClick = false; };   // after MouseClick (WinForms raises MouseClick first)
         MouseLeave += (s, e) => { if (titleHover >= 0) { titleHover = -1; Invalidate(); } };
         MouseMove += (s, e) => { int tb = TitleButton(e.Location); if (tb != titleHover) { titleHover = tb; Invalidate(); } };
+        MouseMove += (s, e) => { int sw = SwitchAt(e.Location); if (sw != switchHover) { switchHover = sw; Cursor = sw >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); } };
         MouseMove += (s, e) => { int h = Hit(e.Location); if (h != hover) { hover = h; if (h >= 0 && capture < 0) sel = h; Invalidate(); } };
         MouseWheel += (s, e) => { if (WheelAssigns(e)) return; if (page == 6 && capture < 0) MapScroll(e.Delta > 0 ? -1 : 1); };   // a waiting KEYBOARD row takes the notch; else the key mapping's list scrolls
         var padTimer = new Timer { Interval = 30 };   // the controller is read only while a mapping row waits for a button
@@ -701,6 +706,13 @@ class Launcher : Form
             int tb = TitleButton(e.Location);
             if (tb == 0) { WindowState = FormWindowState.Minimized; return; }
             if (tb == 1) { Close(); return; }
+            int sw = SwitchAt(e.Location);
+            if (sw >= 0)
+            {
+                if (sw == 0) { liveSnd = !liveSnd; WriteIni("menu_sounds", liveSnd ? "1" : "0"); }
+                else { liveAsh = !liveAsh; WriteIni("background", liveAsh ? "1" : "0"); }
+                Invalidate(); return;
+            }
             int h = Hit(e.Location);
             if (h < 0) return;
             if (page == 1) ChooseGraphics(h, e.Button == MouseButtons.Right ? -1 : 1);   // right click: the value before
@@ -765,7 +777,7 @@ class Launcher : Form
     // loads ReShade64.dll itself (DirectX 11 and 12 only). An old copy dxgi.dll is still removed here, and sor.exe
     // removes it as well. Its settings: ReShade.ini; the player's preset: ShadowOfRome.ini (shareable).
     bool reshade;
-    // MODS > SAVE TEXTURES (11/11/2026): every texture the game uses is saved as a PNG in textures\SLES-52950\dumps (named
+    // MODS > SAVE TEXTURES (11/11/2026): every texture the game uses is saved as a PNG in textures\<serial>\dumps (named
     // by its hash, as in PCSX2), so a mod maker can redo it and put it in a pack folder under replacements. Off by default:
     // saving slows the game down.
     bool texDump;
@@ -781,14 +793,14 @@ class Launcher : Form
         { "world", "Arenas, streets, walls, floors, buildings, trees, sky." },
         { "effects", "Blood, fire, sparks, smoke, dust, glows." },
     };
-    // Sorting the saved textures (11/11/2026): the dumps are hundreds of PNGs named by a hash. textures\SLES-52950\
+    // Sorting the saved textures (11/11/2026): the dumps are hundreds of PNGs named by a hash. textures\<serial>\
     // texture-list.tsv (kind <tab> file name, made by looking at them) tells what each one is; MODS FOLDER copies every
     // dump into dumps-sorted\<kind>\ (hud, menus, fonts, characters, weapons, world, effects, other), the ones not in
     // the list into dumps-sorted\to-sort\. Copies, not moves: PCSX2 saves a texture again when its dump is missing.
     // Returns how many were copied now.
     int SortDumps()
     {
-        string tex = Path.Combine(dir, @"textures\SLES-52950"), dumps = Path.Combine(tex, "dumps");
+        string tex = TexDir, dumps = Path.Combine(tex, "dumps");
         if (!Directory.Exists(dumps)) return 0;
         var kinds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string list = Path.Combine(tex, "texture-list.tsv");
@@ -832,8 +844,8 @@ class Launcher : Form
             "If the same texture is in two packs, only one of them is used: keep each texture in one pack.\r\n" +
             "\r\n" +
             "To get the game's textures: launcher, MODS, SAVE TEXTURES ON, then play. Every texture seen on screen\r\n" +
-            "is saved in textures\\SLES-52950\\dumps. Open this MODS FOLDER from the launcher again and they are\r\n" +
-            "copied, sorted by kind, into textures\\SLES-52950\\dumps-sorted (hud, menus, fonts, characters, weapons,\r\n" +
+            "is saved in textures\\" + Serial + "\\dumps. Open this MODS FOLDER from the launcher again and they are\r\n" +
+            "copied, sorted by kind, into textures\\" + Serial + "\\dumps-sorted (hud, menus, fonts, characters, weapons,\r\n" +
             "world, effects; to-sort for the ones not known yet). Copy the one you want into the pack of the same kind,\r\n" +
             "draw over it (any size, PNG), keep its name.\r\n" +
             "Turn SAVE TEXTURES off again to play: it slows the game down.\r\n" +
@@ -873,7 +885,7 @@ class Launcher : Form
     string ToggleLabel(int t) { if (t <= 0) return "OFF"; string k = SavedKey(t - 1); return ToggleNames[t] + (k == "" || k == "NONE" ? "" : " \u00B7 " + KeysLabel(k)); }
     bool SavedInvY { get { return ReadIni("invert_y") == "1"; } }
     bool SavedInvX { get { return ReadIni("invert_x") == "1"; } }
-    string ModsDir { get { return Path.Combine(dir, @"textures\SLES-52950\replacements"); } }
+    string ModsDir { get { return Path.Combine(TexDir, "replacements"); } }   // textures\<serial of the disc played last>
     // What the MODS FOLDER holds: texture files (anywhere but movies\) and HD films (movies\film-<sector>.mp4, which
     // sor.exe plays in place of the game's own films: pc/sor_film_hd.cpp). Counted at most once a second.
     int modTextures, modFilms;
@@ -923,7 +935,7 @@ class Launcher : Form
 
     void OpenSpeed() { page = 7; vu1Eng = SavedVu1; timings = SavedTimings; upFix = SavedUpFix; sel = 0; hover = -1; message = ""; Invalidate(); }
 
-    void Back(string why) { if (page == 7) { page = 0; Choose(Array.IndexOf(Items, "OPTIONS")); sel = 8; message = why; Invalidate(); return; } if (page == 5 && debugFromOptions) { debugFromOptions = false; page = 0; Choose(Array.IndexOf(Items, "OPTIONS")); sel = 7; message = why; Invalidate(); return; } sel = page == 2 ? 1 : page == 3 ? 4 : page == 4 ? 3 : page == 5 ? 0 : 2; page = 0; hover = -1; message = why; Invalidate(); }
+    void Back(string why) { if (page == 7) { page = 0; Choose(Array.IndexOf(Items, "OPTIONS")); sel = 6; message = why; Invalidate(); return; } if (page == 5 && debugFromOptions) { debugFromOptions = false; page = 0; Choose(Array.IndexOf(Items, "OPTIONS")); sel = 5; message = why; Invalidate(); return; } sel = page == 2 ? 1 : page == 3 ? 4 : page == 4 ? 3 : page == 5 ? 0 : 2; page = 0; hover = -1; message = why; Invalidate(); }
 
     // ---- updates (OPTIONS): asks GitHub for the latest release; if newer, a second Enter opens its page.
     // Nothing is downloaded or replaced by the launcher (the author, 9/11: the light way first, antivirus-safe).
@@ -973,12 +985,12 @@ class Launcher : Form
     }
 
     // ---- options and mods: one value, then APPLY and BACK (mods: also the folder) ----
-    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || menuSnd != SavedMenuSnd || ashOn != SavedAsh || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade || texDump != SavedTexDump; } }
-    int ApplyRow { get { return page == 2 ? 9 : page == 7 ? 3 : page == 3 ? 4 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
-    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 5 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 2 : i == 0; }
+    bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade || texDump != SavedTexDump; } }
+    int ApplyRow { get { return page == 2 ? 7 : page == 7 ? 3 : page == 3 ? 4 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
+    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 3 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 2 : i == 0; }
     void Toggle(int i)
     {
-        if (page == 2) { if (i == 0) full = !full; else if (i == 1) bgmVol = (bgmVol + toggleDir + 11) % 11; else if (i == 2) seVol = (seVol + toggleDir + 11) % 11; else if (i == 3) menuSnd = !menuSnd; else if (i == 4) smooth = !smooth; else ashOn = !ashOn; }
+        if (page == 2) { if (i == 0) full = !full; else if (i == 1) bgmVol = (bgmVol + toggleDir + 11) % 11; else if (i == 2) seVol = (seVol + toggleDir + 11) % 11; else smooth = !smooth; }
         else if (page == 3) { if (i == 0) mods = !mods; else if (i == 1) reshade = !reshade; else texDump = !texDump; }
         else if (page == 7) { if (i == 0) vu1Eng = (vu1Eng + toggleDir + 3) % 3; else if (i == 1) timings = !timings; else upFix = (upFix + toggleDir + UpNames.Length) % UpNames.Length; }
         else if (page == 5) dbg[i] = !dbg[i];
@@ -1002,13 +1014,13 @@ class Launcher : Form
             armed = -1; Toggle(i); message = page == 5 ? DebugWarning : ""; Invalidate(); return;
         }
         if (page == 4 && i <= 1) { OpenMap(i == 1); return; }   // KEYBOARD, CONTROLLER: the mapping page
-        if (page == 2 && i == 6) { CheckUpdates(); return; }
-        if (page == 2 && i == 7)
+        if (page == 2 && i == 4) { CheckUpdates(); return; }
+        if (page == 2 && i == 5)
         {
             if (SmallChanged) { message = "OPTIONS NOT SAVED YET  ·  APPLY OR GO BACK FIRST"; Invalidate(); return; }
             OpenDebug(); debugFromOptions = true; return;
         }
-        if (page == 2 && i == 8)
+        if (page == 2 && i == 6)
         {
             if (SmallChanged) { message = "OPTIONS NOT SAVED YET  \u00B7  APPLY OR GO BACK FIRST"; Invalidate(); return; }
             OpenSpeed(); return;
@@ -1019,13 +1031,13 @@ class Launcher : Form
             {
                 // the folders per kind and the sorting stay private until they are complete (the author, 11/11/2026):
                 // they run only where the private texture-list.tsv is, which the package does not ship
-                bool sorting = File.Exists(Path.Combine(dir, "textures", "SLES-52950", "texture-list.tsv"));
+                bool sorting = File.Exists(Path.Combine(TexDir, "texture-list.tsv"));
                 int sorted = 0;
                 if (sorting) { MakePackFolders(); sorted = SortDumps(); } else Directory.CreateDirectory(ModsDir);
                 Process.Start("explorer.exe", "\"" + ModsDir + "\"");
                 message = sorted > 0 ? sorted + " SAVED TEXTURES SORTED BY KIND  ·  IN dumps-sorted"
                         : sorting ? "ONE FOLDER PER PACK  ·  A NAME STARTING WITH _ TURNS IT OFF"
-                        : "PUT PCSX2 TEXTURE PACKS FOR SLES-52950 HERE";
+                        : "PUT PCSX2 TEXTURE PACKS FOR " + Serial + " HERE";
             }
             catch (Exception) { message = "COULD NOT OPEN THE MODS FOLDER  ·  THE FOLDER MAY BE READ-ONLY: MOVE THE GAME TO DOCUMENTS"; }
             Invalidate(); return;
@@ -1034,7 +1046,7 @@ class Launcher : Form
         {
             try
             {
-                if (page == 2) { WriteIni("display", full ? "fullscreen" : "window"); WriteGameVols(bgmVol, seVol); WriteIni("menu_sounds", menuSnd ? "1" : "0"); WriteIni("background", ashOn ? "1" : "0"); WriteIni("smoothaudio", smooth ? "1" : "0"); liveSnd = menuSnd; liveAsh = ashOn; }
+                if (page == 2) { WriteIni("display", full ? "fullscreen" : "window"); WriteGameVols(bgmVol, seVol); WriteIni("smoothaudio", smooth ? "1" : "0"); }
                 else if (page == 7) { WriteIni("vu1engine", vu1Eng == 1 ? "pcsx2" : vu1Eng == 2 ? "confronto" : "nostro"); WriteIni("timings", timings ? "1" : "0"); WriteIni("upscalefix", upFix.ToString()); }
                 else if (page == 3) { WriteIni("mods", mods ? "1" : "0"); WriteIni("reshade", reshade ? "1" : "0"); WriteIni("texdump", texDump ? "1" : "0"); RemoveOldReshadeCopy(); }
                 else if (page == 5) { for (int k = 0; k < DKeys.Length; k++) WriteIni(DKeys[k], dbg[k] ? "1" : "0"); }
@@ -1073,7 +1085,7 @@ class Launcher : Form
         if (page == 5 && i == DPanel) return "F12 IN THE GAME WINDOW";
         if (page == 7 && i == 0) return vu1Eng == 1 ? "PCSX2'S VU1  \u00B7  NEEDS AVX2" : vu1Eng == 2 ? "BOTH, COMPARED IN THE LOG  \u00B7  SLOW" : "OURS, THE OLD ONE";
         if (page == 7 && i == 1) return timings ? "VU1 AND VIF TIMES IN THE LOG" : "NO TIME MEASURE";
-        if (page == 7 && i == 2) return upFix == 0 ? "THE DEFAULT: SHARP, NO DOUBLE OUTLINES" : "A TEST: LOOK AT EDGES AND TREES";
+        if (page == 7 && i == 2) return upFix == 6 ? "THE DEFAULT: LIGHTS AND GLOWS IN PLACE" : upFix == 0 ? "SHARPEST EDGES, GLOWS CAN SHIFT" : "A TEST: LOOK AT EDGES AND TREES";
         if (page == 4 && i == 0) return keysChanged == 0 ? "THE STANDARD KEYS" : keysChanged == 1 ? "1 KEY CHANGED" : keysChanged + " KEYS CHANGED";
         if (page == 4 && i == 1) return padChanged == 0 ? "THE STANDARD BUTTONS" : padChanged == 1 ? "1 BUTTON CHANGED" : padChanged + " BUTTONS CHANGED";
         if (page == 4 && i == 2) return swap ? "CROSS AND CIRCLE CHANGE PLACES" : "CROSS AND CIRCLE AS ON THE PS2";
@@ -1085,12 +1097,10 @@ class Launcher : Form
         if (i == 0 && page == 2) return "F11 SWITCHES WHILE PLAYING";
         if (i == 1 && page == 2) return bgmVol == 0 ? "MUSIC AND FILMS SILENT" : "MUSIC AND FILMS  ·  SAME AS IN THE GAME";
         if (i == 2 && page == 2) return seVol == 0 ? "EFFECTS SILENT" : "SOUND EFFECTS  ·  SAME AS IN THE GAME";
-        if (i == 3 && page == 2) return "THE LAUNCHER'S CLICKS";
-        if (i == 4 && page == 2) return smooth ? "NO CRACKLES WHEN THE GAME SLOWS DOWN" : "THE OLD SOUND  ·  IT CAN CRACKLE";
-        if (i == 5 && page == 2) return "ASH AND EMBERS FALLING";
-        if (i == 7 && page == 2) return "CHEATS AND TOOLS FOR TESTS";
-        if (i == 8 && page == 2) return "VU1 ENGINE AND TIME MEASURE";
-        if (i == 6 && page == 2) return updateState == 1 ? "ASKING GITHUB..." : latestUrl != null ? "VERSION " + latestVersion + " IS OUT" : "ASK GITHUB FOR A NEWER VERSION";
+        if (i == 3 && page == 2) return smooth ? "NO CRACKLES WHEN THE GAME SLOWS DOWN" : "THE OLD SOUND  ·  IT CAN CRACKLE";
+        if (i == 5 && page == 2) return "CHEATS AND TOOLS FOR TESTS";
+        if (i == 6 && page == 2) return "VU1 ENGINE AND TIME MEASURE";
+        if (i == 4 && page == 2) return updateState == 1 ? "ASKING GITHUB..." : latestUrl != null ? "VERSION " + latestVersion + " IS OUT" : "ASK GITHUB FOR A NEWER VERSION";
         if (i == 0) return mods ? "TEXTURE PACKS IN THE FOLDER" : "ORIGINAL TEXTURES ONLY";
         if (page == 3 && i == 1) return reshade ? "F1 MENU  ·  F2 EFFECTS ON AND OFF" : "COLOURS AND FILTERS FOR THE PICTURE";
         if (page == 3 && i == 2) return texDump ? "SAVED IN dumps  ·  SLOWER" : "FOR MOD MAKERS  ·  OFF TO PLAY";
@@ -1111,7 +1121,7 @@ class Launcher : Form
             Spaced(g, items[i], subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 6, 2);
             if (IsToggle(i))
             {
-                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : (i == 3 ? menuSnd : i == 4 ? smooth : ashOn) ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : ((page == 3 && i == 2 ? texDump : i == 1 ? reshade : mods) ? "ON" : "OFF")) + " \u203A";
+                string v = "\u2039 " + (page == 7 ? (i == 0 ? (vu1Eng == 1 ? "PCSX2" : vu1Eng == 2 ? "COMPARE" : "OURS") : i == 1 ? (timings ? "ON" : "OFF") : UpNames[upFix]) : page == 2 ? (i == 0 ? (full ? "FULL SCREEN" : "WINDOW") : i == 1 ? bgmVol.ToString() : i == 2 ? seVol.ToString() : smooth ? "ON" : "OFF") : page == 4 ? (i == 2 ? (swap ? "SWAPPED" : "AS PS2") : i == 5 ? (mouseLook ? "ON" : "OFF") : i == 6 ? mouseSpeed.ToString() : i == 8 ? ToggleLabel(toggleBtn) : (i == 3 ? invY : i == 4 ? invX : mouseInvY) ? "INVERTED" : "NORMAL") : page == 5 ? (dbg[i] ? "ON" : "OFF") : ((page == 3 && i == 2 ? texDump : i == 1 ? reshade : mods) ? "ON" : "OFF")) + " \u203A";
                 int vw = (int)SpacedWidth(g, v, valueFont, 2); valueRects[i] = new Rectangle(b.Right - 6 - vw, b.Y, vw, b.Height);
                 Spaced(g, v, valueFont, on ? gold : bone, b.Right - 6 - vw, b.Y + 9, 2);
             }
@@ -1224,17 +1234,89 @@ class Launcher : Form
 
     string ReadIso() { return ReadIni("iso"); }
 
-    string Exe { get { return Path.Combine(dir, "sor.exe"); } }
-    // disco\ next to the exe (the ready-made package), or ..\disco when the game was built with scripts/setup.sh
-    string Disco { get { string up = Path.GetFullPath(Path.Combine(dir, @"..\disco")); return File.Exists(Path.Combine(up, "SLES_529.50.pc")) ? up : Path.Combine(dir, "disco"); } }
-    string Elf { get { return Path.Combine(Disco, "SLES_529.50.pc"); } }
+    // The discs the port knows (11/2026). sor.exe was translated from the European executable; sor-usa.exe is built
+    // from the same sources with the American addresses (pc/compila_usa.sh). Which one a disc image is comes from its
+    // SYSTEM.CNF (BOOT2 = cdrom0:\SLUS_209.02;1). Each disc has its own program, its own folder for the files read
+    // from the disc, and its own textures\<serial> folder (PCSX2's names, read by sor-gs.dll from SORGS_SERIAL).
+    sealed class GameDisc
+    {
+        public readonly string Serial, Boot, ExeName, DiscoName, Sha1, Name;
+        public GameDisc(string serial, string boot, string exeName, string discoName, string sha1, string name)
+        { Serial = serial; Boot = boot; ExeName = exeName; DiscoName = discoName; Sha1 = sha1; Name = name; }
+        public string ElfName { get { return Boot + ".pc"; } }
+    }
+    static readonly GameDisc[] GameDiscs = {
+        new GameDisc("SLES-52950", "SLES_529.50", "sor.exe", "disco", ElfSha1, "EUROPEAN"),
+        new GameDisc("SLUS-20902", "SLUS_209.02", "sor-usa.exe", "disco-usa", UsaElfSha1, "AMERICAN"),
+    };
+    // The disc of the last Play (launcher.ini serial=); the European one before the first.
+    GameDisc gameDisc;
+    GameDisc CurrentDisc
+    {
+        get
+        {
+            if (gameDisc == null)
+            {
+                string s = ReadIni("serial");
+                gameDisc = GameDiscs[0];
+                foreach (var r in GameDiscs) if (r.Serial == s) gameDisc = r;
+            }
+            return gameDisc;
+        }
+    }
+    string Serial { get { return CurrentDisc.Serial; } }
+    string TexDir { get { return Path.Combine(dir, "textures", Serial); } }
 
-    // What stops Play before it asks for the disc, or "" if nothing does.
+    string Exe { get { return Path.Combine(dir, CurrentDisc.ExeName); } }
+    // disco\ (disco-usa\ for the American disc) next to the exe (the ready-made package), or ..\disco when the game
+    // was built with scripts/setup.sh
+    string Disco { get { string up = Path.GetFullPath(Path.Combine(dir, @"..\" + CurrentDisc.DiscoName)); return File.Exists(Path.Combine(up, CurrentDisc.ElfName)) ? up : Path.Combine(dir, CurrentDisc.DiscoName); } }
+    string Elf { get { return Path.Combine(Disco, CurrentDisc.ElfName); } }
+
+    // What stops Play before it asks for the disc, or "" if nothing does (the program of the disc played last).
     string Missing()
     {
-        if (!File.Exists(Exe)) return "THE GAME FILE (SOR.EXE) IS MISSING  ·  DOWNLOAD AND UNZIP THE PACKAGE AGAIN";
-        if (!IsProgram(Exe)) return "THE GAME FILE (SOR.EXE) IS DAMAGED  ·  DOWNLOAD AND UNZIP THE PACKAGE AGAIN";
+        string name = CurrentDisc.ExeName.ToUpperInvariant();
+        if (!File.Exists(Exe)) return "THE GAME FILE (" + name + ") IS MISSING  ·  DOWNLOAD AND UNZIP THE PACKAGE AGAIN";
+        if (!IsProgram(Exe)) return "THE GAME FILE (" + name + ") IS DAMAGED  ·  DOWNLOAD AND UNZIP THE PACKAGE AGAIN";
         return "";
+    }
+
+    // Which of the known discs an image is, from its SYSTEM.CNF: "" and the disc, or what to tell the player.
+    static string DiscOf(string iso, out GameDisc found)
+    {
+        found = null;
+        try
+        {
+            using (var f = new FileStream(iso, FileMode.Open, FileAccess.Read))
+            {
+                var all = IsoFiles(f);
+                if (!all.ContainsKey("/SYSTEM.CNF")) return "THIS IS NOT A PLAYSTATION 2 GAME DISC  ·  CHOOSE YOUR SHADOW OF ROME .ISO";
+                var c = all["/SYSTEM.CNF"];
+                string cnf = System.Text.Encoding.ASCII.GetString(ReadAt(f, c[0] * 2048, (int)Math.Min(c[1], 4096)));
+                string boot = "";
+                foreach (string line in cnf.Split('\n'))
+                {
+                    string l = line.Trim();
+                    if (!l.StartsWith("BOOT2", StringComparison.OrdinalIgnoreCase)) continue;
+                    int eq = l.IndexOf('=');
+                    if (eq < 0) continue;
+                    boot = l.Substring(eq + 1).Trim();                       // cdrom0:\SLUS_209.02;1
+                    int slash = boot.LastIndexOfAny(new[] { '\\', '/', ':' });
+                    if (slash >= 0) boot = boot.Substring(slash + 1);
+                    int semi = boot.IndexOf(';');
+                    if (semi >= 0) boot = boot.Substring(0, semi);
+                    boot = boot.ToUpperInvariant();
+                }
+                foreach (var r in GameDiscs) if (r.Boot == boot) { found = r; return ""; }
+                if (boot == "") return "THIS IS NOT A PLAYSTATION 2 GAME DISC  ·  CHOOSE YOUR SHADOW OF ROME .ISO";
+                // another game, or another version of this one (Japanese, demo...): its serial, as on the box
+                string serial = boot.Replace('_', '-').Replace(".", "");
+                return "THIS DISC IS " + serial + "  ·  ONLY THE EUROPEAN (SLES-52950) AND AMERICAN (SLUS-20902) SHADOW OF ROME WORK";
+            }
+        }
+        catch (InvalidDataException) { return "THIS FILE IS NOT A DISC IMAGE OR IS DAMAGED  ·  CHOOSE YOUR SHADOW OF ROME .ISO"; }
+        catch (Exception) { return "COULD NOT READ THE DISC  ·  CLOSE PROGRAMS THAT USE IT, OR COPY THE .ISO TO THIS PC AND RETRY"; }
     }
 
     // A Windows 64-bit program starts with "MZ" and has a "PE" header for x64: checked before starting it, so a
@@ -1259,6 +1341,8 @@ class Launcher : Form
     // The SHA-1 of SLES_529.50 on the European disc (PAL, SLES-52950) the port was made on: the code in sor.exe
     // was translated from it, so another version of the game cannot work with it.
     const string ElfSha1 = "e56561c4b73fd6e01f63c1157bb7ce457fdb65d0";
+    // The SHA-1 of SLUS_209.02 on the American disc (NTSC-U, SLUS-20902): the code in sor-usa.exe was translated from it.
+    const string UsaElfSha1 = "81f3edb4fa877ce9dedc8d23b20f6a8265c2e055";
     // Translated discs with the same serial (a Russian one, checked 10/11/2026) keep the game's code byte for byte and
     // change only Sector0_list..Sector2_list (0x45B1A0-0x45C7B0: where each file sits in IMAGE0-2.IMG, rebuilt with the
     // translated texts). The game reads those lists from the ELF at run time, so sor.exe works with them: the SHA-1 of
@@ -1313,22 +1397,26 @@ class Launcher : Form
         return b;
     }
 
-    // Reads from the disc image into disco\ the files the game needs; "" when done, or what went wrong.
-    // The executable is checked against the PAL disc, then saved with its empty segment past the PS2's 32 MB
-    // turned off (PT_NULL), as strumenti/elf_per_pc.py does: the runtime's loader refuses that segment.
-    static string ReadDisc(string iso, string disco)
+    // Reads from the disc image into disco\ (disco-usa\ for the American disc) the files the game needs; "" when
+    // done, or what went wrong. The executable is checked against the disc the program was translated from, then
+    // saved with its empty segment past the PS2's 32 MB turned off (PT_NULL), as strumenti/elf_per_pc.py does: the
+    // runtime's loader refuses that segment.
+    static string ReadDisc(string iso, string disco, GameDisc r)
     {
         try
         {
             using (var f = new FileStream(iso, FileMode.Open, FileAccess.Read))
             {
                 var all = IsoFiles(f);
-                if (!all.ContainsKey("/SLES_529.50")) return "THIS IS NOT THE EUROPEAN DISC (SLES-52950)  ·  OTHER VERSIONS DO NOT WORK YET";
-                var e = all["/SLES_529.50"];
+                string boot = "/" + r.Boot;
+                if (!all.ContainsKey(boot)) return "THIS IS NOT THE " + r.Name + " DISC (" + r.Serial + ")  ·  CHOOSE YOUR SHADOW OF ROME .ISO AGAIN";
+                var e = all[boot];
                 var elf = ReadAt(f, e[0] * 2048, (int)e[1]);
                 string sha;
                 using (var s = SHA1.Create()) sha = BitConverter.ToString(s.ComputeHash(elf)).Replace("-", "").ToLowerInvariant();
-                if (sha != ElfSha1 && !SameCode(elf)) return "THIS DISC'S GAME IS A DIFFERENT VERSION  ·  ONLY THE EUROPEAN DISC (SLES-52950) AND ITS TRANSLATIONS WORK";
+                // the European disc's translations (same serial, same code: SameCode) work; the American one has none known
+                bool same = sha == r.Sha1 || (r.Sha1 == ElfSha1 && SameCode(elf));
+                if (!same) return "THIS DISC'S GAME IS A DIFFERENT VERSION OF " + r.Serial + "  ·  ONLY THE DISCS THE PORT WAS MADE ON WORK";
                 uint phoff = BitConverter.ToUInt32(elf, 0x1c);
                 int phentsize = BitConverter.ToUInt16(elf, 0x2a), phnum = BitConverter.ToUInt16(elf, 0x2c);
                 for (int i = 0; i < phnum; i++)
@@ -1346,9 +1434,9 @@ class Launcher : Form
                     else if (kv.Key.StartsWith("/MODULES/")) dest = Path.Combine(disco, "MODULES", kv.Key.Substring(9));
                     if (dest != null) File.WriteAllBytes(dest, ReadAt(f, kv.Value[0] * 2048, (int)kv.Value[1]));
                 }
-                string tmp = Path.Combine(disco, "SLES_529.50.pc.part");
+                string tmp = Path.Combine(disco, r.ElfName + ".part");
                 File.WriteAllBytes(tmp, elf);
-                string pc = Path.Combine(disco, "SLES_529.50.pc");
+                string pc = Path.Combine(disco, r.ElfName);
                 if (File.Exists(pc)) File.Delete(pc);
                 File.Move(tmp, pc);
             }
@@ -1360,28 +1448,40 @@ class Launcher : Form
 
     void Play()
     {
-        message = Missing();
+        // before the disc is known: at least one of the programs must be there
+        bool anyExe = false;
+        foreach (var r in GameDiscs) if (File.Exists(Path.Combine(dir, r.ExeName))) anyExe = true;
+        message = anyExe ? "" : Missing();
         if (message != "") { Invalidate(); return; }
         string iso = ReadIso();
         if (iso == "" || !File.Exists(iso))
         {
-            using (var d = new OpenFileDialog { Title = "Choose your Shadow of Rome disc image (PAL, SLES-52950)", Filter = "Disc image (*.iso)|*.iso|All files|*.*" })
+            using (var d = new OpenFileDialog { Title = "Choose your Shadow of Rome disc image (European SLES-52950 or American SLUS-20902)", Filter = "Disc image (*.iso)|*.iso|All files|*.*" })
             {
                 if (d.ShowDialog(this) != DialogResult.OK) { message = "THE GAME NEEDS YOUR OWN COPY OF THE DISC"; Invalidate(); return; }
                 iso = d.FileName;
             }
         }
+        // Which disc it is (its SYSTEM.CNF, a few KB): the program, the disco folder and the textures follow it.
+        GameDisc disc;
+        message = DiscOf(iso, out disc);
+        if (message != "") { try { WriteIni("iso", null); } catch (Exception) { } Invalidate(); return; }
+        gameDisc = disc;
+        WriteIni("serial", disc.Serial);
+        message = Missing();
+        if (message != "") { Invalidate(); return; }
         if (!File.Exists(Elf))
-        {   // the first Play: read the game's files from the disc image (a few seconds)
+        {   // the first Play with this disc: read the game's files from the disc image (a few seconds)
             message = "READING YOUR DISC  ·  ONLY THE FIRST TIME";
             Invalidate(); Update();
             Cursor = Cursors.WaitCursor;
-            message = ReadDisc(iso, Disco);
+            message = ReadDisc(iso, Disco, disc);
             Cursor = Cursors.Default;
             if (message != "") { Invalidate(); return; }
         }
         WriteIni("iso", iso);
         var psi = new ProcessStartInfo(Exe, "\"" + Elf + "\" \"" + iso + "\" 0") { WorkingDirectory = dir, UseShellExecute = false };
+        psi.EnvironmentVariables["SORGS_SERIAL"] = disc.Serial; // sor-gs.dll: textures\<serial> (sor.exe sets it too)
         psi.EnvironmentVariables["SOR_FINESTRA"] = "1";
         psi.EnvironmentVariables["SOR_GRAPHICS"] = SavedGpu ? "gpu " + SavedScale + " " + SavedApi : "cpu";
         psi.EnvironmentVariables["SOR_WIDESCREEN"] = SavedWide.ToString(); // 0 4:3, 1 16:9, 2 21:9, 3 32:9
@@ -1409,14 +1509,15 @@ class Launcher : Form
         psi.EnvironmentVariables["SORGS_SHARPNESS"] = SavedSharp.ToString(); // sor-gs.dll: 0 as the PS2, 1 low, 2 high
         psi.EnvironmentVariables["SORGS_FXAA"] = SavedFxaa ? "1" : "0"; // sor-gs.dll: PCSX2's FXAA antialiasing (video card only)
         psi.EnvironmentVariables["SORGS_VSYNC"] = SavedVsync ? "1" : "0"; // sor-gs.dll: every picture in step with the screen
-        if (!SavedVignette) psi.EnvironmentVariables["SOR_NO_VIGNETTE"] = "1"; // sor.exe: skip the game's grain/haze filters
+        if (!SavedVignette) { psi.EnvironmentVariables["SOR_NO_VIGNETTE"] = "1"; psi.EnvironmentVariables["SOR_NO_HAZE"] = "1"; psi.EnvironmentVariables["SOR_NO_DOF"] = "1"; } // sor.exe: skip the game's grain/haze filters, the near fog veil and the depth of field (14/11)
         if (SavedFov != 100) psi.EnvironmentVariables["SOR_FOV"] = SavedFov.ToString(); // sor.exe: the gameplay camera wider (GRAPHICS > FIELD OF VIEW)
         psi.EnvironmentVariables["SORGS_OSD"] = SavedOsd ? "1" : "0"; // read by sor-gs.dll (video card only)
         psi.EnvironmentVariables["SOR_AUDIO_STRETCH"] = SavedSmooth ? "1" : "0"; // sor.exe, pc/sor_audio.cpp: OPTIONS > SMOOTH AUDIO, 0 = the old sound
         int sorVu1Mode = SavedVu1; psi.EnvironmentVariables["SOR_VU1"] = sorVu1Mode == 1 ? "pcsx2" : sorVu1Mode == 2 ? "confronto" : "nostro"; // sor.exe, pc/sor_vu1.cpp: SPEED TESTS > VU1 ENGINE
-        if (SavedUpFix > 0) { psi.EnvironmentVariables["SORGS_HALFPIXEL"] = UpHp[SavedUpFix]; psi.EnvironmentVariables["SORGS_NATIVESCALING"] = UpNs[SavedUpFix]; } // SPEED TESTS > UPSCALE FIX
+        if (SavedUpFix > 0) { psi.EnvironmentVariables["SORGS_HALFPIXEL"] = UpHp[SavedUpFix]; psi.EnvironmentVariables["SORGS_NATIVESCALING"] = UpNs[SavedUpFix]; if (UpRs[SavedUpFix] != "") psi.EnvironmentVariables["SORGS_ROUNDSPRITE"] = UpRs[SavedUpFix]; if (UpMs[SavedUpFix] != "") psi.EnvironmentVariables["SORGS_MERGESPRITE"] = UpMs[SavedUpFix]; if (UpBl[SavedUpFix] != "") psi.EnvironmentVariables["SORGS_BILINEAR"] = UpBl[SavedUpFix]; } // SPEED TESTS > UPSCALE FIX
         if (SavedTimings) psi.EnvironmentVariables["SOR_TEMPI"] = "1"; // sor.exe: [sor-time] lines (VU1, VIF1, GIF, IOP), SPEED TESTS > TIMINGS
-        psi.EnvironmentVariables["SOR_LOG"] = NextLog();   // always on: the last 5 runs, for reports and for us
+        string runLog = NextLog();
+        psi.EnvironmentVariables["SOR_LOG"] = runLog;      // always on: the last 5 runs, for reports and for us
         psi.EnvironmentVariables["SOR_CHEATS"] = DebugCheats();                  // hidden DEBUG page: "" = no cheats
         psi.EnvironmentVariables["SOR_DEBUG_PANEL"] = SavedDbgPanel ? "1" : "0"; // hidden DEBUG page: F12 engine panel
         psi.EnvironmentVariables["SOR_FREECAM"] = SavedDbgFreecam ? "1" : "0";   // hidden DEBUG page: F8 free camera
@@ -1424,10 +1525,26 @@ class Launcher : Form
         Process p;
         try { p = Process.Start(psi); }
         catch (Exception) { message = "COULD NOT START THE GAME  ·  CHECK YOUR ANTIVIRUS OR DOWNLOAD THE PACKAGE AGAIN"; Invalidate(); return; }
-        // If the game closes within 3 seconds, something is wrong: come back and say so instead of vanishing,
-        // and forget the disc image, so that the next Play asks for it again.
+        // The launcher stays until the game's window is there (14/11: show that something is happening,
+        // with real steps and no fake progress bar). The steps come from the game's own log; the seconds always move.
+        // If the game closes before its window comes, something is wrong: say so, and forget the disc image,
+        // so that the next Play asks for it again.
+        var watch = Stopwatch.StartNew();
+        bool exited = false;
+        while (watch.ElapsedMilliseconds < 120000)
+        {
+            if (p.WaitForExit(150)) { exited = true; break; }
+            p.Refresh();
+            if (p.MainWindowHandle != IntPtr.Zero) break;
+            string step = "STARTING THE GAME";
+            string text = ReadShared(runLog);
+            if (text.Contains("[sor-gs]") || text.Contains("[sor] GS:")) step = "PREPARING THE VIDEO CARD";
+            else if (text.Contains("ELF file loaded")) step = "GAME CODE LOADED  ·  OPENING THE WINDOW";
+            message = step + "  ·  " + (watch.ElapsedMilliseconds / 1000) + " S";
+            Invalidate(); Update(); Application.DoEvents();
+        }
         Hide();
-        if (p.WaitForExit(3000))
+        if (exited || p.WaitForExit(1000))
         {
             try { WriteIni("iso", null); } catch (Exception) { }   // the graphics stay
             System.Threading.Thread.Sleep(300); ScrubLogs();
@@ -1437,6 +1554,17 @@ class Launcher : Form
             return;
         }
         Close();
+    }
+
+    // The game's log while the game is still writing it ("" if it is not there yet).
+    static string ReadShared(string path)
+    {
+        try
+        {
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var sr = new StreamReader(fs)) return sr.ReadToEnd();
+        }
+        catch (Exception) { return ""; }
     }
 
     // GenericTypographic alone measures a space as 0 wide ("COMING SOON" came out "COMINGSOON").
@@ -1736,6 +1864,42 @@ class Launcher : Form
         get { var cp = base.CreateParams; cp.Style |= 0x00020000 /* WS_MINIMIZEBOX */ | 0x00080000 /* WS_SYSMENU */; return cp; }
     }
 
+    // Bottom left, left of "by Korvonordico" (14/11): the launcher's own sounds (a speaker) and its falling ash and
+    // embers (a flame); a click switches them and they are saved at once. They were MENU SOUNDS and BACKGROUND in OPTIONS.
+    Rectangle SwitchRect(int i) { return new Rectangle(12 + i * 36, ClientSize.Height - 37, 26, 26); }   // bottom left, before "by Korvonordico"
+    int SwitchAt(Point p) { for (int i = 0; i < 2; i++) if (SwitchRect(i).Contains(p)) return i; return -1; }
+    void PaintSwitches(Graphics g)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var r = SwitchRect(i);
+            bool on = i == 0 ? liveSnd : liveAsh;
+            var col = !on ? Color.FromArgb(110, 96, 80) : switchHover == i ? Color.FromArgb(240, 217, 168) : Color.FromArgb(201, 162, 92);
+            var old = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var p = new Pen(col, 1.6f))
+            using (var br = new SolidBrush(col))
+            {
+                int x = r.X, y = r.Y;
+                if (i == 0)
+                {   // a speaker, with its waves when on
+                    g.FillPolygon(br, new[] { new Point(x + 3, y + 10), new Point(x + 8, y + 10), new Point(x + 14, y + 4), new Point(x + 14, y + 22), new Point(x + 8, y + 16), new Point(x + 3, y + 16) });
+                    if (on) { g.DrawArc(p, x + 12, y + 8, 6, 10, -50, 100); g.DrawArc(p, x + 12, y + 4, 11, 18, -50, 100); }
+                }
+                else
+                {   // a flame
+                    var fl = new GraphicsPath();
+                    fl.AddBezier(x + 13, y + 2, x + 22, y + 10, x + 21, y + 19, x + 13, y + 24);
+                    fl.AddBezier(x + 13, y + 24, x + 5, y + 19, x + 5, y + 12, x + 10, y + 7);
+                    fl.AddBezier(x + 10, y + 7, x + 10, y + 12, x + 13, y + 13, x + 13, y + 2);
+                    if (on) g.FillPath(br, fl); else g.DrawPath(p, fl);
+                }
+                if (!on) using (var x2 = new Pen(Color.FromArgb(170, 70, 50), 2f)) g.DrawLine(x2, r.X + 3, r.Bottom - 3, r.Right - 3, r.Y + 3);
+            }
+            g.SmoothingMode = old;
+        }
+    }
+    int switchHover = -1;
+
     void PaintTitle(Graphics g)
     {
         var bar = new Rectangle(0, 0, ClientSize.Width, TitleH);
@@ -1772,6 +1936,7 @@ class Launcher : Form
         using (var bg = new LinearGradientBrush(r, Color.FromArgb(24, 10, 8), Color.FromArgb(5, 4, 4), 50f)) g.FillRectangle(bg, r);
         PaintRome(g);
         if (UseAsh) PaintAsh(g);
+        g.TranslateTransform(0, -TitleH); PaintSwitches(g); g.TranslateTransform(0, TitleH);   // over the background
 
         // the game's logo on the right, faded into the dark at the edges
         var lr = new Rectangle(470, 100, 450, 339);
@@ -1827,7 +1992,7 @@ class Launcher : Form
         Application.EnableVisualStyles();
         if (args.Length == 3 && args[0] == "--read-disc")
         {   // reads the disc image into a folder and exits (used by the tests); exit code 1 and the reason on failure
-            string why = ReadDisc(args[1], args[2]);
+            GameDisc tr; string why = DiscOf(args[1], out tr); if (why == "") why = ReadDisc(args[1], args[2], tr);
             if (why != "") { File.WriteAllText(Path.Combine(args[2], "read-disc-error.txt"), why); Environment.Exit(1); }
             return;
         }
