@@ -6,7 +6,7 @@ Version numbers count the big steps of the port.
 
 - **The American disc works** (NTSC, SLUS-20902): `sor-usa.exe`, chosen by the launcher from the disc.
 - **Fixed: the water in the Germanian Forest** (the VU0 instruction `vclipw` now works as on the PS2).
-- **Fixed: huge, stretched people in the high arena's crowd** (three VU0 instructions now give the PS2's numbers).
+- **Huge, stretched people in the high arena's crowd: fixed in the American program only** (`sor-usa.exe`: three VU0 instructions now give the PS2's numbers), not yet checked on screen. The European program (`sor.exe`, also for the Russian version) was built before the fix and does not have it.
 - Sharper water with UPSCALE FIX; VIGNETTE OFF also removes the near fog, the depth of field, the caves' soft copy and the streets' blur; new UPSCALE FIX choice SPECIAL + NATIVE; OSD sharp with ReShade on; the author's ReShade preset and launcher settings are the defaults.
 - New standard keys (D-pad on 1 2 3 4 and the arrow keys); the keys 1 to 9 can be given to actions; the free camera's points 1 to 9 only work with the free camera (F8).
 - The launcher shows what is happening while the game starts; its sounds and falling ash are two buttons at its bottom left.

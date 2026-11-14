@@ -82,7 +82,7 @@ New pictures from 2.9.3, drawn by the video card at 4x in 16:9, with VIGNETTE of
 - **Chapters 1 and 2 played by hand from start to end, without any problem.** The game is still being tested: if you find a problem, please report it in the [issues](../../issues).
 - **The American disc works** (NTSC, SLUS-20902). The launcher reads which disc your `.iso` is and starts the right program by itself: see [Supported discs](#supported-discs).
 - **Fixed: the water in the Germanian Forest.** It showed a blurred, magnified copy of the screen instead of the forest's reflection. The cause was one instruction of the PS2's vector unit (`vclipw`, used to cut triangles at the screen's edge) translated differently from the console; it now works as on the PS2.
-- **Fixed: huge, stretched people in the crowd** of the high arena. Three vector instructions gave other numbers than the PS2 for very big values, a division by zero and the square root of a negative number; now they give the same as the console.
+- **Huge, stretched people in the crowd of the high arena: fixed for the American disc only, not yet checked on screen.** Three vector instructions gave other numbers than the PS2 for very big values, a division by zero and the square root of a negative number; in the American program, `sor-usa.exe`, they now give the same as the console. The European program, `sor.exe` (it also runs the Russian version), was built before the fix and does not have it yet.
 - **Sharper water with UPSCALE FIX on**: the half-size copy of the screen the water uses is no longer drawn at the PS2's resolution.
 - **VIGNETTE OFF now also removes** the light fog close to the camera (the pale veil in the fort and in the caves), the depth of field (the double outline of far trees), the soft copy drawn over the picture in some caves, and the "focus" blur in the streets of Rome. The heat haze far away is left: it is part of the game's look.
 - **UPSCALE FIX: new choice SPECIAL + NATIVE**: no double outlines far away and the torch glows in their place.
@@ -313,7 +313,7 @@ With the video card I have played by hand through the Germanian Forest on to Oct
 - **The video card part needs the Microsoft Visual C++ Redistributable** (x64), which most PCs already have. Without it the game draws on the processor, even if the launcher says video card.
 - **The sound** has not been compared with the console.
 - **The fights** were checked by a script that fights badly and by my own play, not by a good player.
-- **It has run on one PC only** (Windows 11, Intel i5-8600K with 6 cores, NVIDIA GeForce RTX 3070 Ti), with the keyboard and a PS4 controller.
+- **I have tested it on one PC only** (Windows 11, Intel i5-8600K with 6 cores, NVIDIA GeForce RTX 3070 Ti), with the keyboard and a PS4 controller. Some players have run it on their own PCs too (see the [issues](../../issues?q=is%3Aissue) and [discussions](../../discussions)).
 
 <details>
 <summary><b>All the test details</b></summary>
@@ -494,7 +494,7 @@ Run these in the Ubuntu window.
    scripts/setup.sh "/mnt/c/Games/game.iso"
    ```
 
-   It took between about 13 and 25 minutes in two timed builds on a 6-core PC. It reads the game's program from your image, translates it, builds `_build/sor.exe` (the game) and `_build/ShadowOfRome.exe` (the launcher). If the build fails, the reason is at the end of `_build.log`.
+   It took about 13 and 15 minutes in the two timed builds, on 1 and 4 November, on a 6-core PC; a full build from a clean copy of this repository has not been tried again since then. It reads the game's program from your image, translates it, builds `_build/sor.exe` (the game) and `_build/ShadowOfRome.exe` (the launcher). If the build fails, the reason is at the end of `_build.log`.
 
 Nothing it creates is uploaded anywhere or committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, `_tools/` and `_build/` stay on your PC. The game's large files are not copied: they are read from your image while you play, so keep the image where it is.
 
@@ -582,7 +582,7 @@ se=5
 - To go back to the original behaviour, delete the file.
 - The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
 
-The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Delete it to go back to the first-time settings. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
+The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Deleting it brings back the launcher's own built-in settings (for example a window instead of full screen, and the OSD off), not the ones of the package: to have those again, copy `launcher.ini` from the zip. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
 
 ## Made with AI
 
@@ -592,7 +592,7 @@ It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousR
 
 - a skill for PS2 game porting, written from my earlier port attempts, so the agent follows tested steps instead of guessing;
 - [Quotient](https://github.com/Korvonordico/quotient-claude-tokens), my own tool to estimate, split and schedule long jobs: reaching the menu took 4 planned sessions, about 15 million weighted tokens;
-- [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. It runs in my local test builds only: its licence is not the GPL, so it is not in this repository or in the ready-made package (0.0.7 had it inside by mistake). It caught the freeze in the Germanian Forest by itself;
+- [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. Since 2.5 it is in this repository (`pc/blackbox/`, under this repository's licence, the GPL-3.0; its own repository has a noncommercial licence) and in the ready-made package (F9 in the game). It caught the freeze in the Germanian Forest by itself;
 - written handoff notes after every session, so each one starts from where the last one stopped.
 
 Quotient and Iris Insight are modules of [F-AGI](https://github.com/Korvonordico/f-agi), the set of tools I am building (under construction).

@@ -72,9 +72,9 @@ add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_S
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_vu1.cpp"        # SOR_VU1: PCSX2's microVU from sor-vu.dll (loaded at run time), or both VU1s compared
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_audio.cpp")     # smooth audio through SoundTouch (OPTIONS page, SMOOTH AUDIO; SOR_AUDIO_STRETCH=0 = off)
 # The black box (Iris Insight: a picture and a short report when the game freezes, crashes or slows down) is
-# built only into my local test builds: its licence is not the GPL, so it is not in this repository. Without
-# it, or with -DSOR_NO_BLACKBOX=ON (the published package), sor_blackbox_off.cpp stands in and does nothing.
-option(SOR_NO_BLACKBOX "Build without the black box, as the published package" OFF)
+# in blackbox/ and is built in, as in the published package. With -DSOR_NO_BLACKBOX=ON, or without that
+# folder, sor_blackbox_off.cpp stands in and does nothing.
+option(SOR_NO_BLACKBOX "Build without the black box" OFF)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/blackbox/blackbox.cpp" AND NOT SOR_NO_BLACKBOX)
     target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_blackbox.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/blackbox/blackbox.cpp")
     target_include_directories(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
