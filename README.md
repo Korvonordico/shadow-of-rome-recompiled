@@ -13,16 +13,16 @@
   <img src="https://img.shields.io/badge/Vulkan-yes-AC162C" alt="Vulkan">
   <img src="https://img.shields.io/badge/discs-SLES--52950%20(PAL%3A%20EU%20%2B%20RU)%20%7C%20SLUS--20902%20(NTSC%3A%20US)-555555" alt="discs SLES-52950 (PAL: EU + RU) | SLUS-20902 (NTSC: US)">
   <img src="https://img.shields.io/badge/languages-EN%20(UK%20%2B%20US)%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES%20%7C%20RU-2E8B57" alt="languages EN (UK + US) FR DE IT ES RU">
-  <img src="https://img.shields.io/badge/status-chapters%201%20and%202%20of%204%20played-orange" alt="status: chapters 1 and 2 of 4 played">
+  <img src="https://img.shields.io/badge/status-whole%20game%20played%20to%20the%20end-brightgreen" alt="status: whole game played to the end">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
-<p align="center">Version 2.9.3 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.9.4 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"> <img src="docs/flags/us.svg" alt="United States" title="United States: the American disc"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too. The American disc (in English only) works too: see [Supported discs](#supported-discs).</p>
 
 > [!IMPORTANT]
-> **This port is still being tested.** Chapters 1 and 2 have been played by hand to the end without problems; chapters 3 and 4 have not been played by hand yet. You may find graphics glitches, crashes or parts that do not work: keep a separate save, and save often.
+> **The whole game has been played by hand to the end credits** (European disc), but it is still a fan port tested on one PC. You may find graphics glitches, crashes or parts that do not work: keep a separate save, and save often.
 > Found a problem? [Tell me here](../../issues/new/choose): every report is read and fixed as soon as possible.
 >
 > **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), of its Russian translation, or of the American disc (SLUS-20902), as an .iso file. Please don't ask for, or share, game files or disc images.
@@ -40,7 +40,7 @@ This project makes it run on a Windows PC as a normal program. It is not an emul
 
 **You need your own copy of the game** (the European disc, PAL, SLES-52950, or the American disc, NTSC, SLUS-20902), as an `.iso` file. No game data is included. The ready-made package on the [Releases](../../releases) page holds only the program: the game's code translated to C++ and built for Windows, the video card part and the launcher. The first time you press Play, the launcher reads the rest from your own disc image. You can also build the program yourself from your disc: see [How to get it running](#how-to-get-it-running).
 
-This is an experiment. Chapters 1 and 2 have been played by hand from start to end; the rest of the game still has to be played and fixed. I can't promise I'll finish it, for personal reasons: I work on it with limited time and resources, so there are no deadlines.
+This is an experiment. The whole game has been played by hand from start to the end credits; problems found on other PCs will still have to be fixed. I can't promise I'll finish it, for personal reasons: I work on it with limited time and resources, so there are no deadlines.
 
 If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
 
@@ -76,6 +76,15 @@ New pictures from 2.9.3, drawn by the video card at 4x in 16:9, with VIGNETTE of
   <img src="docs/shot-7.jpg" width="49%" alt="In a cave, by a torch">
   <img src="docs/shot-8.jpg" width="49%" alt="The Germanian Forest at night">
 </p>
+
+## What's new in 2.9.4
+
+- **The whole game played by hand to the end credits** (European disc).
+- **Fixed: the HUD, the writing, the menus and the fog flickered** in some places of the last chapter.
+- **Fixed in the European program too: huge, stretched people in the high arena's crowd.**
+- **Hold Left Shift to walk** instead of running with the keyboard; L1 is Left Ctrl again.
+- **F10 actor list for developers and modders** (on only with ACTOR LIST in the DEBUG page).
+- **Known problem (already in 2.9.3):** after minimizing, the window can stay black; maximize it to get the picture back.
 
 ## What's new in 2.9.3
 
@@ -169,7 +178,7 @@ Each page saves only with **APPLY**; BACK leaves without saving.
 
 ## Status
 
-**In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played Chapters 1 and 2 by hand, from the start to their end. Nobody has played the whole game yet, and most of what comes after has only been reached by test tricks.
+**In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played the whole game by hand, all four chapters, to the end credits (European disc, 16 November 2026). The American and Russian discs have not been played to the end.
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
 
@@ -249,19 +258,19 @@ Most checks below were done by **test scripts**: small programs that press the k
 | 50 frames per second, texture packs, DirectX 11 and Vulkan in 2.5 | | | ⬜ |
 | The final 2.5 package, unpacked into an empty folder | ✅ | | |
 | Another PC, another controller | | | ⬜ |
-| The whole game, chapter by chapter (see below) | | | ⬜ |
+| The whole game, chapter by chapter (see below) | ✅ | | |
 
 ### The chapters
 
-The game has four chapters. I will play them one by one and update this table.
+The game has four chapters. All four have been played by hand to the end.
 
 <!-- Update when a chapter is played: ✅ played by hand to the end, 🟡 reached or partly played, ⬜ not tested yet -->
 | Chapter | State | Notes |
 |---|:---:|---|
 | 1. The Wickedness of Men | ✅ | Played by hand to the end in 2.6 (in 2.5 up to the Germanian Forest), played again by hand in 2.9.3 with the water fixed, no problems seen |
 | 2. Baptism by Fire | ✅ | Played by hand to the end in 2.9.3, no problems seen |
-| 3. Wrath of the Gods | 🟡 | Started by hand in 2.9.3 (the first mission) |
-| 4. Restoration to Glory | ⬜ | Not played by hand yet |
+| 3. Wrath of the Gods | ✅ | Played by hand to the end with the 2.9.4 test build (European disc) |
+| 4. Restoration to Glory | ✅ | Played by hand to the end credits with the 2.9.4 test build (European disc) |
 
 ### How far the game goes
 
@@ -305,7 +314,7 @@ With the video card I have played by hand through the Germanian Forest on to Oct
 
 ### What does not work yet
 
-- **It is not playable from start to end.** Nobody has finished the game on it. I played Chapters 1 and 2 by hand to their end; after that, nothing has been played without forcing.
+- **Minimizing the window:** when you bring it back, the picture can stay black while the game still runs. Maximize the window to get it back.
 - **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
 - **Short pauses:** a picture can still come late at the start of a scene (when the video card gets new textures), while the game loads, and rarely in play. In my tests with 2.6, 98 to 99% of the pictures came on time.
 - **FRAME RATE 50** in the launcher does nothing when the game's own `settings.ini` says `video=60` (see [Settings](#settings)).
@@ -430,7 +439,7 @@ Every test was made the same way on the European game too, to compare.
 
 1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), or NTSC, SLUS-20902 (the American disc), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
 2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.9.3-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+3. Download `ShadowOfRome-2.9.4-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
 6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
