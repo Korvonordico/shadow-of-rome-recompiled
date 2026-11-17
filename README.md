@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Vulkan-yes-AC162C" alt="Vulkan">
   <img src="https://img.shields.io/badge/discs-SLES--52950%20(PAL%3A%20EU%20%2B%20RU)%20%7C%20SLUS--20902%20(NTSC%3A%20US)-555555" alt="discs SLES-52950 (PAL: EU + RU) | SLUS-20902 (NTSC: US)">
   <img src="https://img.shields.io/badge/languages-EN%20(UK%20%2B%20US)%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES%20%7C%20RU-2E8B57" alt="languages EN (UK + US) FR DE IT ES RU">
-  <img src="https://img.shields.io/badge/status-whole%20game%20played%20to%20the%20end-brightgreen" alt="status: whole game played to the end">
+  <img src="https://img.shields.io/badge/status-beta%20%C2%B7%20completable-yellowgreen" alt="status: beta, completable">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
