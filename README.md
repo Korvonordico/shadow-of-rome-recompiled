@@ -538,7 +538,7 @@ The keyboard and the mouse always work, with or without a controller connected. 
 | ○ | E |
 | ▢ | Right mouse button |
 | △ | F |
-| L1 / R1 | Left Shift / Q |
+| L1 / R1 | Left Ctrl / Q |
 | L2 / R2 | C / Space |
 | Start | Esc |
 | Select | Tab |
@@ -549,12 +549,14 @@ While you play:
 |---|---|
 | Click in the window | The mouse turns the camera (MOUSE LOOK on) |
 | Alt | Frees the mouse pointer |
+| Left Shift (hold) | Walk instead of run, with the keyboard (WALK in CONTROLS, KEYBOARD) |
 | F11, or Alt+Enter | Full screen on and off |
 | F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it (only while the free camera is on: otherwise 1 to 9 are free for your own keys) |
 | F1 | ReShade's menu, when RESHADE is on in MODS |
 | F2 | ReShade's effects off and on again |
 | F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
 | F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
+| F10 | A test tool, if ACTOR LIST is on in DEBUG: writes the list of the people, enemies, weapons and objects in the area, with their places, to `attori.txt` in the game folder (a copy of each list goes to the `actor-lists` folder) |
 | F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
 | F7 | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
 | F12 | The engine panel, if it is on in DEBUG |
@@ -563,7 +565,7 @@ In the KEYBOARD page Delete leaves an action with no key and Backspace cancels. 
 
 In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
 
-To walk, use W A S D: according to the game's list of commands, the D-pad (the arrow keys) drops your helmet and weapons. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
+To move, use W A S D, and hold Left Shift to walk instead of running: according to the game's list of commands, the D-pad (the arrow keys) drops your helmet and weapons. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
 
 ## Settings
 

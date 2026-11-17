@@ -2,6 +2,16 @@
 
 Version numbers count the big steps of the port.
 
+## 2.9.4 (17 November 2026)
+
+- **Fixed: the HUD, the writing, the menus and the fog flickered** in some places of the last chapter (one frame yes, one no). The cause was the port, not the game: the runtime kept its own data inside the game's memory and wrote over the end of the list of things to draw. That data now sits where the game never looks.
+- **Fixed in the European program too: huge, stretched people in the high arena's crowd** (in 2.9.3 only `sor-usa.exe` had it).
+- **A key to walk:** hold Left Shift to walk instead of running with the keyboard (WALK in CONTROLS, KEYBOARD). L1 is Left Ctrl again.
+- **F10 writes the list of what is in the area** (a test tool, on only with ACTOR LIST in the DEBUG page: people, enemies, weapons, objects and where they are) to `attori.txt`, for testers and mod makers. The launcher does not let you give F4, F5 or F10 to an action.
+- The black box notices more problems by itself (a cut list of things to draw) and gives fewer false alarms: it no longer saves a useless «slow» folder every few minutes.
+- **Tested:** the whole game played by hand to the end credits with the European disc; every area of the story visited by a test script; hours of play, saving and loading in a row and fast key presses in hidden test copies (about 5.7 hours: no crash, 95 saves and 97 loads, none wrong). By hand: F11, Alt+Tab and resizing the window during films and menus.
+- **Known problem (already in 2.9.3):** after minimizing the window, the game can stay black when you bring it back; it still runs. Maximize the window to get the picture back. To be fixed in the next version.
+
 ## 2.9.3 (14 November 2026)
 
 - **The American disc works** (NTSC, SLUS-20902): `sor-usa.exe`, chosen by the launcher from the disc.
