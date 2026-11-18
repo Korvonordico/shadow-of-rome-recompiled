@@ -179,10 +179,12 @@ New pictures from 2.9.5, drawn by the video card at 8x in 21:9:
 <table>
 <tr>
 <td align="center" width="33%"><img src="docs/look/step-1.jpg" width="100%" alt="Step 1: unzip the package"></td>
-<td align="center" width="33%"><img src="docs/look/step-2.jpg" width="100%" alt="Step 2: open ShadowOfRome.exe"></td>
-<td align="center" width="33%"><img src="docs/look/step-3.jpg" width="100%" alt="Step 3: PLAY and pick your own disc"></td>
+<td align="center" width="33%"><img src="docs/look/step-2.jpg" width="100%" alt="Step 2: press PLAY and pick your own disc"></td>
+<td align="center" width="33%"><img src="docs/look/step-3.jpg" width="100%" alt="Step 3: play the game"></td>
 </tr>
 </table>
+
+<p align="center"><b>Minimum requirements:</b> Windows 10 or 11, 64-bit &middot; a processor with SSE4.1 (nearly every PC since about 2009) &middot; a video card with DirectX 11 or newer &middot; the <a href="https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist">Microsoft Visual C++ Redistributable</a> (x64) &middot; your own <code>.iso</code> of the game.<br><sub>Tested on one PC only: if it does not start on yours, please <a href="../../issues">open an issue</a>.</sub></p>
 
 ## How to get it running
 
