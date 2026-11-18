@@ -17,6 +17,7 @@
 #include <ctime>
 #include <exception>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -101,6 +102,20 @@ namespace blackbox
         std::atomic<bool> g_storing{false};
         std::atomic<bool> g_paused{false};
         std::atomic<double> g_captureSeconds{0.0}; // time spent storing images, for the [speed] lines
+
+        // Sentinel. Used only by the thread that calls frame(); what it finds is handed on through the rest.
+        std::unique_ptr<sentinel::Sentinel> g_sentinel;
+        double g_burstUntil = 0.0;
+        // quietFlicker(): the rectangle in thousandths (x0, y0, x1, y1), packed 4 x 16 bits; read by the frame thread
+        std::atomic<uint64_t> g_quietWanted{0};
+        uint64_t g_quietSet = 0;
+        std::atomic<uint32_t> g_sentinelAsk{0}; // one bit per kind: a save is wanted
+        std::atomic<double> g_sentinelSeconds{0.0}; // time spent in the sentinel, for the [speed] lines
+        const int kSentinelKept = 6;
+        sentinel::Finding g_sentinelFound[kSentinelKept]; // the last findings, for summary.txt (under g_sentinelLock)
+        uint64_t g_sentinelCount = 0;
+        char g_sentinelStatus[200] = {};
+        std::atomic_flag g_sentinelLock = ATOMIC_FLAG_INIT;
 
         // Log
         std::vector<LogLine> g_log, g_logCopy;
@@ -347,7 +362,7 @@ namespace blackbox
                 std::fprintf(f, "speed: NO NEW FRAME for %.1f s (best %.0f/s)\n", sinceLastFrame, best);
                 return;
             }
-            const double limit = g_cfg.slowBelowPerSecond > 0.0 ? g_cfg.slowBelowPerSecond : best * 0.8;
+            const double limit = g_cfg.slowBelowPerSecond > 0.0 ? g_cfg.slowBelowPerSecond : std::min(best, 60.0) * 0.8;  // loading screens run at 80-100/s: they must not raise the bar
             // The newest drop of at least 2 seconds in the last 30, and whether it is still going on.
             int low = 0;
             double sum = 0.0, until = 0.0;
@@ -418,6 +433,33 @@ namespace blackbox
             std::fprintf(f, "frames shown: %.1f/s in the last second, best %.1f/s; last frame %.1f s before the save\n",
                          secs.empty() ? 0.0 : secs.back().fps, g_bestRate.load(), std::max(0.0, at - lastFrameAt));
             writeSpeedLine(f, secs, g_bestRate.load(), at - lastFrameAt);
+            if (g_sentinel)
+            {
+                // Copied first: the frame thread may be writing them.
+                char status[sizeof(g_sentinelStatus)];
+                sentinel::Finding found[kSentinelKept];
+                uint64_t count = 0;
+                {
+                    const bool locked = lockFlag(g_sentinelLock);
+                    std::memcpy(status, g_sentinelStatus, sizeof(status));
+                    count = g_sentinelCount;
+                    for (int i = 0; i < kSentinelKept; ++i)
+                        found[i] = g_sentinelFound[i];
+                    if (locked)
+                        g_sentinelLock.clear(std::memory_order_release);
+                }
+                std::fprintf(f, "sentinel (checks on every frame): %s\n", status[0] ? status : "no frame yet");
+                const uint64_t n = std::min<uint64_t>(count, kSentinelKept);
+                if (n == 0)
+                    std::fprintf(f, "sentinel found: nothing (black, same picture, flicker, colour flashes)\n");
+                else
+                    std::fprintf(f, "sentinel found (last %llu of %llu):\n", static_cast<unsigned long long>(n), static_cast<unsigned long long>(count));
+                for (uint64_t i = count - n; i < count; ++i)
+                {
+                    const sentinel::Finding &x = found[static_cast<size_t>(i % kSentinelKept)];
+                    std::fprintf(f, "  #%llu %.2f %s\n", static_cast<unsigned long long>(x.atFrame), x.atSeconds, x.text);
+                }
+            }
             if (g_cfg.progress)
             {
                 int still = 0;
@@ -843,11 +885,25 @@ namespace blackbox
             uint64_t lastProgress = 0, secondFrames = 0, secondProgress = 0, secondStored = 0, secondLoads = 0, secondErrors = 0;
             double lastProgressAt = now(), lastLoop = now(), secondAt = now(), slowSince = 0.0, lastSlowSave = -1e9, best = 0.0;
             double lastBlackSince = 0.0;
+            double lastSentinelSave[sentinel::kKinds];
+            for (double &s : lastSentinelSave)
+                s = -1e9;
             bool progressMoved = false;
             for (;;)
             {
                 sleepMs(100);
                 const double t = now();
+
+                // What the sentinel found on the frame thread: saved from here, so that frame() never waits.
+                const uint32_t wanted = g_sentinelAsk.exchange(0);
+                for (int k = 0; k < sentinel::kKinds; ++k)
+                    if ((wanted & (1u << k)) && t - lastSentinelSave[k] >= g_cfg.minSecondsBetweenSentinelSaves)
+                    {
+                        if (ask(sentinel::kindName(k), kDefaultImages, false, false))
+                            lastSentinelSave[k] = t;
+                        else
+                            g_sentinelAsk.fetch_or(1u << k); // another save is being written: next time
+                    }
                 if (t - lastLoop > 2.0)
                 {
                     // The whole program did not run (the PC was asleep, for example): nothing to judge.
@@ -906,8 +962,9 @@ namespace blackbox
                     secondProgress = progress;
                     secondAt = t;
                     char line[kLineChars];
-                    const double capture = g_captureSeconds.exchange(0.0);
-                    std::snprintf(line, sizeof(line), "[speed] frames/s=%.1f progress/s=%.1f capture=%.2f ms/s", rate, progressRate, capture * 1000.0);
+                    const double capture = g_captureSeconds.exchange(0.0), watching = g_sentinelSeconds.exchange(0.0);
+                    std::snprintf(line, sizeof(line), "[speed] frames/s=%.1f progress/s=%.1f capture=%.2f ms/s sentinel=%.2f ms/s", rate, progressRate,
+                                  capture * 1000.0, watching * 1000.0);
                     addLine(line, true);
                     g_bestRate.store(best, std::memory_order_relaxed);
                     const uint64_t stored = g_stored.load(), loads = g_loadLines.load(), errors = g_errorLines.load();
@@ -923,7 +980,7 @@ namespace blackbox
                     if (locked)
                         g_secondLock.clear(std::memory_order_release);
 
-                    const double limit = g_cfg.slowBelowPerSecond > 0.0 ? g_cfg.slowBelowPerSecond : best * 0.8;
+                    const double limit = g_cfg.slowBelowPerSecond > 0.0 ? g_cfg.slowBelowPerSecond : std::min(best, 60.0) * 0.8;  // loading screens run at 80-100/s: they must not raise the bar
                     if (rate >= limit || stalled > 0.0 || rate < 1.0)
                         slowSince = 0.0;
                     else
@@ -1129,6 +1186,14 @@ namespace blackbox
         g_selected.assign(static_cast<size_t>(std::min(kMaxSelected, g_cfg.ringImages)), 0);
         g_log.assign(kLogLines, LogLine{});
         g_logCopy.assign(kLogLines, LogLine{});
+        const sentinel::Settings &watch = g_cfg.sentinel;
+        if (watch.black || watch.samePicture || watch.flicker || watch.colours)
+        {
+            sentinel::Settings s = watch;
+            s.blackSeconds = g_cfg.blackSeconds;
+            g_sentinel.reset(new sentinel::Sentinel); // about 120 KB, all of its memory
+            g_sentinel->configure(s);
+        }
         g_running.store(true);
 
         if (g_cfg.captureOutput)
@@ -1153,13 +1218,73 @@ namespace blackbox
             std::signal(SIGILL, onSignal);
 #endif
         }
-        std::printf("[blackbox] on: %d images in RAM (%.0f MB), %d per second, saves in %s/\n", g_cfg.ringImages,
-                    static_cast<double>(g_pixels.size() + g_sheet.size()) / (1024.0 * 1024.0), g_cfg.imagesPerSecond, g_cfg.folder);
+        std::printf("[blackbox] on: %d images in RAM (%.0f MB), %d per second, saves in %s/; sentinel %s\n", g_cfg.ringImages,
+                    static_cast<double>(g_pixels.size() + g_sheet.size()) / (1024.0 * 1024.0), g_cfg.imagesPerSecond, g_cfg.folder,
+                    g_sentinel ? "on (black, same picture, flicker, colours: every frame)" : "off");
         std::fflush(stdout);
         return true;
     }
 
     bool running() { return g_running.load(std::memory_order_relaxed); }
+
+    namespace
+    {
+        // The sentinel on one frame (the frame thread only). True while every frame should be kept.
+        bool watchFrame(const uint8_t *rgba, int width, int height, uint64_t number, double t)
+        {
+            sentinel::Finding found[8];
+            const uint64_t quiet = g_quietWanted.load(std::memory_order_relaxed);
+            if (quiet != g_quietSet)
+            {
+                g_quietSet = quiet;
+                const auto part = [quiet](int i) { return static_cast<double>((quiet >> (48 - 16 * i)) & 0xFFFFu) / 1000.0; };
+                g_sentinel->setQuiet(part(0), part(1), part(2), part(3));
+            }
+            const int n = g_sentinel->push(rgba, width, height, 0, number, t, found, 8);
+            uint32_t wanted = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                const sentinel::Finding &f = found[i];
+                event("[sentinel] %s", f.brief);
+                const bool save = (f.kind == sentinel::kFlicker && g_cfg.saveOnFlicker && f.regions >= g_cfg.flickerSaveRegions) ||
+                                  (f.kind == sentinel::kColours && g_cfg.saveOnColours) ||
+                                  (f.kind == sentinel::kSamePicture && g_cfg.saveOnSamePicture);
+                if (!f.over && save)
+                    wanted |= 1u << f.kind;
+            }
+            if (n > 0 || number % 10 == 0)
+            {
+                const bool locked = lockFlag(g_sentinelLock);
+                for (int i = 0; i < n; ++i)
+                    g_sentinelFound[static_cast<size_t>(g_sentinelCount++ % kSentinelKept)] = found[i];
+                g_sentinel->status(g_sentinelStatus, sizeof(g_sentinelStatus));
+                if (locked)
+                    g_sentinelLock.clear(std::memory_order_release);
+            }
+            if (wanted)
+                g_sentinelAsk.fetch_or(wanted);
+            if (g_sentinel->suspicious())
+                g_burstUntil = t + g_cfg.burstSeconds;
+            if (g_cfg.sentinel.black)
+            {
+                // Black or near-black, judged on every frame (not only on the stored ones).
+                if (g_sentinel->black())
+                {
+                    if (g_blackSince.load(std::memory_order_relaxed) == 0.0)
+                        g_blackSince.store(t);
+                }
+                else
+                {
+                    if (g_blackSince.load(std::memory_order_relaxed) != 0.0)
+                        g_blackSince.store(0.0);
+                    if (!g_shownSomething.load(std::memory_order_relaxed))
+                        g_shownSomething.store(true);
+                }
+            }
+            g_sentinelSeconds.store(g_sentinelSeconds.load(std::memory_order_relaxed) + (now() - t), std::memory_order_relaxed);
+            return t < g_burstUntil;
+        }
+    }
 
     void frame(const uint8_t *rgba, int width, int height)
     {
@@ -1171,22 +1296,35 @@ namespace blackbox
         if (number > 1 && gap > g_worstGap.load(std::memory_order_relaxed))
             g_worstGap.store(gap, std::memory_order_relaxed);
         g_lastFrameAt.store(t, std::memory_order_relaxed);
-        if (!rgba) // shown by PCSX2's GS: the frame counts, but there is no picture here (so it is not black)
+        static double s_lastPictureAt = -1e9; // the frame thread only
+        if (!rgba || width <= 0 || height <= 0)
         {
-            if (g_blackSince.load(std::memory_order_relaxed) != 0.0)
-                g_blackSince.store(0.0);
-            if (!g_shownSomething.load(std::memory_order_relaxed))
-                g_shownSomething.store(true);
+            // Shown by another module (Shadow of Rome: PCSX2's GS in sor-gs.dll): the frame counts, but there is
+            // no picture here. If no picture came for 2 s either (a module that gives none), it is not black;
+            // otherwise the pictures it gives now and then decide.
+            if (t - s_lastPictureAt > 2.0)
+            {
+                if (g_blackSince.load(std::memory_order_relaxed) != 0.0)
+                    g_blackSince.store(0.0);
+                if (!g_shownSomething.load(std::memory_order_relaxed))
+                    g_shownSomething.store(true);
+            }
             return;
         }
-        if (t < g_nextSample || !rgba || width <= 0 || height <= 0)
+        s_lastPictureAt = t;
+        const bool burst = g_sentinel && watchFrame(rgba, width, height, number, t);
+        if (t < g_nextSample && !burst)
             return;
-        // Even steps, so that 60 Hz gives 25 per second on average as well as 50 Hz.
-        const double step = 1.0 / g_cfg.imagesPerSecond;
-        g_nextSample += step;
-        if (g_nextSample < t)
-            g_nextSample = t + step;
+        if (t >= g_nextSample)
+        {
+            // Even steps, so that 60 Hz gives 25 per second on average as well as 50 Hz.
+            const double step = 1.0 / g_cfg.imagesPerSecond;
+            g_nextSample += step;
+            if (g_nextSample < t)
+                g_nextSample = t + step;
+        }
 
+        const double storeFrom = g_sentinel ? now() : t;
         g_storing.store(true);
         if (g_paused.load())
         {
@@ -1240,8 +1378,10 @@ namespace blackbox
             ++g_stored;
         }
         g_storing.store(false);
-        g_captureSeconds.store(g_captureSeconds.load(std::memory_order_relaxed) + (now() - t), std::memory_order_relaxed);
+        g_captureSeconds.store(g_captureSeconds.load(std::memory_order_relaxed) + (now() - storeFrom), std::memory_order_relaxed);
 
+        if (g_sentinel && g_cfg.sentinel.black)
+            return; // the sentinel already judged black on this frame
         if (black)
         {
             if (g_blackSince.load(std::memory_order_relaxed) == 0.0)
@@ -1287,4 +1427,17 @@ namespace blackbox
     }
 
     void cleanExit() { g_clean.store(true); }
+
+    void quietFlicker(float x0, float y0, float x1, float y1)
+    {
+        const auto part = [](float v) { return static_cast<uint64_t>(std::max(0.f, std::min(1.f, v)) * 1000.f + 0.5f); };
+        const uint64_t packed = x1 > x0 && y1 > y0 ? (part(x0) << 48) | (part(y0) << 32) | (part(x1) << 16) | part(y1) : 0;
+        if (g_quietWanted.exchange(packed) != packed && g_running.load(std::memory_order_relaxed))
+        {
+            if (packed)
+                event("[sentinel] flicker not counted in x %.0f-%.0f%%, y %.0f-%.0f%% (blinks on purpose now)", x0 * 100.0, x1 * 100.0, y0 * 100.0, y1 * 100.0);
+            else
+                event("[sentinel] flicker counted again everywhere");
+        }
+    }
 }

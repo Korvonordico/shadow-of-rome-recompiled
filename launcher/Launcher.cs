@@ -26,10 +26,11 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Windows.Forms;
+using Interop = System.Runtime.InteropServices;
 
 class Launcher : Form
 {
-    const string Version = "2.9.3";     // the version of the whole port (CHANGELOG.md)
+    const string Version = "2.9.5";     // the version of the whole port (CHANGELOG.md)
     static readonly string[] Items = { "PLAY", "OPTIONS", "GRAPHICS", "CONTROLS", "MODS", "QUIT" };
     static readonly string[] Latin = { "INCIPE", "OPTIONES", "SPECIES", "IMPERIVM", "MVTATIONES", "EXI" };
     static readonly bool[] Ready = { true, true, true, true, true, true };
@@ -59,18 +60,40 @@ class Launcher : Form
     // read by sor.exe (pc/sor_tasti.cpp). A key can also be a mouse button or the wheel (MouseKeys: key_cross=MOUSE_LEFT;
     // on the page a click or a wheel notch while a row waits, Backspace cancels). In the game SWAP comes after the controller mapping: whatever button does
     // Cross does Circle and the other way round; VERTICAL / HORIZONTAL still invert the controller's right stick.
-    static readonly string[] MapNames = { "cross", "circle", "square", "triangle", "l1", "r1", "l2", "r2", "l3", "r3", "start", "select", "up", "down", "left", "right", "move_up", "move_down", "move_left", "move_right", "camera_up", "camera_down", "camera_left", "camera_right" };
-    static readonly string[] MapItems = { "CROSS", "CIRCLE", "SQUARE", "TRIANGLE", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SELECT", "UP", "DOWN", "LEFT", "RIGHT", "MOVE UP", "MOVE DOWN", "MOVE LEFT", "MOVE RIGHT", "LOOK UP", "LOOK DOWN", "LOOK LEFT", "LOOK RIGHT" };
-    static readonly string[] MapLatin = { "CRVX", "CIRCVLVS", "QVADRATVM", "TRIANGVLVM", "LAEVA I", "DEXTRA I", "LAEVA II", "DEXTRA II", "LAEVA III", "DEXTRA III", "INITIVM", "ELECTIO", "SVRSVM", "DEORSVM", "SINISTRORSVM", "DEXTRORSVM", "GRADVS", "GRADVS", "GRADVS", "GRADVS", "ASPECTVS", "ASPECTVS", "ASPECTVS", "ASPECTVS" };
+    static readonly string[] MapNames = { "cross", "circle", "square", "triangle", "l1", "r1", "l2", "r2", "l3", "r3", "start", "select", "up", "down", "left", "right", "move_up", "move_down", "move_left", "move_right", "walk", "camera_up", "camera_down", "camera_left", "camera_right" };
+    static readonly string[] MapItems = { "CROSS", "CIRCLE", "SQUARE", "TRIANGLE", "L1", "R1", "L2", "R2", "L3", "R3", "START", "SELECT", "UP", "DOWN", "LEFT", "RIGHT", "MOVE UP", "MOVE DOWN", "MOVE LEFT", "MOVE RIGHT", "WALK", "LOOK UP", "LOOK DOWN", "LOOK LEFT", "LOOK RIGHT" };
+    static readonly string[] MapLatin = { "CRVX", "CIRCVLVS", "QVADRATVM", "TRIANGVLVM", "LAEVA I", "DEXTRA I", "LAEVA II", "DEXTRA II", "LAEVA III", "DEXTRA III", "INITIVM", "ELECTIO", "SVRSVM", "DEORSVM", "SINISTRORSVM", "DEXTRORSVM", "GRADVS", "GRADVS", "GRADVS", "GRADVS", "AMBVLATIO", "ASPECTVS", "ASPECTVS", "ASPECTVS", "ASPECTVS" };
     // the keys the game always had (pc/sor_tasti.cpp, kAzioni): with nothing saved the game is exactly as before
-    static readonly string[] KeyDefaults = { "MOUSE_LEFT", "E", "MOUSE_RIGHT", "F", "LEFT_SHIFT", "Q", "C", "SPACE", "V", "X", "ESCAPE", "TAB", "1,UP", "2,DOWN", "3,LEFT", "4,RIGHT", "W", "S", "A", "D", "I", "K", "J", "L" }; // the author's layout of 14/11 (pc/sor_tasti.cpp kAzioni: keep equal)
+    static readonly string[] KeyDefaults = { "MOUSE_LEFT", "E", "MOUSE_RIGHT", "F", "LEFT_CONTROL", "Q", "C", "SPACE", "V", "X", "ESCAPE", "TAB", "1,UP", "2,DOWN", "3,LEFT", "4,RIGHT", "W", "S", "A", "D", "LEFT_SHIFT", "I", "K", "J", "L" }; // the author's layout of 14/11, with L1 on Left Ctrl and Left Shift = WALK since 16/11 (pc/sor_tasti.cpp kAzioni: keep equal)
+    // The STANDARD keys of the KEYBOARD page (its RESET row, "THE STANDARD KEYS", the "STANDARD:" hint): the author's
+    // starting keys, the ones a new install gets (KeyDefaults with FirstStartIni's key_ lines on top: circle F,
+    // triangle Space, L1 E, R2 V, L3 Z; the author 17/11/2026), read from FirstStartIni so the two never differ.
+    // KeyDefaults stays the game's own table: launcher.ini and SOR_KEYS still hold only what differs from it, so an old
+    // launcher.ini without key_ lines keeps the old keys until RESET + APPLY. Lazy: FirstStartIni is declared further down.
+    static string[] keyStart;
+    static string[] KeyStart
+    {
+        get
+        {
+            if (keyStart != null) return keyStart;
+            var k = (string[])KeyDefaults.Clone();
+            foreach (string line in FirstStartIni)
+            {
+                int eq = line.IndexOf('=');
+                if (!line.StartsWith("key_") || eq < 0) continue;
+                int i = Array.IndexOf(MapNames, line.Substring(4, eq - 4));
+                if (i >= 0) k[i] = CleanKeys(line.Substring(eq + 1), KeyDefaults[i]);
+            }
+            return keyStart = k;
+        }
+    }
     // the controller's buttons, in MapNames' order: this order is also the standard mapping
     static readonly string[] PadNames = { "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "LS", "RS", "START", "BACK", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT" };
     static readonly string[] PadLabels = { "A", "B", "X", "Y", "LB", "RB", "LT", "RT", "L STICK", "R STICK", "START", "BACK", "D-PAD UP", "D-PAD DOWN", "D-PAD LEFT", "D-PAD RIGHT" };
     static readonly string[] PadPlaces = { "BOTTOM BUTTON", "RIGHT BUTTON", "LEFT BUTTON", "TOP BUTTON", "LEFT BUMPER", "RIGHT BUMPER", "LEFT TRIGGER", "RIGHT TRIGGER", "PRESS THE LEFT STICK", "PRESS THE RIGHT STICK", "START / MENU BUTTON", "BACK / VIEW BUTTON", "D-PAD", "D-PAD", "D-PAD", "D-PAD" };
     // XInput's bit for each of PadNames (LT and RT: the triggers pressed past a quarter, 0x10000 and 0x20000 here)
     static readonly int[] PadXInput = { 0x1000, 0x2000, 0x4000, 0x8000, 0x0100, 0x0200, 0x10000, 0x20000, 0x0040, 0x0080, 0x0010, 0x0020, 0x0001, 0x0002, 0x0004, 0x0008 };
-    const int PadActions = 16;          // the controller maps the 16 buttons; the keyboard also the two sticks (24 rows)
+    const int PadActions = 16;          // the controller maps the 16 buttons; the keyboard also the two sticks and WALK (25 rows)
     const int MapVisible = 7;           // action rows shown at once (a scrolling list); then RESET, APPLY, BACK
     static readonly string[] MapRowSlots = new string[10];   // page 6 draws its own rows: only the count is used (Hit)
     bool mapPad;                        // page 6: false the keyboard, true the controller
@@ -152,6 +175,8 @@ class Launcher : Form
     {
         if (n == "F1" || n == "F2") return n + " IS FOR RESHADE  ·  PRESS ANOTHER KEY";
         if (n == "F3" || n == "F6") return n + " IS A TEST TOOL  ·  PRESS ANOTHER KEY";
+        if (n == "F4" || n == "F5") return n + " IS THE QUICK SAVE  ·  PRESS ANOTHER KEY";
+        if (n == "F10") return "F10 IS THE ACTOR LIST  ·  PRESS ANOTHER KEY";
         if (n == "F7") return "F7 IS THE WIREFRAME VIEW  ·  PRESS ANOTHER KEY";
         if (n == "F8") return "F8 IS THE FREE CAMERA  ·  PRESS ANOTHER KEY";
         if (n == "F9") return "F9 IS THE BLACK BOX  ·  PRESS ANOTHER KEY";
@@ -182,7 +207,7 @@ class Launcher : Form
     void CountChanged()
     {
         keysChanged = 0; padChanged = 0;
-        for (int i = 0; i < MapNames.Length; i++) if (SavedKey(i) != KeyDefaults[i]) keysChanged++;
+        for (int i = 0; i < MapNames.Length; i++) if (SavedKey(i) != KeyStart[i]) keysChanged++;   // against the starting keys
         for (int i = 0; i < PadActions; i++) if (SavedPadButton(i) != PadNames[i]) padChanged++;
     }
     // SOR_KEYS / SOR_PAD_BUTTONS for the game: only what differs from the standard ("" = all standard)
@@ -210,12 +235,21 @@ class Launcher : Form
         get
         {
             if (mapPad) { for (int i = 0; i < PadActions; i++) if (mapPads[i] != PadNames[i]) return false; }
-            else for (int i = 0; i < MapNames.Length; i++) if (mapKeys[i] != KeyDefaults[i]) return false;
+            else for (int i = 0; i < MapNames.Length; i++) if (mapKeys[i] != KeyStart[i]) return false;
             return true;
         }
     }
     string MapValueLabel(int a) { return mapPad ? PadLabel(mapPads[a]) : KeysLabel(mapKeys[a]); }
-    string MapHint { get { return mapPad ? "CHOOSE A ROW, THEN PRESS THE NEW BUTTON  ·  OR CHANGE IT WITH ‹ ›" : "CHOOSE A ROW, THEN PRESS THE NEW KEY OR MOUSE BUTTON"; } }
+    // the controller page names the controller it finds (padName, from PadMask), or says that none is connected
+    string MapHint
+    {
+        get
+        {
+            if (!mapPad) return "CHOOSE A ROW, THEN PRESS THE NEW KEY OR MOUSE BUTTON";
+            if (padName == null) return "NO CONTROLLER FOUND  ·  CONNECT IT, OR CHANGE THE BUTTONS WITH ‹ ›";
+            return PadShown(padName) + " FOUND  ·  CHOOSE A ROW, THEN PRESS THE NEW BUTTON";
+        }
+    }
 
     void OpenMap(bool pad)
     {
@@ -223,6 +257,7 @@ class Launcher : Form
         page = 6; mapPad = pad; mapScroll = 0; sel = 0; hover = -1; capture = -1; dupAction = -1; dupName = null;
         for (int i = 0; i < MapNames.Length; i++) mapKeys[i] = savedKeys[i] = SavedKey(i);
         for (int i = 0; i < PadActions; i++) mapPads[i] = savedPads[i] = SavedPadButton(i);
+        if (pad) { padIdle = 0; PadMask(); }   // the controller's name for the hint (and SDL started, see PadMask)
         message = MapHint;
         Invalidate();
     }
@@ -384,7 +419,13 @@ class Launcher : Form
         Invalidate();
     }
 
-    // ---- the controller, read with XInput (Xbox and compatible controllers) only while waiting for a button
+    // ---- the controller, read only while the CONTROLLER page is open: with XInput (Xbox and compatible controllers) and
+    // with SDL3 (the SDL3.dll next to this launcher), which knows PlayStation, Switch and many other controllers by the
+    // place of their buttons, as the game does (before 2.9.5 only XInput: a PlayStation controller was "not found" here,
+    // so its buttons could only be changed with ‹ ›). SDL is started when the page opens and stopped when it closes, so
+    // the game finds the controller as it was. SDL's HIDAPI drivers stay off: they can switch a PlayStation controller on
+    // Bluetooth to another report mode that other programs then cannot read; without them SDL only reads (DirectInput
+    // and XInput, as the game does).
 #pragma warning disable 0649   // XInput fills these fields, the compiler cannot see it
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     struct XInputState { public uint packet; public ushort buttons; public byte lt, rt; public short lx, ly, rx, ry; }
@@ -393,10 +434,69 @@ class Launcher : Form
     [System.Runtime.InteropServices.DllImport("xinput9_1_0.dll", EntryPoint = "XInputGetState")] static extern int XInputGetState910(int user, out XInputState s);
     int xinput;     // 0 xinput1_4.dll (Windows 8 and later), 1 xinput9_1_0.dll (Windows 7), 2 none
     int padPrev;    // the buttons held at the last look
-    // The buttons held on any connected controller (XInput's bits; LT 0x10000, RT 0x20000), -1 if none is connected.
+    const string SdlDll = "SDL3.dll";
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] [return: Interop.MarshalAs(Interop.UnmanagedType.I1)] static extern bool SDL_SetHint(string name, string value);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] [return: Interop.MarshalAs(Interop.UnmanagedType.I1)] static extern bool SDL_Init(uint flags);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_Quit();
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_SetJoystickEventsEnabled([Interop.MarshalAs(Interop.UnmanagedType.I1)] bool on);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_SetGamepadEventsEnabled([Interop.MarshalAs(Interop.UnmanagedType.I1)] bool on);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_UpdateGamepads();
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern IntPtr SDL_GetGamepads(out int count);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_free(IntPtr mem);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern IntPtr SDL_OpenGamepad(uint id);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern void SDL_CloseGamepad(IntPtr pad);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] [return: Interop.MarshalAs(Interop.UnmanagedType.I1)] static extern bool SDL_GamepadConnected(IntPtr pad);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] [return: Interop.MarshalAs(Interop.UnmanagedType.I1)] static extern bool SDL_GetGamepadButton(IntPtr pad, int button);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern short SDL_GetGamepadAxis(IntPtr pad, int axis);
+    [Interop.DllImport(SdlDll, CallingConvention = Interop.CallingConvention.Cdecl)] static extern IntPtr SDL_GetGamepadName(IntPtr pad);
+    // SDL's button for each of PadNames (south, east, west, north, the shoulders, the sticks, start, back, the d-pad);
+    // LT and RT are SDL's trigger axes 4 and 5 (-1 here)
+    static readonly int[] PadSdl = { 0, 1, 2, 3, 9, 10, -1, -1, 7, 8, 6, 4, 11, 12, 13, 14 };
+    int sdl;            // 0 not started, 1 started, 2 missing or not working (then XInput alone, as before 2.9.5)
+    readonly Dictionary<uint, IntPtr> sdlPads = new Dictionary<uint, IntPtr>();
+    string padName;     // the controller found at the last look (null: none)
+    int padIdle;        // no row waiting: the controller is looked at every half second (16 ticks), for its name
+    bool SdlStart()
+    {
+        if (sdl != 0) return sdl == 1;
+        try
+        {
+            SDL_SetHint("SDL_JOYSTICK_HIDAPI", "0");
+            SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+            if (!SDL_Init(0x2000)) { sdl = 2; return false; }   // SDL_INIT_GAMEPAD
+            SDL_SetJoystickEventsEnabled(false); SDL_SetGamepadEventsEnabled(false);   // read by asking: no queue fills up
+            sdl = 1;
+        }
+        catch (Exception) { sdl = 2; }   // no SDL3.dll, or one without these functions
+        return sdl == 1;
+    }
+    void SdlStop()
+    {
+        if (sdl != 1) return;
+        try { foreach (var p in sdlPads.Values) SDL_CloseGamepad(p); SDL_Quit(); } catch (Exception) { }
+        sdlPads.Clear(); sdl = 0;
+    }
+    static string Utf8(IntPtr s)
+    {
+        if (s == IntPtr.Zero) return "";
+        int n = 0;
+        while (n < 200 && Interop.Marshal.ReadByte(s, n) != 0) n++;
+        var b = new byte[n]; Interop.Marshal.Copy(s, b, 0, n);
+        return System.Text.Encoding.UTF8.GetString(b);
+    }
+    // the controller's name in the hint: capitals, letters, digits, spaces, - and + only (what the font surely has), 30 at most
+    static string PadShown(string name)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in name.ToUpperInvariant()) if (c < 128 && (char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '+')) sb.Append(c);
+        string s = sb.ToString().Trim();
+        return s == "" ? "CONTROLLER" : s.Length > 30 ? s.Substring(0, 30).TrimEnd() : s;
+    }
+    // The buttons held on any connected controller (XInput's bits; LT 0x10000, RT 0x20000), -1 if none is connected;
+    // padName: the name SDL gives the first one ("CONTROLLER" when only XInput sees it, null when there is none).
     int PadMask()
     {
-        int mask = -1;
+        int mask = -1; string name = null;
         for (int u = 0; u < 4; u++)
         {
             var s = new XInputState(); int r;
@@ -405,12 +505,52 @@ class Launcher : Form
             if (r != 0) continue;
             if (mask < 0) mask = 0;
             mask |= s.buttons | (s.lt > 64 ? 0x10000 : 0) | (s.rt > 64 ? 0x20000 : 0);
+            name = "CONTROLLER";
         }
+        if (SdlStart())
+        {
+            try
+            {
+                SDL_UpdateGamepads();
+                int n; IntPtr ids = SDL_GetGamepads(out n);
+                if (ids != IntPtr.Zero)
+                {
+                    for (int i = 0; i < n; i++)
+                    {
+                        uint id = (uint)Interop.Marshal.ReadInt32(ids, 4 * i);
+                        if (!sdlPads.ContainsKey(id)) { IntPtr p = SDL_OpenGamepad(id); if (p != IntPtr.Zero) sdlPads[id] = p; }
+                    }
+                    SDL_free(ids);
+                }
+                string first = null;
+                foreach (uint id in sdlPads.Keys.ToList())
+                {
+                    IntPtr p = sdlPads[id];
+                    if (!SDL_GamepadConnected(p)) { SDL_CloseGamepad(p); sdlPads.Remove(id); continue; }
+                    if (mask < 0) mask = 0;
+                    for (int b = 0; b < PadSdl.Length; b++) if (PadSdl[b] >= 0 && SDL_GetGamepadButton(p, PadSdl[b])) mask |= PadXInput[b];
+                    if (SDL_GetGamepadAxis(p, 4) > 8191) mask |= 0x10000;   // the triggers past a quarter, as with XInput above
+                    if (SDL_GetGamepadAxis(p, 5) > 8191) mask |= 0x20000;
+                    if (first == null) first = Utf8(SDL_GetGamepadName(p));
+                }
+                if (first != null) name = first != "" ? first : "CONTROLLER";
+            }
+            catch (Exception) { SdlStop(); sdl = 2; }   // this SDL3.dll does not answer as expected: XInput alone
+        }
+        padName = name;
         return mask;
     }
     void PollPad()
     {
-        if (page != 6 || !mapPad || capture < 0) return;
+        if (page != 6 || !mapPad) { SdlStop(); return; }   // SDL runs only while the CONTROLLER page is open
+        if (capture < 0)
+        {   // no row waiting: every half second, the controller's name (plugged in or pulled out meanwhile)
+            if (++padIdle < 16) return;
+            padIdle = 0;
+            string hint = MapHint; PadMask();
+            if (message == hint && MapHint != hint) { message = MapHint; Invalidate(); }
+            return;
+        }
         int m = PadMask();
         if (m < 0) { padPrev = 0; if (message != NoPadMessage && dupAction < 0) { message = NoPadMessage; Invalidate(); } return; }
         if (message == NoPadMessage) { message = PadAsk(capture); Invalidate(); }
@@ -468,9 +608,9 @@ class Launcher : Form
         if (a >= 0) { StartCapture(a); return; }
         PlayClick();
         if (row == MapVisible)
-        {   // RESET: the standard keys, saved only by APPLY
+        {   // RESET: the standard keys (the starting keys, KeyStart), saved only by APPLY
             bool was = MapStandard;
-            for (int i = 0; i < MapNames.Length; i++) if (!mapPad) mapKeys[i] = KeyDefaults[i];
+            for (int i = 0; i < MapNames.Length; i++) if (!mapPad) mapKeys[i] = KeyStart[i];
             for (int i = 0; i < PadActions; i++) if (mapPad) mapPads[i] = PadNames[i];
             dupAction = -1; dupName = null;
             message = was ? "THESE ARE ALREADY THE STANDARD " + (mapPad ? "BUTTONS" : "KEYS") : "STANDARD " + (mapPad ? "BUTTONS" : "KEYS") + " BACK  ·  APPLY TO SAVE THEM";
@@ -499,10 +639,11 @@ class Launcher : Form
             int p = Array.IndexOf(PadNames, mapPads[a]);
             return p >= 0 ? PadPlaces[p] : "";
         }
-        if (a >= 12 && a <= 15) return "D-PAD: MENUS, AND IT WALKS TOO";
-        if (a >= 16 && a <= 19) return "LEFT STICK: WALK";
-        if (a >= 20) return "RIGHT STICK: CAMERA";
-        return mapKeys[a] != KeyDefaults[a] ? "STANDARD: " + KeysLabel(KeyDefaults[a]) : "";
+        if (a >= 12 && a <= 15) return "D-PAD: MENUS, AND IT MOVES TOO";
+        if (a >= 16 && a <= 19) return "LEFT STICK: MOVE";
+        if (a == 20) return "HOLD TO WALK, NOT RUN";
+        if (a >= 21) return "RIGHT STICK: CAMERA";
+        return mapKeys[a] != KeyStart[a] ? "STANDARD: " + KeysLabel(KeyStart[a]) : "";
     }
 
     void PaintMap(Graphics g, Brush gold, Brush bone, Brush ash, Brush ashText, Brush dimGold)
@@ -542,15 +683,16 @@ class Launcher : Form
     // game window, SOR_DEBUG_PANEL). The free camera is pc/sor_camera.cpp (SOR_FREECAM=1: F8 in the game detaches the
     // camera, 1-9 jump to saved points, Ctrl+1-9 save them in camera_points.ini). Saved in launcher.ini as debug_*=1.
     // 10 rows: a little closer together than the OPTIONS page (debugBoxes).
-    static readonly string[] DItems = { "INVINCIBLE", "WEAPONS", "ONE HIT", "MONEY", "UNLOCK ALL", "NO FILMS", "FREE CAMERA", "WIREFRAME", "ENGINE PANEL", "APPLY", "BACK" };
-    static readonly string[] DLatin = { "INVICTVS", "ARMA", "ICTVS VNVS", "PECVNIA", "OMNIA", "SINE FABVLIS", "OCVLVS", "RETE", "MACHINA", "CONFIRMA", "REDI" };
+    static readonly string[] DItems = { "INVINCIBLE", "WEAPONS", "ONE HIT", "MONEY", "UNLOCK ALL", "NO FILMS", "FREE CAMERA", "WIREFRAME", "ENGINE PANEL", "ACTOR LIST", "APPLY", "BACK" };
+    static readonly string[] DLatin = { "INVICTVS", "ARMA", "ICTVS VNVS", "PECVNIA", "OMNIA", "SINE FABVLIS", "OCVLVS", "RETE", "MACHINA", "INDEX", "CONFIRMA", "REDI" };
     // rows 0-7: the launcher.ini key and the SOR_CHEATS names each row passes (the camera and panel rows pass none)
-    static readonly string[] DKeys = { "debug_invincible", "debug_weapons", "debug_onehit", "debug_money", "debug_unlock", "debug_nofilms", "debug_freecam", "debug_wireframe", "debug_panel" };
-    static readonly string[] DCheats = { "invincible", "weapons", "onehit", "salvo,gold", "unlock,allsalvos", "nofilms", "", "", "" };
+    static readonly string[] DKeys = { "debug_invincible", "debug_weapons", "debug_onehit", "debug_money", "debug_unlock", "debug_nofilms", "debug_freecam", "debug_wireframe", "debug_panel", "debug_actors" };
+    static readonly string[] DCheats = { "invincible", "weapons", "onehit", "salvo,gold", "unlock,allsalvos", "nofilms", "", "", "", "" };
     const int DFreecam = 6;                // the FREE CAMERA row
     const int DWire = 7;                   // the WIREFRAME row (sor-gs.dll, SORGS_WIREFRAME: F7 in the game, DirectX 11 only)
     const int DPanel = 8;                  // the ENGINE PANEL row
-    readonly bool[] dbg = new bool[9];     // debug page, edited values
+    const int DActors = 9;                 // the ACTOR LIST row (pc/sor_attori.cpp, SOR_ACTORS=1: F10 in the game writes attori.txt)
+    readonly bool[] dbg = new bool[10];     // debug page, edited values
     bool SavedDbg(int i) { return ReadIni(DKeys[i]) == "1"; }
     bool SavedDbgPanel { get { return SavedDbg(DPanel); } }
     bool SavedDbgFreecam { get { return SavedDbg(DFreecam); } }
@@ -608,7 +750,7 @@ class Launcher : Form
     static readonly string[] UpBl = { "", "", "", "", "", "", "", "", "", "2", "2", "" }; // SORGS_BILINEAR
     static readonly string[] UpNs = { "", "0", "0", "2", "0", "0", "2", "2", "2", "2", "2", "2" };
     int upFix;
-    int SavedUpFix { get { int v; return int.TryParse(ReadIni("upscalefix"), out v) && v >= 0 && v < UpNames.Length ? v : 6; } } // NATIVE + TEXTURE when not saved: glows and lights stay in place (13/11)
+    int SavedUpFix { get { int v; return int.TryParse(ReadIni("upscalefix"), out v) && v >= 0 && v < UpNames.Length ? v : 6; } } // NATIVE + TEXTURE when not saved: glows and lights stay in place (the author, 13/11)
     bool SavedTimings { get { return ReadIni("timings") == "1"; } }   // SPEED TESTS > TIMINGS: off unless timings=1
     bool liveSnd = true, liveAsh = true;   // what the launcher itself uses now
     bool UseSnd { get { return liveSnd; } }
@@ -620,7 +762,12 @@ class Launcher : Form
     // Rows 0-9 change a value (ANTIALIASING: PCSX2's FXAA; VSYNC: every picture in step with the screen; OSD: the
     // video card's on-screen statistics; FIELD OF VIEW: the gameplay camera wider, SOR_FOV), 10 saves, 11 goes back
     // without saving. 12 rows: closer together than the other pages (graphicsBoxes, 29 px).
-    static readonly string[] GItems = { "RENDERER", "RESOLUTION", "SHARPNESS", "ANTIALIASING", "SCREEN", "FRAME RATE", "VSYNC", "OSD", "VIGNETTE", "FIELD OF VIEW", "APPLY", "BACK" };
+    // POST EFFECTS (17/11/2026: the old VIGNETTE row with a third value; idea from Gabominated's PCSX2 patch "Disable
+    // Post-Processing Effects", used with permission, Gabominated/PCSX2 issue #36). CLEAN, the default (nopost=1 in
+    // launcher.ini), passes SOR_NO_POST=1 with the VIGNETTE OFF variables: sor.exe skips the game's full-screen filters
+    // (blur, depth of field, glow, bloom, fog, grain, colour wash), all but the water and the fades (pc/sor_vignetta.cpp).
+    // NO GRAIN (nopost=0 vignette=0) is the old VIGNETTE OFF; ORIGINAL (nopost=0 vignette=1) is the game as on the PS2.
+    static readonly string[] GItems = { "RENDERER", "RESOLUTION", "SHARPNESS", "ANTIALIASING", "SCREEN", "FRAME RATE", "VSYNC", "OSD", "POST EFFECTS", "FIELD OF VIEW", "APPLY", "BACK" };
     static readonly string[] GLatin = { "PICTOR", "MAGNITVDO", "ACIES", "LEVITAS", "FORMA", "CELERITAS", "CONCENTVS", "NVNTIVS", "VELVM", "PROSPECTVS", "CONFIRMA", "REDI" };
     const int MaxScale = 8;
     // RESOLUTION: 6X and 8X (the author, 9/11) draw the game larger and shrink it to the screen, the strongest
@@ -629,7 +776,7 @@ class Launcher : Form
     bool hz60;                         // 60 Hz: the game's own 60 Hz mode, chosen at start
     static readonly string[] ScreenNames = { "4:3", "16:9", "21:9", "32:9" };
     int wide;                          // 0: 4:3, 1: widescreen 16:9 (any renderer), 2: 21:9 (video card only)
-    bool useGpu; int scale = 3; int api = 1; bool showOsd; bool vsync = true; bool vignette = true; int sharp; // sharp: 0 off (as the PS2), 1 low, 2 high; api: 1 DirectX 11, 2 DirectX 12, 3 Vulkan
+    bool useGpu; int scale = 3; int api = 1; bool showOsd; bool vsync = true; bool vignette = true; bool nopost = true; int sharp; // sharp: 0 off (as the PS2), 1 low, 2 high; api: 1 DirectX 11, 2 DirectX 12, 3 Vulkan
     bool fxaa;                         // ANTIALIASING: PCSX2's FXAA on the finished picture (video card only)
     // FIELD OF VIEW (the author, 10/11/2026): the gameplay camera's view this much wider, in percent (100 = as on the
     // PS2); passed as SOR_FOV, used by the translated camera code (pc/widescreen_gen.py, pc/main_sor.cpp).
@@ -639,10 +786,11 @@ class Launcher : Form
     readonly string dir = AppDomain.CurrentDomain.BaseDirectory;
     string IniPath { get { return Path.Combine(dir, "launcher.ini"); } }
     readonly Rectangle[] menuBoxes = new Rectangle[Items.Length];
+    readonly Rectangle[] debugPageBoxes = new Rectangle[DItems.Length]; // the DEBUG page: 12 rows, 28 px apart (above its warning)
     readonly Rectangle[] graphicsBoxes = new Rectangle[GItems.Length]; // the GRAPHICS page: 12 rows, 29 px apart
     readonly Rectangle[] debugBoxes = new Rectangle[10];    // 10 rows: closer still, above the message line
     readonly Rectangle[] debug11Boxes = new Rectangle[Math.Max(Math.Max(DItems.Length, GItems.Length), CItems.Length)];   // the DEBUG and GRAPHICS pages: 11 rows, closer again
-    Rectangle[] boxes { get { return page == 1 ? graphicsBoxes : page == 5 || page == 4 || page == 2 ? debug11Boxes : page == 6 ? debugBoxes :   // the key mapping has 10 rows, OPTIONS 11 (SPEED TESTS)
+    Rectangle[] boxes { get { return page == 1 ? graphicsBoxes : page == 5 ? debugPageBoxes : page == 4 || page == 2 ? debug11Boxes : page == 6 ? debugBoxes :   // the key mapping has 10 rows, OPTIONS 11 (SPEED TESTS)
  page == 4 ? graphicsBoxes : menuBoxes; } }                                // CONTROLS: 7 rows
     readonly Font titleFont, subFont, subFont2, itemFont, latinFont, smallFont, valueFont;
     readonly Image logo;
@@ -683,6 +831,8 @@ class Launcher : Form
             graphicsBoxes[i] = new Rectangle(90, 124 + i * 29, 330, 29);   // the last description ends above the message (y 482)
         for (int i = 0; i < debugBoxes.Length; i++)   // the last row's description ends above the message (y 482)
             debugBoxes[i] = new Rectangle(90, 130 + i * 34, 330, 34);
+        for (int i = 0; i < debugPageBoxes.Length; i++)
+            debugPageBoxes[i] = new Rectangle(90, 124 + i * 28, 330, 28);   // BACK's description ends above the warning (y 482)
         for (int i = 0; i < debug11Boxes.Length; i++)
             debug11Boxes[i] = new Rectangle(90, 126 + i * 31, 330, 31);   // last description ends above the message
         MouseDown += (s, e) =>
@@ -697,7 +847,7 @@ class Launcher : Form
         MouseMove += (s, e) => { int sw = SwitchAt(e.Location); if (sw != switchHover) { switchHover = sw; Cursor = sw >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); } };
         MouseMove += (s, e) => { int h = Hit(e.Location); if (h != hover) { hover = h; if (h >= 0 && capture < 0) sel = h; Invalidate(); } };
         MouseWheel += (s, e) => { if (WheelAssigns(e)) return; if (page == 6 && capture < 0) MapScroll(e.Delta > 0 ? -1 : 1); };   // a waiting KEYBOARD row takes the notch; else the key mapping's list scrolls
-        var padTimer = new Timer { Interval = 30 };   // the controller is read only while a mapping row waits for a button
+        var padTimer = new Timer { Interval = 30 };   // the controller is read only while the CONTROLLER page is open
         padTimer.Tick += (s, e) => PollPad();
         padTimer.Start();
         MouseClick += (s, e) =>
@@ -926,12 +1076,13 @@ class Launcher : Form
         bool SavedOsd { get { return ReadIni("osd") == "1"; } }   // package default: off
         int SavedFov { get { int f; return int.TryParse(ReadIni("fov"), out f) && Array.IndexOf(Fovs, f) >= 0 ? f : 130; } } // FIELD OF VIEW: +30% at the first start (the author, 10/11); 100 as on the PS2
         bool SavedVignette { get { return ReadIni("vignette") == "1"; } } // the game's own grain/haze filters: off unless turned on (the author, 9/11)
+        bool SavedNoPost { get { string v = ReadIni("nopost"); return v == "1" || (v != "0" && !SavedVignette); } } // POST EFFECTS CLEAN unless chosen otherwise (17/11/2026); an older launcher.ini without this line keeps a VIGNETTE ON as ORIGINAL
         bool SavedVsync { get { return ReadIni("vsync") != "0"; } } // on, unless turned off
         int SavedSharp { get { int s; return int.TryParse(ReadIni("sharpness"), out s) && s >= 0 && s <= 2 ? s : 2; } } // HIGH at the first start (the author's package defaults, 9/11)
         bool SavedFxaa { get { return ReadIni("antialiasing") != "off"; } } // package default FXAA (the author, 9/11 21:07); antialiasing=off turns it off
-        bool Changed { get { return useGpu != SavedGpu || (useGpu && (scale != SavedScale || api != SavedApi)) || wide != SavedWide || hz60 != Saved60 || vsync != SavedVsync || sharp != SavedSharp || fxaa != SavedFxaa || showOsd != SavedOsd || vignette != SavedVignette || fov != SavedFov; } }
+        bool Changed { get { return useGpu != SavedGpu || (useGpu && (scale != SavedScale || api != SavedApi)) || wide != SavedWide || hz60 != Saved60 || vsync != SavedVsync || sharp != SavedSharp || fxaa != SavedFxaa || showOsd != SavedOsd || nopost != SavedNoPost || (!nopost && vignette != SavedVignette) || fov != SavedFov; } }
 
-    void OpenGraphics() { page = 1; useGpu = SavedGpu; scale = SavedScale; api = SavedApi; wide = SavedWide; hz60 = Saved60; vsync = SavedVsync; sharp = SavedSharp; fxaa = SavedFxaa; showOsd = SavedOsd; vignette = SavedVignette; fov = SavedFov; sel = 0; hover = -1; message = Hint(); Invalidate(); }
+    void OpenGraphics() { page = 1; useGpu = SavedGpu; scale = SavedScale; api = SavedApi; wide = SavedWide; hz60 = Saved60; vsync = SavedVsync; sharp = SavedSharp; fxaa = SavedFxaa; showOsd = SavedOsd; vignette = SavedVignette; nopost = SavedNoPost; fov = SavedFov; sel = 0; hover = -1; message = Hint(); Invalidate(); }
 
     void OpenSpeed() { page = 7; vu1Eng = SavedVu1; timings = SavedTimings; upFix = SavedUpFix; sel = 0; hover = -1; message = ""; Invalidate(); }
 
@@ -986,8 +1137,8 @@ class Launcher : Form
 
     // ---- options and mods: one value, then APPLY and BACK (mods: also the folder) ----
     bool SmallChanged { get { return page == 7 ? vu1Eng != SavedVu1 || timings != SavedTimings || upFix != SavedUpFix : page == 2 ? full != SavedFull || bgmVol != ReadGameVol("bgm") || seVol != ReadGameVol("se") || smooth != SavedSmooth : page == 4 ? swap != SavedSwap || invY != SavedInvY || invX != SavedInvX || mouseLook != SavedMouseLook || mouseSpeed != SavedMouseSpeed || mouseInvY != SavedMouseInvY || toggleBtn != SavedToggle : page == 5 ? DebugChanged : mods != SavedMods || reshade != SavedReshade || texDump != SavedTexDump; } }
-    int ApplyRow { get { return page == 2 ? 7 : page == 7 ? 3 : page == 3 ? 4 : page == 4 ? 9 : page == 5 ? 9 : 1; } }
-    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 3 : page == 5 ? i <= 8 : page == 7 ? i <= 2 : page == 3 ? i <= 2 : i == 0; }
+    int ApplyRow { get { return page == 2 ? 7 : page == 7 ? 3 : page == 3 ? 4 : page == 4 ? 9 : page == 5 ? 10 : 1; } }
+    bool IsToggle(int i) { return page == 4 ? i >= 2 && i <= 8 : page == 2 ? i <= 3 : page == 5 ? i <= 9 : page == 7 ? i <= 2 : page == 3 ? i <= 2 : i == 0; }
     void Toggle(int i)
     {
         if (page == 2) { if (i == 0) full = !full; else if (i == 1) bgmVol = (bgmVol + toggleDir + 11) % 11; else if (i == 2) seVol = (seVol + toggleDir + 11) % 11; else smooth = !smooth; }
@@ -1083,6 +1234,7 @@ class Launcher : Form
         if (page == 5 && i == 6) return "F8 IN GAME · 1-9 JUMP · CTRL+1-9 SAVE";
         if (page == 5 && i == DWire) return SavedGpu && SavedApi == 1 ? "POLYGONS AS WIRES  ·  F7 IN GAME" : "WORKS ONLY WITH DIRECTX 11";
         if (page == 5 && i == DPanel) return "F12 IN THE GAME WINDOW";
+        if (page == 5 && i == DActors) return "F10  ·  FOR DEVELOPERS AND MODDERS";
         if (page == 7 && i == 0) return vu1Eng == 1 ? "PCSX2'S VU1  \u00B7  NEEDS AVX2" : vu1Eng == 2 ? "BOTH, COMPARED IN THE LOG  \u00B7  SLOW" : "OURS, THE OLD ONE";
         if (page == 7 && i == 1) return timings ? "VU1 AND VIF TIMES IN THE LOG" : "NO TIME MEASURE";
         if (page == 7 && i == 2) return upFix == 6 ? "THE DEFAULT: LIGHTS AND GLOWS IN PLACE" : upFix == 0 ? "SHARPEST EDGES, GLOWS CAN SHIFT" : "A TEST: LOOK AT EDGES AND TREES";
@@ -1143,7 +1295,8 @@ class Launcher : Form
             + (SavedGpu ? "SET GRAPHICS TO PROCESSOR OR CHOOSE YOUR DISC AGAIN" : "PRESS PLAY AND CHOOSE YOUR DISC AGAIN");
     }
 
-    string Hint() { if (sel == 0 && !GpuInstalled) return "THE VIDEO CARD FILE (SOR-GS.DLL) IS MISSING  ·  DOWNLOAD THE PACKAGE AGAIN"; return sel == 1 && useGpu ? "HIGHER IS SHARPER  \u00B7  IF THE GAME SLOWS DOWN, CHOOSE A LOWER ONE" : ""; }
+    string Hint() { if (sel == 0 && !GpuInstalled) return "THE VIDEO CARD FILE (SOR-GS.DLL) IS MISSING  ·  DOWNLOAD THE PACKAGE AGAIN"; if (sel == 8) return PostHint; return sel == 1 && useGpu ? "HIGHER IS SHARPER  \u00B7  IF THE GAME SLOWS DOWN, CHOOSE A LOWER ONE" : ""; }
+    const string PostHint = "CLEAN: THE WATER AND THE FADES STAY  \u00B7  IDEA BY GABOMINATED, USED WITH PERMISSION";
 
     // Changes the value on a row: d = 1 the next one, -1 the one before (round).
     void Step(int row, int d)
@@ -1161,7 +1314,7 @@ class Launcher : Form
         else if (row == 5) hz60 = !hz60;
         else if (row == 6 && useGpu) vsync = !vsync;       // in step with the screen: done by the video card's GS
         else if (row == 7 && useGpu) showOsd = !showOsd;   // the statistics are drawn by the video card's GS
-        else if (row == 8) vignette = !vignette;           // sor.exe skips the game's grain/haze filters (pc/sor_vignetta.cpp)
+        else if (row == 8) { int s = nopost ? 0 : vignette ? 2 : 1; s = (s + d + 3) % 3; nopost = s == 0; if (s != 0) vignette = s == 2; }   // POST EFFECTS: CLEAN (SOR_NO_POST), NO GRAIN, ORIGINAL (pc/sor_vignetta.cpp)
         else if (row == 9) { int k = Array.IndexOf(Fovs, fov); if (k < 0) k = 0; fov = Fovs[(k + d + Fovs.Length) % Fovs.Length]; }   // SOR_FOV
         message = row == 4 && wide >= 2 ? "NOT MADE FOR THIS GAME: SOME VIEWS MAY SHOW FLAWS  ·  FILMS STAY 4:3, MENUS STRETCHED" : row == 9 && fov > 100 ? "ONLY THE PLAYING CAMERA  ·  FILMS AND THE GAME'S OWN SCENES STAY AS THEY ARE" : Hint();
         Invalidate();
@@ -1174,7 +1327,7 @@ class Launcher : Form
         if (i <= 9) { Step(i, d); return; }
         if (i == 10 && Changed)
         {
-            try { WriteIni("graphics", useGpu ? "gpu" : "cpu"); WriteIni("api", api.ToString()); WriteIni("scale", scale.ToString()); WriteIni("screen", ScreenNames[wide]); WriteIni("framerate", hz60 ? "60" : "50"); WriteIni("vsync", vsync ? "1" : "0"); WriteIni("sharpness", sharp.ToString()); WriteIni("antialiasing", fxaa ? "fxaa" : "off"); WriteIni("osd", showOsd ? "1" : "0"); WriteIni("vignette", vignette ? "1" : "0"); WriteIni("fov", fov.ToString()); }
+            try { WriteIni("graphics", useGpu ? "gpu" : "cpu"); WriteIni("api", api.ToString()); WriteIni("scale", scale.ToString()); WriteIni("screen", ScreenNames[wide]); WriteIni("framerate", hz60 ? "60" : "50"); WriteIni("vsync", vsync ? "1" : "0"); WriteIni("sharpness", sharp.ToString()); WriteIni("antialiasing", fxaa ? "fxaa" : "off"); WriteIni("osd", showOsd ? "1" : "0"); WriteIni("vignette", vignette ? "1" : "0"); WriteIni("nopost", nopost ? "1" : "0"); WriteIni("fov", fov.ToString()); }
             catch (Exception) { message = "COULD NOT SAVE THE SETTINGS  ·  THE FOLDER MAY BE READ-ONLY: MOVE THE GAME TO DOCUMENTS"; Invalidate(); return; }
             Back("GRAPHICS SAVED  \u00B7  USED FROM THE NEXT PLAY");
             return;
@@ -1206,7 +1359,7 @@ class Launcher : Form
         if (i == 5) return hz60 ? "SMOOTH ON MODERN SCREENS" : "AS THE EUROPEAN PS2";
         if (i == 6) return !useGpu ? "ONLY WITH THE VIDEO CARD" : vsync ? "IN STEP WITH THE SCREEN" : "SHOWN AS SOON AS READY";
         if (i == 7) return !useGpu ? "ONLY WITH THE VIDEO CARD" : showOsd ? "FPS AND STUTTERS ON SCREEN" : "CLEAN SCREEN";
-        if (i == 8) return vignette ? "AS ON THE PS2: GRAIN AND HAZE" : "NO GRAIN, NO HAZE";
+        if (i == 8) return nopost ? "NO BLUR, GLOW OR GRAIN · BY GABOMINATED" : vignette ? "AS ON THE PS2: GRAIN AND HAZE" : "NO GRAIN, NO HAZE";
         if (i == 9) return fov == 100 ? "AS ON THE PS2" : fov == 110 ? "A LITTLE WIDER" : fov == 120 ? "WIDER, SEE MORE AROUND" : "WIDEST, EDGES MAY SHOW FLAWS";
         if (i == 10) return Changed ? "SAVE FOR THE NEXT PLAY" : "NOTHING CHANGED";
         return Changed ? "WITHOUT SAVING" : "";
@@ -1448,6 +1601,7 @@ class Launcher : Form
 
     void Play()
     {
+        SdlStop();   // the CONTROLLER page's SDL, if still open: the game finds the controller as it was
         // before the disc is known: at least one of the programs must be there
         bool anyExe = false;
         foreach (var r in GameDiscs) if (File.Exists(Path.Combine(dir, r.ExeName))) anyExe = true;
@@ -1509,7 +1663,8 @@ class Launcher : Form
         psi.EnvironmentVariables["SORGS_SHARPNESS"] = SavedSharp.ToString(); // sor-gs.dll: 0 as the PS2, 1 low, 2 high
         psi.EnvironmentVariables["SORGS_FXAA"] = SavedFxaa ? "1" : "0"; // sor-gs.dll: PCSX2's FXAA antialiasing (video card only)
         psi.EnvironmentVariables["SORGS_VSYNC"] = SavedVsync ? "1" : "0"; // sor-gs.dll: every picture in step with the screen
-        if (!SavedVignette) { psi.EnvironmentVariables["SOR_NO_VIGNETTE"] = "1"; psi.EnvironmentVariables["SOR_NO_HAZE"] = "1"; psi.EnvironmentVariables["SOR_NO_DOF"] = "1"; } // sor.exe: skip the game's grain/haze filters, the near fog veil and the depth of field (14/11)
+        if (SavedNoPost) psi.EnvironmentVariables["SOR_NO_POST"] = "1";   // POST EFFECTS CLEAN (17/11/2026): every full-screen filter but the water and the fades, with the VIGNETTE OFF variables below, as tested
+        if (SavedNoPost || !SavedVignette) { psi.EnvironmentVariables["SOR_NO_VIGNETTE"] = "1"; psi.EnvironmentVariables["SOR_NO_HAZE"] = "1"; psi.EnvironmentVariables["SOR_NO_DOF"] = "1"; } // sor.exe: skip the game's grain/haze filters, the near fog veil and the depth of field (14/11)
         if (SavedFov != 100) psi.EnvironmentVariables["SOR_FOV"] = SavedFov.ToString(); // sor.exe: the gameplay camera wider (GRAPHICS > FIELD OF VIEW)
         psi.EnvironmentVariables["SORGS_OSD"] = SavedOsd ? "1" : "0"; // read by sor-gs.dll (video card only)
         psi.EnvironmentVariables["SOR_AUDIO_STRETCH"] = SavedSmooth ? "1" : "0"; // sor.exe, pc/sor_audio.cpp: OPTIONS > SMOOTH AUDIO, 0 = the old sound
@@ -1521,11 +1676,12 @@ class Launcher : Form
         psi.EnvironmentVariables["SOR_CHEATS"] = DebugCheats();                  // hidden DEBUG page: "" = no cheats
         psi.EnvironmentVariables["SOR_DEBUG_PANEL"] = SavedDbgPanel ? "1" : "0"; // hidden DEBUG page: F12 engine panel
         psi.EnvironmentVariables["SOR_FREECAM"] = SavedDbgFreecam ? "1" : "0";   // hidden DEBUG page: F8 free camera
+        psi.EnvironmentVariables["SOR_ACTORS"] = SavedDbg(DActors) ? "1" : "0";    // DEBUG page: F10 actor list
         psi.EnvironmentVariables["SORGS_WIREFRAME"] = SavedDbg(DWire) ? "1" : "0"; // DEBUG page: F7 polygons as wires (sor-gs.dll, DirectX 11)
         Process p;
         try { p = Process.Start(psi); }
         catch (Exception) { message = "COULD NOT START THE GAME  ·  CHECK YOUR ANTIVIRUS OR DOWNLOAD THE PACKAGE AGAIN"; Invalidate(); return; }
-        // The launcher stays until the game's window is there (14/11: show that something is happening,
+        // The launcher stays until the game's window is there (14/11, the author: show that something is happening,
         // with real steps and no fake progress bar). The steps come from the game's own log; the seconds always move.
         // If the game closes before its window comes, something is wrong: say so, and forget the disc image,
         // so that the next Play asks for it again.
@@ -1610,7 +1766,7 @@ class Launcher : Form
             bool live = i == 0 ? GpuInstalled : i == 1 || i == 2 || i == 3 || i == 6 || i == 7 ? useGpu : i == 10 ? Changed : true;
             if (on) Highlight(g, b, live, gold);
             Spaced(g, GItems[i], subFont2, live ? (on ? gold : bone) : ash, b.X + 6, b.Y + 5, 2);
-            string value = i == 0 ? (!useGpu ? "PROCESSOR" : api == 2 ? "DIRECTX 12" : api == 3 ? "VULKAN" : "DIRECTX 11") : i == 1 ? scale + "X" : i == 2 ? (sharp == 0 ? "OFF" : sharp == 1 ? "LOW" : "HIGH") : i == 3 ? (fxaa ? "FXAA" : "OFF") : i == 4 ? ScreenNames[wide] : i == 5 ? (hz60 ? "60 FPS" : "50 FPS") : i == 6 ? (vsync ? "ON" : "OFF") : i == 7 ? (showOsd ? "ON" : "OFF") : i == 8 ? (vignette ? "ON" : "OFF") : i == 9 ? (fov == 100 ? "ORIGINAL" : "+" + (fov - 100) + "%") : "";
+            string value = i == 0 ? (!useGpu ? "PROCESSOR" : api == 2 ? "DIRECTX 12" : api == 3 ? "VULKAN" : "DIRECTX 11") : i == 1 ? scale + "X" : i == 2 ? (sharp == 0 ? "OFF" : sharp == 1 ? "LOW" : "HIGH") : i == 3 ? (fxaa ? "FXAA" : "OFF") : i == 4 ? ScreenNames[wide] : i == 5 ? (hz60 ? "60 FPS" : "50 FPS") : i == 6 ? (vsync ? "ON" : "OFF") : i == 7 ? (showOsd ? "ON" : "OFF") : i == 8 ? (nopost ? "CLEAN" : vignette ? "ORIGINAL" : "NO GRAIN") : i == 9 ? (fov == 100 ? "ORIGINAL" : "+" + (fov - 100) + "%") : "";
             if (value != "")
             {
                 string v = live ? "\u2039 " + value + " \u203A" : value;
@@ -1864,7 +2020,7 @@ class Launcher : Form
         get { var cp = base.CreateParams; cp.Style |= 0x00020000 /* WS_MINIMIZEBOX */ | 0x00080000 /* WS_SYSMENU */; return cp; }
     }
 
-    // Bottom left, left of "by Korvonordico" (14/11): the launcher's own sounds (a speaker) and its falling ash and
+    // Bottom left, left of "by Korvonordico" (14/11, the author): the launcher's own sounds (a speaker) and its falling ash and
     // embers (a flame); a click switches them and they are saved at once. They were MENU SOUNDS and BACKGROUND in OPTIONS.
     Rectangle SwitchRect(int i) { return new Rectangle(12 + i * 36, ClientSize.Height - 37, 26, 26); }   // bottom left, before "by Korvonordico"
     int SwitchAt(Point p) { for (int i = 0; i < 2; i++) if (SwitchRect(i).Contains(p)) return i; return -1; }
@@ -1986,6 +2142,27 @@ class Launcher : Form
         }
     }
 
+    // A new install (no launcher.ini next to the launcher yet): the starting settings the author chose on 17/11/2026
+    // (IMPOSTAZIONI-PREDEFINITE.ini of the port's folder, without iso= and serial=, which belong to each player), with
+    // POST EFFECTS CLEAN and RESOLUTION 6x (his choice on 17/11/2026: 8x is heavy for weak PCs). Written once, at the first normal start; an existing launcher.ini is never touched (a line
+    // missing in it keeps the launcher's own default). The package has no launcher.ini since 2.9.5 (pc/pacchetto_usa.sh).
+    static readonly string[] FirstStartIni = {
+        "volume=100", "swap=0", "invert_y=0", "invert_x=0", "mouse_look=1", "mouse_speed=5", "mouse_invert_y=0", "toggle=l2",
+        "vu1engine=pcsx2", "timings=0", "upscalefix=11", "menu_sounds=1", "background=1",
+        "debug_invincible=0", "debug_weapons=0", "debug_onehit=0", "debug_money=0", "debug_unlock=0", "debug_nofilms=0",
+        "debug_freecam=0", "debug_wireframe=0", "debug_panel=0",
+        "graphics=gpu", "api=2", "scale=6", "screen=16:9", "framerate=60", "vsync=1", "sharpness=2", "antialiasing=fxaa",
+        "osd=1", "vignette=0", "nopost=1", "fov=130", "mods=1", "reshade=1", "texdump=0",
+        "key_circle=F", "key_triangle=SPACE", "key_l1=E", "key_r2=V", "key_l3=Z",
+        "display=fullscreen", "smoothaudio=1" };
+
+    static void FirstStart()
+    {
+        string ini = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "launcher.ini");
+        try { if (!File.Exists(ini)) File.WriteAllLines(ini, FirstStartIni); }
+        catch (Exception) { }   // a read-only folder: the launcher's own defaults, and APPLY says it cannot save
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
@@ -1996,6 +2173,7 @@ class Launcher : Form
             if (why != "") { File.WriteAllText(Path.Combine(args[2], "read-disc-error.txt"), why); Environment.Exit(1); }
             return;
         }
+        if (args.Length == 0) FirstStart();
         var f = new Launcher();
         if (args.Length == 1 && args[0] == "--sort-dumps")
         {   // sorts the saved textures as MODS FOLDER does, without the window; the exit code is how many were copied
@@ -2018,6 +2196,7 @@ class Launcher : Form
                 else if (w == "dup") { f.ChooseMap(0); if (f.mapPad) f.SetPad("B"); else f.SetKey("C"); }
                 else if (w == "reserved") { f.ChooseMap(0); f.message = Refused("F9"); }
                 else if (w == "end") for (int k = 0; k < f.MapCount - 1; k++) f.MapMove(1);   // down to the last action
+                else if (w == "reset") f.ChooseMap(MapVisible);   // RESET pressed (the starting keys, KeyStart; not saved)
                 else if (w == "changed") { f.mapKeys[0] = "V"; f.mapKeys[3] = "X,SPACE"; f.mapPads[0] = "B"; f.mapPads[1] = "A"; f.swap = true; f.sel = 0; }
                 // "mouse": mouse buttons set as keys (as clicks and wheel notches would set them); "mousedup": a click already used
                 else if (w == "mouse" || w == "mousedup")
@@ -2028,7 +2207,7 @@ class Launcher : Form
                     if (w == "mousedup") { f.ChooseMap(1); f.SetKey("MOUSE_LEFT"); }
                 }
             }
-            if (args.Length >= 3 && args[2] == "debug") { f.OpenDebug(); if (args.Length == 4 && args[3] == "changed") { f.dbg[0] = !f.dbg[0]; f.dbg[3] = !f.dbg[3]; f.dbg[DPanel] = !f.dbg[DPanel]; f.sel = 9; } }
+            if (args.Length >= 3 && args[2] == "debug") { f.OpenDebug(); if (args.Length == 4 && args[3] == "changed") { f.dbg[0] = !f.dbg[0]; f.dbg[3] = !f.dbg[3]; f.dbg[DPanel] = !f.dbg[DPanel]; f.sel = 10; } }
             if (args.Length == 4 && args[3] == "changed") { f.full = !f.full; f.mods = !f.mods; }
             if (args.Length >= 3 && args[2] == "graphics")
             {
@@ -2043,6 +2222,9 @@ class Launcher : Form
                 else if (args.Length == 4 && args[3] == "fxaa") { f.useGpu = true; f.fxaa = true; f.sel = 3; }
                 else if (args.Length == 4 && args[3] == "novsync") { f.useGpu = true; f.vsync = false; f.sel = 6; }
                 else if (args.Length == 4 && args[3] == "osd") { f.useGpu = true; f.showOsd = true; f.sel = 7; }
+                else if (args.Length == 4 && args[3] == "clean") { f.nopost = true; f.sel = 8; f.message = f.Hint(); }   // POST EFFECTS CLEAN, chosen
+                else if (args.Length == 4 && args[3] == "nograin") { f.nopost = false; f.vignette = false; f.sel = 8; f.message = f.Hint(); }   // POST EFFECTS NO GRAIN, chosen
+                else if (args.Length == 4 && args[3] == "original") { f.nopost = false; f.vignette = true; f.sel = 8; f.message = f.Hint(); }   // POST EFFECTS ORIGINAL, chosen
                 else if (args.Length == 4 && int.TryParse(args[3], out s)) { f.scale = s; f.sel = 1; f.message = f.Hint(); }
             }
             using (var bmp = new Bitmap(f.ClientSize.Width, f.ClientSize.Height))

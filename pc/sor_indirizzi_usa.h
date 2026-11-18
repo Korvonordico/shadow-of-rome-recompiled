@@ -28,6 +28,7 @@ inline constexpr SorIndirizzo kSorIndirizziUsa[] = {
     {0x00229890u, 0x00229430u}, // start of set_mastervol
     {0x00269450u, 0x00268FE0u}, // start of move
     {0x00281E30u, 0x002819C0u}, // start of Dvd_iWakeupCmsThread
+    {0x002E4960u, 0x002E43F0u}, // start of apply_effect
     {0x002E5460u, 0x002E4EF0u}, // start of move
     {0x002F2520u, 0x002F1FB0u}, // start of config_update
     {0x002F7460u, 0x002F6F00u}, // start of set_bgm_volume
@@ -41,16 +42,19 @@ inline constexpr SorIndirizzo kSorIndirizziUsa[] = {
     {0x0032B7D0u, 0x0032B190u}, // start of move_init
     {0x00349270u, 0x00348920u}, // start of trans
     {0x00349390u, 0x00348A40u}, // start of main
+    {0x004852B8u, 0x00484848u}, // data area089_colosseum_info+0x28
     {0x004BC400u, 0x004BB980u}, // data Pad
     {0x004BD2ECu, 0x004BC86Cu}, // data Pad+0xeec
     {0x004BE2DAu, 0x004BD85Au}, // data Global+0xda
     {0x004BE2E0u, 0x004BD860u}, // data Global+0xe0
     {0x004BE2E8u, 0x004BD868u}, // data Global+0xe8
     {0x004BE2F5u, 0x004BD875u}, // data Global+0xf5
+    {0x004BE304u, 0x004BD884u}, // data Global+0x104
     {0x004BE564u, 0x004BDAE4u}, // data Global+0x364
     {0x004C8B40u, 0x004C80C0u}, // data Camera
     {0x004D3930u, 0x004D2EB0u}, // data Scene+0x320
     {0x004E69E0u, 0x004E5F60u}, // data Work_man
+    {0x004E8080u, 0x004E7600u}, // data Act_atr
     {0x004EA16Cu, 0x004E96ECu}, // data System+0x2c
     {0x004EA170u, 0x004E96F0u}, // data System+0x30
     {0x004FF5C0u, 0x004FEB40u}, // data Audience+0xca0

@@ -2,6 +2,8 @@
 // them as contact sheets plus a short summary when something goes wrong. It knows nothing about the program.
 #pragma once
 
+#include "sentinel.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -40,6 +42,22 @@ namespace blackbox
         double loadingMinSeconds = 0.5;
         const char *progressName = "progress"; // what the progress counter counts, as summary.txt names it
 
+        // The sentinel (sentinel.h): cheap checks on EVERY frame, with no AI: a black or near-black screen, the same
+        // picture while frames keep coming, flicker (a region that changes every other frame and comes back), a
+        // sudden flash of strong colours. Each check can be turned off in it; all off: it does not run at all. Its
+        // blackSeconds is replaced by blackSeconds above, and when its black check is on, it decides what "black" is
+        // (98% of the screen at brightness 24 or less, every frame). What it finds goes into the log
+        // ("[sentinel] ...") and summary.txt.
+        sentinel::Settings sentinel;
+        bool saveOnFlicker = true;      // a folder named "flicker" with the frames of the moment
+        int flickerSaveRegions = 2;     // ... only when at least this many regions (of 12 x 8) flicker at once: one
+                                        // region alone is a torch or a brazier fire (its animation alternates every
+                                        // other frame; sor-giro 16/11/2026, areas 011, 064, 0c5); it stays in the log
+        bool saveOnColours = true;      // a folder named "colours"
+        bool saveOnSamePicture = false; // menus and pauses can be still for long: by default only a log line
+        double minSecondsBetweenSentinelSaves = 120.0; // per reason: a flicker that comes back must not push out the other saves
+        double burstSeconds = 1.0; // while the sentinel suspects flicker or a flash, EVERY frame is kept (not only imagesPerSecond), and this long after
+
         // Optional. All are called from threads of Iris Insight, never from the program's.
         uint64_t (*progress)() = nullptr;           // a counter that moves while the program's logic runs (for example main loop turns)
         void (*state)(char *out, size_t n) = nullptr; // one short line, about once a second: where the program is
@@ -64,4 +82,7 @@ namespace blackbox
     void fatal(const char *reason, const char *message = nullptr);
     // The program is closing normally: exit() after this is not an abnormal exit.
     void cleanExit();
+    // A part of the screen that blinks ON PURPOSE now (fractions 0..1; x1 <= x0: none), e.g. a game's low-life warning
+    // on its life bar: the sentinel does not count flicker there until told otherwise. Any thread; a change is logged.
+    void quietFlicker(float x0, float y0, float x1, float y1);
 }

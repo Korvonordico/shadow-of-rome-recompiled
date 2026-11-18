@@ -10,6 +10,7 @@ What it adds around PCSX2's GS:
 - the sharpness levels (anisotropic filtering and contrast-adaptive sharpening);
 - the wide screens: wide while the game is played and in talks, 4:3 with black bars in the movies, the game's own scenes, the pause menu and the title menus;
 - texture replacements in `textures\SLES-52950\replacements`, next to the game;
+- ReShade's effects under the performance overlay: when ReShade is loaded, `sor_reshade.cpp` makes sor-gs a ReShade add-on and draws the effects before the overlay, so the overlay's text stays sharp (the add-on headers of [crosire/reshade](https://github.com/crosire/reshade) 6.8.0 are in `reshade/`, BSD-3-Clause or MIT, see `reshade/LICENSE.md`);
 - its log in `gpu-data\logs\sor-gs.log` (with `SORGS_LOG=1`).
 
 The launcher sets everything at Play, through environment variables: `SOR_GRAPHICS` (`gpu <scale 1-4> <1 DirectX 11, 2 DirectX 12, 3 Vulkan>` or `cpu`), `SOR_WIDESCREEN` (0 4:3, 1 16:9, 2 21:9), `SORGS_VSYNC`, `SORGS_SHARPNESS` (0 off, 1 low, 2 high), `SORGS_OSD` and `SORGS_MODS` (0 or 1).

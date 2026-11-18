@@ -75,7 +75,7 @@ index 35ab6fc..80e7c24 100644
  			PerformanceMetrics::OnGPUPresent(gpu_time, gpu_stats.vs_invocations, gpu_stats.ps_invocations);
  		}
 diff --git a/pcsx2/GS/Renderers/DX11/GSDevice11.cpp b/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
-index 1dd7600..8ae5d66 100644
+index 1dd7600..2fcaeed 100644
 --- a/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
 +++ b/pcsx2/GS/Renderers/DX11/GSDevice11.cpp
 @@ -650,6 +650,7 @@ void GSDevice11::Destroy()
@@ -86,7 +86,27 @@ index 1dd7600..8ae5d66 100644
  
  	if (m_state.rtv)
  	{
-@@ -3208,6 +3209,10 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+@@ -1138,8 +1139,19 @@ GSDevice::PresentResult GSDevice11::BeginPresent(bool frame_skip)
+ 	return PresentResult::OK;
+ }
+ 
++extern void (*g_sor_effects_before_overlay)(void* back_buffer);
++
+ void GSDevice11::EndPresent()
+ {
++	// sor: ReShade's effects go on the game picture only, the overlay is drawn after them (sor-gs sor_reshade.cpp).
++	// ReShade saves and restores the context state around them.
++	if (g_sor_effects_before_overlay)
++	{
++		wil::com_ptr_nothrow<ID3D11Resource> bb;
++		m_swap_chain_rtv->GetResource(bb.put());
++		g_sor_effects_before_overlay(bb.get());
++	}
++
+ 	RenderImGui();
+ 
+ 	// See note in BeginPresent() for why it's conditional on vsync-off.
+@@ -3208,6 +3220,10 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
  	SetupVS(config.vs, &config.cb_vs);
  	SetupPS(config.ps, &config.cb_ps, config.sampler);
  
@@ -97,7 +117,7 @@ index 1dd7600..8ae5d66 100644
  	if (primid_texture)
  	{
  		OMDepthStencilSelector dss = config.depth;
-@@ -3308,6 +3313,9 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+@@ -3308,6 +3324,9 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
  			one_barrier, config.alpha_second_pass.require_full_barrier, rtsize);
  	}
  
@@ -107,7 +127,7 @@ index 1dd7600..8ae5d66 100644
  	if (colclip_rt)
  	{
  		config.colclip_update_area = config.colclip_update_area.runion(config.drawarea);
-@@ -3325,6 +3333,28 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
+@@ -3325,6 +3344,28 @@ void GSDevice11::RenderHW(GSHWDrawConfig& config)
  	}
  }
  
@@ -150,7 +170,7 @@ index 8fc99a4..ec757e2 100644
  	GSHWDrawConfig::VSConstantBuffer m_vs_cb_cache;
  	GSHWDrawConfig::PSConstantBuffer m_ps_cb_cache;
 diff --git a/pcsx2/GS/Renderers/DX12/GSDevice12.cpp b/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
-index e2b6505..5c09717 100644
+index e2b6505..0476fd5 100644
 --- a/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
 +++ b/pcsx2/GS/Renderers/DX12/GSDevice12.cpp
 @@ -2,6 +2,7 @@
@@ -200,7 +220,39 @@ index e2b6505..5c09717 100644
  	return true;
  }
  
-@@ -1456,7 +1468,9 @@ void GSDevice12::EndPresent()
+@@ -1439,11 +1451,30 @@ GSDevice::PresentResult GSDevice12::BeginPresent(bool frame_skip)
+ 	return PresentResult::OK;
+ }
+ 
++extern void (*g_sor_effects_before_overlay)(void* back_buffer);
++
+ void GSDevice12::EndPresent()
+ {
++	GSTexture12* swap_chain_buf = m_swap_chain_buffers[m_current_swap_chain_buffer].get();
++
++	// sor: ReShade's effects go on the game picture only, the overlay is drawn after them (sor-gs sor_reshade.cpp).
++	// The game picture is submitted first so ReShade's own command list runs after it on the same queue.
++	if (g_sor_effects_before_overlay && ExecuteCommandList(WaitType::None))
++	{
++		g_sor_effects_before_overlay(swap_chain_buf->GetResource());
++		InvalidateCachedState();
++		const D3D12CommandList& cmdlist = GetCommandList();
++		cmdlist.list4->OMSetRenderTargets(1, &swap_chain_buf->GetWriteDescriptor().cpu_handle, FALSE, nullptr);
++		const D3D12_VIEWPORT vp{0.0f, 0.0f, static_cast<float>(m_window_info.surface_width),
++			static_cast<float>(m_window_info.surface_height), 0.0f, 1.0f};
++		const D3D12_RECT scissor{
++			0, 0, static_cast<LONG>(m_window_info.surface_width), static_cast<LONG>(m_window_info.surface_height)};
++		cmdlist.list4->RSSetViewports(1, &vp);
++		cmdlist.list4->RSSetScissorRects(1, &scissor);
++	}
++
+ 	RenderImGui();
+ 
+-	GSTexture12* swap_chain_buf = m_swap_chain_buffers[m_current_swap_chain_buffer].get();
+ 	m_current_swap_chain_buffer = ((m_current_swap_chain_buffer + 1) % static_cast<u32>(m_swap_chain_buffers.size()));
+ 
+ 	swap_chain_buf->TransitionToState(GSTexture12::ResourceState::Present);
+@@ -1456,7 +1487,9 @@ void GSDevice12::EndPresent()
  
  	const UINT sync_interval = static_cast<UINT>(m_vsync_mode == GSVSyncMode::FIFO);
  	const UINT flags = (m_vsync_mode == GSVSyncMode::Disabled && m_using_allow_tearing) ? DXGI_PRESENT_ALLOW_TEARING : 0;
@@ -210,7 +262,7 @@ index e2b6505..5c09717 100644
  
  	InvalidateCachedState();
  }
-@@ -3177,6 +3191,9 @@ bool GSDevice12::CompilePostProcessingPipelines()
+@@ -3177,6 +3210,9 @@ bool GSDevice12::CompilePostProcessingPipelines()
  	return true;
  }
  
@@ -220,7 +272,7 @@ index e2b6505..5c09717 100644
  void GSDevice12::DestroyResources()
  {
  	m_convert_vs.reset();
-@@ -3185,6 +3202,11 @@ void GSDevice12::DestroyResources()
+@@ -3185,6 +3221,11 @@ void GSDevice12::DestroyResources()
  	m_cas_upscale_pipeline.reset();
  	m_cas_root_signature.reset();
  
@@ -232,7 +284,7 @@ index e2b6505..5c09717 100644
  	m_tfx_pipelines.clear();
  	m_tfx_pixel_shaders.clear();
  	m_tfx_vertex_shaders.clear();
-@@ -3475,13 +3497,73 @@ GSDevice12::ComPtr<ID3D12PipelineState> GSDevice12::CreateTFXPipeline(const Pipe
+@@ -3475,13 +3516,73 @@ GSDevice12::ComPtr<ID3D12PipelineState> GSDevice12::CreateTFXPipeline(const Pipe
  	return pipeline;
  }
  
@@ -319,10 +371,10 @@ index 3eeab02..49b0db7 100644
  	ComPtr<ID3DBlob> GetUtilityVertexShader(const std::string& source, const char* entry_point);
  	ComPtr<ID3DBlob> GetUtilityPixelShader(const std::string& source, const char* entry_point);
 diff --git a/pcsx2/GS/Renderers/HW/GSRendererHW.cpp b/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
-index 8b058e1..8514ca5 100644
+index 8b058e1..e39bcb0 100644
 --- a/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
 +++ b/pcsx2/GS/Renderers/HW/GSRendererHW.cpp
-@@ -15,6 +15,11 @@
+@@ -15,9 +15,65 @@
  using PS_ATST  = GSShader::PS_ATST;
  using PS_AFAIL = GSShader::PS_AFAIL;
  
@@ -331,10 +383,94 @@ index 8b058e1..8514ca5 100644
 +// lines and sprites (clears, copies, full-screen effects, most menus) stay as they are. Needs proper testing.
 +bool g_sor_wireframe = false;
 +
++// sor-gs (Shadow of Rome port), 18/11/2026: a second half pixel offset mode for some draws. At 6x the cave walls showed
++// dotted light cracks with "Special" (2) that PCSX2's own fix for this game, "align to native with texture offset"
++// (5), does not show (the author's hand test), while 5 moves the HUD (armour bar frame). SORGS_HALFPIXEL2=<0-5> is
++// the second mode, the global one stays SORGS_HALFPIXEL. SORGS_HALFPIXEL2_DRAWS = which draws take it:
++//   0 = 3D draws (triangles with perspective texture coordinates, or untextured; default), 1 = every triangle,
++//   2 = every draw, 3 = sprites only, 4 = every draw that is not a 3D draw.
++// SORGS_HALFPIXEL2_PARTS = which parts of the second mode they take, a sum of 1 vertex position (DetermineVSConfig),
++//   2 target clear on full overwrite (GSTextureCache), 4 texture offsets when reading an upscaled target (default 7).
++// Without SORGS_HALFPIXEL2 every draw uses the global mode, as in PCSX2. Needs proper testing.
++// Tests: sor-gs/SorGS.cpp turns the second mode off while the file SORGS_HALFPIXEL2_FILE exists (same view, both sides).
++bool g_sor_hpo2_on = true;
++GSHalfPixelOffset g_sor_hpo_tc = GSHalfPixelOffset::Off; // read by GSTextureCache while a draw runs
++static GSHalfPixelOffset s_sor_hpo_vs = GSHalfPixelOffset::Off;
++static GSHalfPixelOffset s_sor_hpo_tex = GSHalfPixelOffset::Off;
++
++static int SorEnvDigit(const char* name, int lo, int hi, int def)
++{
++	const char* v = std::getenv(name);
++	return (v && v[0] >= '0' + lo && v[0] <= '0' + hi) ? v[0] - '0' : def;
++}
++
++static void SorResetHPO()
++{
++	s_sor_hpo_vs = s_sor_hpo_tex = g_sor_hpo_tc = GSConfig.UserHacks_HalfPixelOffset;
++}
++
++namespace
++{
++	// Sets the modes for one draw and puts the global one back when the draw ends (any return path).
++	struct SorDrawHPO
++	{
++		SorDrawHPO(GS_PRIM_CLASS primclass, bool tme_fst)
++		{
++			static const int s_mode2 = SorEnvDigit("SORGS_HALFPIXEL2", 0, 5, -1);
++			static const int s_parts = SorEnvDigit("SORGS_HALFPIXEL2_PARTS", 0, 7, 7);
++			static const int s_draws = SorEnvDigit("SORGS_HALFPIXEL2_DRAWS", 0, 4, 0);
++			const GSHalfPixelOffset global = GSConfig.UserHacks_HalfPixelOffset;
++			const bool triangle = primclass == GS_TRIANGLE_CLASS;
++			const bool is_3d = triangle && !tme_fst;
++			const bool pick = s_mode2 >= 0 && g_sor_hpo2_on && (s_draws == 0 ? is_3d : s_draws == 1 ? triangle : s_draws == 2 ? true :
++				s_draws == 3 ? primclass == GS_SPRITE_CLASS : !is_3d);
++			const GSHalfPixelOffset mode = pick ? static_cast<GSHalfPixelOffset>(s_mode2) : global;
++			s_sor_hpo_vs = (s_parts & 1) ? mode : global;
++			g_sor_hpo_tc = (s_parts & 2) ? mode : global;
++			s_sor_hpo_tex = (s_parts & 4) ? mode : global;
++		}
++		~SorDrawHPO() { SorResetHPO(); }
++	};
++} // namespace
++
  GSRendererHW::GSRendererHW()
  	: GSRenderer()
  {
-@@ -5714,6 +5719,7 @@ void GSRendererHW::SetupIA(float target_scale, float sx, float sy, bool req_vert
++	SorResetHPO();
+ 	MULTI_ISA_SELECT(GSRendererHWPopulateFunctions)(*this);
+ 	m_mipmap = GSConfig.HWMipmap;
+ 	SetTCOffset();
+@@ -1276,8 +1332,8 @@ void GSRendererHW::ConvertSpriteTextureShuffle(GSTextureCache::Target* rt, GSTex
+ 
+ GSVector4 GSRendererHW::RealignTargetTextureCoordinate(const GSTextureCache::Source* tex)
+ {
+-	if (GSConfig.UserHacks_HalfPixelOffset <= GSHalfPixelOffset::Normal ||
+-		GSConfig.UserHacks_HalfPixelOffset >= GSHalfPixelOffset::Native ||
++	if (s_sor_hpo_tex <= GSHalfPixelOffset::Normal ||
++		s_sor_hpo_tex >= GSHalfPixelOffset::Native ||
+ 		GetUpscaleMultiplier() == 1.0f || m_downscale_source || tex->GetScale() == 1.0f ||
+ 		m_texture_shuffle) // Do not apply HPO on texture shuffles as it already aligns the coordinates.
+ 	{
+@@ -1295,7 +1351,7 @@ GSVector4 GSRendererHW::RealignTargetTextureCoordinate(const GSTextureCache::Sou
+ 
+ 	if (PRIM->FST)
+ 	{
+-		if (GSConfig.UserHacks_HalfPixelOffset == GSHalfPixelOffset::SpecialAggressive)
++		if (s_sor_hpo_tex == GSHalfPixelOffset::SpecialAggressive)
+ 		{
+ 			if (!linear && t_position == 8)
+ 			{
+@@ -2790,6 +2846,9 @@ void GSRendererHW::Draw()
+ 	m_cached_ctx.FRAME = context->FRAME;
+ 	m_cached_ctx.ZBUF = context->ZBUF;
+ 
++	// sor-gs: half pixel offset of this draw (see the top of this file).
++	const SorDrawHPO sor_hpo(m_vt.m_primclass, PRIM->TME && PRIM->FST);
++
+ 	if (IsBadFrame())
+ 	{
+ 		GL_INS("HW: Warning skipping a draw call (%lld)", s_n);
+@@ -5714,6 +5773,7 @@ void GSRendererHW::SetupIA(float target_scale, float sx, float sy, bool req_vert
  				{
  					m_conf.topology = GSHWDrawConfig::Topology::Triangle;
  					m_conf.indices_per_prim = 3;
@@ -342,8 +478,111 @@ index 8b058e1..8514ca5 100644
  				}
  
  				// See note above in GS_SPRITE_CLASS.
+@@ -6303,7 +6363,7 @@ void GSRendererHW::DetermineVSConfig(GSTextureCache::Target* rt, float rtscale,
+ 	const float oy = static_cast<float>(static_cast<int>(m_context->XYOFFSET.OFY));
+ 
+ 	// Do not apply HPO on texture shuffle draws, as the coordinates are already aligned.
+-	if ((GSConfig.UserHacks_HalfPixelOffset < GSHalfPixelOffset::Native || m_texture_shuffle) && rtscale > 1.0f)
++	if ((s_sor_hpo_vs < GSHalfPixelOffset::Native || m_texture_shuffle) && rtscale > 1.0f)
+ 	{
+ 		sx = 2.0f * rtscale / (rtsize.x << 4);
+ 		sy = 2.0f * rtscale / (rtsize.y << 4);
+@@ -6333,7 +6393,7 @@ void GSRendererHW::DetermineVSConfig(GSTextureCache::Target* rt, float rtscale,
+ 		sx = 2.0f / (unscaled_x << 4);
+ 		sy = 2.0f / (unscaled_y << 4);
+ 
+-		if (GSConfig.UserHacks_HalfPixelOffset == GSHalfPixelOffset::NativeWTexOffset)
++		if (s_sor_hpo_vs == GSHalfPixelOffset::NativeWTexOffset)
+ 		{
+ 			ox2 = (-1.0f / (unscaled_x * rtscale));
+ 			oy2 = (-1.0f / (unscaled_y * rtscale));
+@@ -8208,7 +8268,7 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt,
+ 		// Can be seen with the cabin part of the ship in God of War, offsets are required when using FST.
+ 		// ST uses a normalized position so doesn't need an offset here, will break Bionicle Heroes.
+ 		// Do not apply HPO on texture shuffles as it already aligns the coordinates.
+-		if (GSConfig.UserHacks_HalfPixelOffset == GSHalfPixelOffset::NativeWTexOffset && !m_texture_shuffle)
++		if (s_sor_hpo_tex == GSHalfPixelOffset::NativeWTexOffset && !m_texture_shuffle)
+ 		{
+ 			const u32 psm = rt ? rt->m_TEX0.PSM : ds->m_TEX0.PSM;
+ 			const bool can_offset = m_r.width() > GSLocalMemory::m_psm[psm].pgs.x || m_r.height() > GSLocalMemory::m_psm[psm].pgs.y;
+@@ -8279,7 +8339,7 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt,
+ 		const GSVector4 half_pixel = RealignTargetTextureCoordinate(tex);
+ 		m_conf.cb_vs.texture_offset = GSVector2(half_pixel.x, half_pixel.y);
+ 
+-		if (GSConfig.UserHacks_HalfPixelOffset == GSHalfPixelOffset::NativeWTexOffset)
++		if (s_sor_hpo_tex == GSHalfPixelOffset::NativeWTexOffset)
+ 		{
+ 			const u32 psm = rt ? rt->m_TEX0.PSM : ds->m_TEX0.PSM;
+ 			const bool can_offset = m_r.width() > GSLocalMemory::m_psm[psm].pgs.x || m_r.height() > GSLocalMemory::m_psm[psm].pgs.y;
+@@ -8396,7 +8456,7 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt,
+ 		// Bigger problem when WH is 1024x1024 and the target is only small.
+ 		// This "fixes" a lot of the rainbow garbage in games when upscaling (and xenosaga shadows + VP2 forest seem quite happy).
+ 		// Note that this is done on the original texture scale, during upscales it can mess up otherwise.
+-		const GSVector4 region_clamp_offset = ((GSConfig.UserHacks_HalfPixelOffset == GSHalfPixelOffset::Native && tex->GetScale() > 1.0f) && !m_channel_shuffle) ? 
++		const GSVector4 region_clamp_offset = ((s_sor_hpo_tex == GSHalfPixelOffset::Native && tex->GetScale() > 1.0f) && !m_channel_shuffle) ? 
+ 												(GSVector4::cxpr(1.0f, 1.0f, 0.1f, 0.1f) + (GSVector4::cxpr(0.1f, 0.1f, 0.0f, 0.0f) * tex->GetScale())) :
+ 		                                         GSVector4::cxpr(0.5f, 0.5f, 0.1f, 0.1f);
+ 
+@@ -8800,7 +8860,7 @@ __ri void GSRendererHW::HandleTextureHazards(const GSTextureCache::Target* rt, c
+ 			// When using native HPO, the top-left column/row of pixels are often not drawn. Clamp these away to avoid sampling black,
+ 			// causing bleeding into the edges of the downsampled texture.
+ 			const u32 downsample_factor = static_cast<u32>(src_target->GetScale());
+-			const GSVector2i clamp_min = (GSConfig.UserHacks_HalfPixelOffset != GSHalfPixelOffset::Native) ?
++			const GSVector2i clamp_min = (s_sor_hpo_tex != GSHalfPixelOffset::Native) ?
+ 			                                 GSVector2i(0, 0) :
+ 			                                 GSVector2i(downsample_factor, downsample_factor);
+ 			GSVector4i copy_rect = tmm.coverage;
+@@ -10841,6 +10901,13 @@ int GSRendererHW::IsScalingDraw(GSTextureCache::Source* src, bool no_gaps)
+ 	if (GSConfig.UserHacks_NativeScaling == GSNativeScaling::Off)
+ 		return 0;
+ 
++	// Shadow of Rome (14/11/2026): the river water lays a half-size copy of the screen (frame block 0xF00, width 256)
++	// over the water. Native scaling made that copy at PS2 size, so the water was blurred; keep it upscaled, as with
++	// UPSCALE FIX off, while the rest keeps native scaling. SORGS_WATERSHARP=0 turns this off (tests).
++	static const bool s_water_sharp = !(std::getenv("SORGS_WATERSHARP") && std::getenv("SORGS_WATERSHARP")[0] == '0');
++	if (s_water_sharp && m_cached_ctx.FRAME.Block() == 0xF00 && m_cached_ctx.FRAME.FBW == 4)
++		return 0;
++
+ 	const GSVector2i draw_size = GSVector2i(m_vt.m_max.p.x - m_vt.m_min.p.x, m_vt.m_max.p.y - m_vt.m_min.p.y);
+ 	GSVector2i tex_size = GSVector2i(m_vt.m_max.t.x - m_vt.m_min.t.x, m_vt.m_max.t.y - m_vt.m_min.t.y);
+ 
+diff --git a/pcsx2/GS/Renderers/HW/GSTextureCache.cpp b/pcsx2/GS/Renderers/HW/GSTextureCache.cpp
+index 6da6498..a2b80f3 100644
+--- a/pcsx2/GS/Renderers/HW/GSTextureCache.cpp
++++ b/pcsx2/GS/Renderers/HW/GSTextureCache.cpp
+@@ -28,6 +28,10 @@
+ 
+ std::unique_ptr<GSTextureCache> g_texture_cache;
+ 
++// sor-gs (Shadow of Rome port): half pixel offset of the draw that is running (GSRendererHW.cpp, SORGS_HALFPIXEL_3D);
++// the global mode outside draws.
++extern GSHalfPixelOffset g_sor_hpo_tc;
++
+ static u8* s_unswizzle_buffer;
+ 
+ /// List of candidates for purging when the hash cache gets too large.
+@@ -3007,7 +3011,7 @@ GSTextureCache::Target* GSTextureCache::ProcessTargetAfterLookup(RescaleHelper&
+ 			// When using native HPO, the top-left column/row of pixels are often not drawn. Clamp these away to avoid sampling black,
+ 			// causing bleeding into the edges of the downsampled texture.
+ 			const u32 downsample_factor = static_cast<u32>(dst->GetScale());
+-			const GSVector2i clamp_min = (GSConfig.UserHacks_HalfPixelOffset != GSHalfPixelOffset::Native) ?
++			const GSVector2i clamp_min = (g_sor_hpo_tc != GSHalfPixelOffset::Native) ?
+ 				GSVector2i(0, 0) :
+ 				GSVector2i(downsample_factor, downsample_factor);
+ 
+@@ -3283,8 +3287,8 @@ GSTextureCache::Target* GSTextureCache::ProcessTargetAfterLookup(RescaleHelper&
+ 			// And invalidate the target, we're drawing over it so we don't care what's there.
+ 			// We can't do this when upscaling, because of the vertex offset, the top/left rows often aren't drawn.
+ 			GL_INS("TC: Invalidating%s target %s[%x] because it's completely overwritten.", to_string(type),
+-				(rescaler.m_scale > 1.0f && GSConfig.UserHacks_HalfPixelOffset >= GSHalfPixelOffset::Native) ? "[clearing] " : "", dst->m_TEX0.TBP0);
+-			if (rescaler.m_scale > 1.0f && GSConfig.UserHacks_HalfPixelOffset < GSHalfPixelOffset::Native)
++				(rescaler.m_scale > 1.0f && g_sor_hpo_tc >= GSHalfPixelOffset::Native) ? "[clearing] " : "", dst->m_TEX0.TBP0);
++			if (rescaler.m_scale > 1.0f && g_sor_hpo_tc < GSHalfPixelOffset::Native)
+ 			{
+ 				if (dst->m_type == RenderTarget)
+ 					g_gs_device->ClearRenderTarget(dst->m_texture, 0);
 diff --git a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp b/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
-index 77a28df..0269e75 100644
+index 77a28df..6271cd5 100644
 --- a/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
 +++ b/pcsx2/GS/Renderers/HW/GSTextureReplacements.cpp
 @@ -337,9 +337,19 @@ std::string GSTextureReplacements::GetDumpFilename(const TextureName& name, u32
@@ -376,6 +615,39 @@ index 77a28df..0269e75 100644
  	if (s_current_serial == new_serial)
  		return;
  
+@@ -447,8 +457,32 @@ void GSTextureReplacements::ReloadReplacementMap()
+ 	if (files.empty())
+ 		return;
+ 
++	// Shadow of Rome: mod packs are folders inside replacements (hud, characters, weapons...). A folder whose name
++	// starts with '_' is turned off: nothing in it (or under it) is loaded. movies\ holds HD films, not textures.
++	const auto turned_off = [&replacement_dir](const std::string& path) {
++		if (path.size() <= replacement_dir.size())
++			return false;
++		std::string_view rel(path);
++		rel.remove_prefix(replacement_dir.size());
++		size_t start = 0;
++		while (start < rel.size())
++		{
++			while (start < rel.size() && (rel[start] == '\\' || rel[start] == '/'))
++				start++;
++			size_t end = rel.find_first_of("\\/", start);
++			if (end == std::string_view::npos)
++				break; // the last part is the file's own name
++			if (rel[start] == '_')
++				return true;
++			start = end;
++		}
++		return false;
++	};
++
+ 	for (FILESYSTEM_FIND_DATA& fd : files)
+ 	{
++		if (turned_off(fd.FileName))
++			continue;
+ 		// file format we can handle?
+ 		const char* filename = Path::GetFileName(fd.FileName).data(); // GetFileName takes a substring from the end, so the null terminator is preserved
+ 		std::string_view ext = Path::GetExtension(filename);
 diff --git a/pcsx2/GS/SorGsTimes.h b/pcsx2/GS/SorGsTimes.h
 new file mode 100644
 index 0000000..0a5f2e6
@@ -407,10 +679,10 @@ index 0000000..0a5f2e6
 +	return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 +}
 diff --git a/pcsx2/ImGui/ImGuiManager.cpp b/pcsx2/ImGui/ImGuiManager.cpp
-index 53abe0f..3b21db7 100644
+index 53abe0f..04f4c9e 100644
 --- a/pcsx2/ImGui/ImGuiManager.cpp
 +++ b/pcsx2/ImGui/ImGuiManager.cpp
-@@ -40,6 +40,12 @@
+@@ -40,6 +40,14 @@
  #include FT_FREETYPE_H
  #include FT_MODULE_H
  
@@ -419,11 +691,13 @@ index 53abe0f..3b21db7 100644
 +// vsync and gives the target frame rate (60 or 50) that colours the FPS line.
 +bool g_sor_overlays_without_vm = false;
 +float g_sor_overlay_target_fps = 0.0f;
++// sor-gs (sor_reshade.cpp): renders ReShade's effects into the back buffer before the overlay is drawn (null = off).
++void (*g_sor_effects_before_overlay)(void* back_buffer) = nullptr;
 +
  namespace ImGuiManager
  {
  	struct SoftwareCursor
-@@ -1052,7 +1058,7 @@ void ImGuiManager::RenderOSD()
+@@ -1052,7 +1060,7 @@ void ImGuiManager::RenderOSD()
  	if (!FullscreenUI::HasActiveWindow())
  	{
  		// Don't draw OSD when we're just running big picture.

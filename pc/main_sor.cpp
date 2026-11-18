@@ -36,10 +36,12 @@ extern "C" __declspec(dllimport) int __stdcall SetEnvironmentVariableA(const cha
 #include <string>
 #include <thread>
 void sorGpuMirrorClose(); // ps2xRuntime gs_pcsx2_mirror.cpp
+void sorSetRuntimePoolBase(uint32_t base); // ps2xRuntime Kernel/Syscalls/RPC.cpp
 
 void sorInstallaSostituzioni(PS2Runtime &rt); // sor_hle.cpp
 void sorTrucchiInstalla(PS2Runtime &rt);       // sor_trucchi.cpp (debug cheats, only with SOR_CHEATS)
 void sorSalvaRapidoInstalla(PS2Runtime &rt);   // sor_salvarapido.cpp (debug quick save F5/F4, only with quicksave.on)
+void sorAttoriInstalla(PS2Runtime &rt);        // sor_attori.cpp (debug actor list F10 -> attori.txt, only with SOR_ACTORS=1)
 void sorCameraInstalla(PS2Runtime &rt);        // sor_camera.cpp (debug free camera, only with SOR_FREECAM=1)
 void sorVignettaInstalla(PS2Runtime &rt);      // sor_vignetta.cpp (screen veil off, only with SOR_NO_VIGNETTE=1)
 void sorMouseInstalla(PS2Runtime &rt);         // sor_mouse.cpp (mouse look, SOR_MOUSE_LOOK=1 from the launcher)
@@ -332,7 +334,20 @@ int main(int argc, char *argv[])
         // stack subito sotto: gli stack delle callback del runtime (vsync, allarmi, ...)
         // partirebbero dalla cima della RAM e lo sovrascriverebbero. Li mettiamo in
         // 0x80000..0x100000 (memoria del kernel PS2, che il gioco non usa).
-        runtime.setAsyncCallbackStackRegion(0x00080000u, 0x00100000u);
+        // The runtime's RPC/TLS/boot-mode pools (32 KB) take the top of that region, 0xF8000..0x100000: at their old
+        // place, 0x1F00000..0x1F30FFF, they were inside the game's own heap (0x1C12000..0x1FDB800) and every RPC call
+        // overwrote game data there (in area 088 a drawing packet: HUD, text and fog flickered). SOR_RPC_POOL=<hex>
+        // puts the block somewhere else, only for tests (SOR_RPC_POOL=1F0F000 = the old place of the server slots).
+        uint32_t poolBase = 0x000F8000u;
+        if (const char *pool = std::getenv("SOR_RPC_POOL"))
+        {
+            const unsigned long v = std::strtoul(pool, nullptr, 16);
+            if (v >= 0x10000ul && v <= 0x2000000ul - 0x8000ul && (v & 0xFul) == 0ul)
+                poolBase = static_cast<uint32_t>(v);
+            std::cout << "[sor] runtime pools at 0x" << std::hex << poolBase << std::dec << " (SOR_RPC_POOL test)" << std::endl;
+        }
+        sorSetRuntimePoolBase(poolBase);
+        runtime.setAsyncCallbackStackRegion(0x00080000u, 0x000F8000u);
         // Il heap del runtime sta nella memoria del kernel PS2 (0x10000..0x80000): SetupHeap
         // del gioco lo metterebbe subito dopo il programma, dove il gioco tiene i suoi dati.
         runtime.pinGuestHeap(0x00010000u, 0x00080000u);
@@ -340,6 +355,7 @@ int main(int argc, char *argv[])
         sorTrucchiInstalla(runtime);
         sorCameraInstalla(runtime); // after the cheats: it chains their hook on wbuf_swap
         sorSalvaRapidoInstalla(runtime); // after the free camera: it chains the same hook
+        sorAttoriInstalla(runtime);      // after the quick save: it chains the same hook
         sorVignettaInstalla(runtime);
         sorMouseInstalla(runtime);
         sorBlackboxInstall(runtime);

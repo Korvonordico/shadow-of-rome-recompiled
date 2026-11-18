@@ -43,8 +43,15 @@
 // as wires. Defined in pcsx2/GS/Renderers/HW/GSRendererHW.cpp, honoured by DX11 only (GSDevice11::RenderHW).
 extern bool g_sor_wireframe;
 
+// Second half pixel offset mode for some draws (SORGS_HALFPIXEL2, see pcsx2/GS/Renderers/HW/GSRendererHW.cpp). Tests:
+// SORGS_HALFPIXEL2_FILE=<path> turns it off while that file exists (checked by the GS thread every 15 frames), so
+// one run shows both sides of the same view.
+extern bool g_sor_hpo2_on;
+
 // OSD without PCSX2's VM (launcher, GRAPHICS page, OSD row: SORGS_OSD=1). Defined in pcsx2/ImGui/ImGuiManager.cpp.
 extern bool g_sor_overlays_without_vm;
+extern void (*g_sor_effects_before_overlay)(void* back_buffer);
+bool SorReshadeInit(void* sorgs_module); // sor_reshade.cpp
 extern float g_sor_overlay_target_fps;
 
 namespace
@@ -1019,6 +1026,12 @@ namespace
 			const s64 pop_ns = VsNowNs(); // sor-gs timing: how long the frame waited for the GS thread
 			const auto busy0 = std::chrono::steady_clock::now();
 			g_sor_wireframe = s_wire_req.load(std::memory_order_relaxed) != 0; // debug view, a whole frame at a time
+			{
+				static const char* const hp2_file = std::getenv("SORGS_HALFPIXEL2_FILE"); // tests, see the top
+				static unsigned hp2_tick = 0;
+				if (hp2_file && hp2_file[0] && (hp2_tick++ % 15) == 0)
+					g_sor_hpo2_on = GetFileAttributesA(hp2_file) == INVALID_FILE_ATTRIBUTES;
+			}
 
 			const u8* p = f->data.data();
 			const u8* const end = p + f->data.size();
@@ -1173,6 +1186,14 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 	// draw them too, and the vsync loop feeds the numbers (PerformanceMetrics::Update before GSvsync). The FPS line is
 	// red below 95% of the target.
 	g_sor_overlays_without_vm = show;
+	// With ReShade on (sor.exe loaded ReShade64.dll), its effects are drawn under the overlay (sor_reshade.cpp).
+	if (show && !g_sor_effects_before_overlay)
+	{
+		HMODULE self = nullptr;
+		GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			reinterpret_cast<LPCSTR>(&sorgs_open), &self);
+		SorReshadeInit(self);
+	}
 	{
 		const char* hz = std::getenv("SOR_60HZ");
 		g_sor_overlay_target_fps = (hz && hz[0] == '1') ? 60.0f : 50.0f;
@@ -1206,6 +1227,15 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 		si.SetIntValue("EmuCore/GS", "UserHacks_native_scaling", ns[0] - '0');
 	if (const char* hp = std::getenv("SORGS_HALFPIXEL"); hp && hp[0] >= '0' && hp[0] <= '5') // tests
 		si.SetIntValue("EmuCore/GS", "UserHacks_HalfPixelOffset", hp[0] - '0');
+	// 13/11/2026: more of PCSX2's upscale fixes, for the glow (bloom) that stays a little shifted at 4x-8x even with
+	// native scaling (launcher SPEED TESTS > UPSCALE FIX). Round sprite 1 = half, 2 = full; merge sprite; bilinear
+	// upscale 0 = auto, 1 = force bilinear, 2 = force nearest (sharp).
+	if (const char* rs = std::getenv("SORGS_ROUNDSPRITE"); rs && rs[0] >= '0' && rs[0] <= '2')
+		si.SetIntValue("EmuCore/GS", "UserHacks_round_sprite_offset", rs[0] - '0');
+	if (const char* ms = std::getenv("SORGS_MERGESPRITE"); ms && ms[0] == '1')
+		si.SetBoolValue("EmuCore/GS", "UserHacks_merge_pp_sprite", true);
+	if (const char* bl = std::getenv("SORGS_BILINEAR"); bl && bl[0] >= '0' && bl[0] <= '2')
+		si.SetIntValue("EmuCore/GS", "UserHacks_BilinearHack", bl[0] - '0');
 	// Interlacing off, as PCSX2's "No-Interlacing" patch for this game asks (gsinterlacemode=1): with the
 	// game's half-line shift removed (pc/widescreen_gen.py) the automatic deinterlacer still made the picture
 	// bob up and down by a hair. SOR_INTERLACE=1 keeps the PS2 behaviour.
@@ -1235,10 +1265,12 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 		else
 			fxaa_why = " (resources\\shaders\\common\\fxaa.fx is missing)";
 	}
-	// Replaceable textures, as in PCSX2: PNGs in textures\SLES-52950\replacements next to the game are used in
+	// Replaceable textures, as in PCSX2: PNGs in textures\<serial>\replacements next to the game are used in
 	// place of the originals (same names as PCSX2's dumps). SORGS_TEXDUMP=1 saves every texture the game uses in
-	// textures\SLES-52950\dumps, to find the ones to redo.
-	_putenv_s("SORGS_SERIAL", "SLES-52950");
+	// textures\<serial>\dumps, to find the ones to redo. The serial comes from the program (sor.exe SLES-52950,
+	// sor-usa.exe SLUS-20902, pc/main_sor.cpp) or the launcher; the European one when nobody set it (older sor.exe).
+	if (const char* serial = std::getenv("SORGS_SERIAL"); !serial || !serial[0])
+		_putenv_s("SORGS_SERIAL", "SLES-52950");
 	// Widescreen 16:9 (SOR_WIDESCREEN=1): the game draws a wider view (patched camera), shown at 16:9; the
 	// movies are 4:3 and stay so.
 	// 21:9 (SOR_WIDESCREEN=2): PCSX2 has no 21:9 choice; "Auto" with a custom ratio is what its widescreen patches use.
@@ -1291,6 +1323,15 @@ SORGS_API int sorgs_open(void* parent, float upscale, int renderer)
 	if (EmuConfig.GS.CASMode != GSCASMode::Disabled || EmuConfig.GS.MaxAnisotropy > 1)
 		std::fprintf(stderr, "[sor-gs] sharpness: anisotropic %dx, CAS %d%%\n", static_cast<int>(EmuConfig.GS.MaxAnisotropy),
 			static_cast<int>(EmuConfig.GS.CAS_Sharpness));
+	// 18/11/2026: the upscale fix in use, in the log (the second mode: GSRendererHW.cpp, SORGS_HALFPIXEL2).
+	{
+		const char* hp2 = std::getenv("SORGS_HALFPIXEL2");
+		const char* hp2d = std::getenv("SORGS_HALFPIXEL2_DRAWS");
+		const char* hp2p = std::getenv("SORGS_HALFPIXEL2_PARTS");
+		std::fprintf(stderr, "[sor-gs] upscale fix: half pixel %d, native scaling %d, second half pixel %s (draws %s, parts %s)\n",
+			static_cast<int>(EmuConfig.GS.UserHacks_HalfPixelOffset), static_cast<int>(EmuConfig.GS.UserHacks_NativeScaling),
+			(hp2 && hp2[0]) ? hp2 : "off", (hp2d && hp2d[0]) ? hp2d : "0", (hp2p && hp2p[0]) ? hp2p : "7");
+	}
 	// Once in the game's log (sor-gs writes to the game's stderr), read back from the settings the GS opens with.
 	static bool s_fxaa_logged = false;
 	if (!s_fxaa_logged)

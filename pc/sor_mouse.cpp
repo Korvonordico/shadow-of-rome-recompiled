@@ -96,6 +96,7 @@ bool sorTastoDiUnAzione(int codice);  // pc/sor_tasti.cpp: true if an action of 
 bool sorPannelloAperto();             // pc/sor_profilo.cpp: the engine panel (F12) is open
 void sorGsRiprendi();                 // pc/sor_profilo.cpp: the video card's window shown again, fitted to the game window
 void sorFocusPerso();                  // pc/sor_profilo.cpp: the window in front written in the log
+void sorGsAdatta();                    // pc/sor_profilo.cpp: the video card's window as big as the game window
 unsigned sorTastiMouseUsati();        // pc/sor_tasti.cpp: bit i = mouse input i (MOUSE_LEFT ... WHEEL_DOWN) does an action
 
 namespace
@@ -597,6 +598,9 @@ void sorTurnoFinestra()
         const char *full = std::getenv("SOR_FULLSCREEN");
         g_startCapture = g_on && full && full[0] == '1'; // full screen: the pointer is taken at start
     }
+    // The video card's window always as big as the game window once it is back from a minimize, focus or not
+    // (pc/sor_profilo.cpp, 17/11/2026: the black picture after a minimize).
+    sorGsAdatta();
     // The focus is back (Alt+Tab, or restored from the taskbar): the video card's picture shown again.
     if (focused && !minimized && (!g_focusWas || g_minimizedWas))
         sorGsRiprendi();

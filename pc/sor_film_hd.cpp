@@ -8,6 +8,9 @@
 // streams a film that way, which Shadow of Rome does not seem to do: its films are inside IMAGE*.IMG.
 // That folder is the launcher's MODS FOLDER. A pack can hold films too: replacements\<pack>\movies\ comes first
 // (packs in name order; '_' packs are off). strumenti/film_hd.py makes these files.
+// When the disc's own folder has no file for a film, the other disc's folder is tried the same way (18/11/2026): the
+// films are the same on both discs (IMAGE1.IMG and IMAGE2.IMG are byte-identical on SLES-52950 and SLUS-20902, and so
+// is the opening film), so one HD file serves the European and the American game.
 //
 // The game keeps playing its own film underneath, exactly as without the mod: its sound, its timing, the button
 // that skips it and what comes after do not change. Each time the game asks for its next picture, the HD frame of
@@ -121,11 +124,12 @@ namespace
         return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
     }
 
-    // The film's file: first in the mod packs (replacements\<pack>\movies\, packs in name order; a pack whose name
-    // starts with '_' is off, as for the textures), then in replacements\movies\. Empty if there is none.
-    std::wstring findFilm(const std::wstring &file)
+    // The film's file in one disc's MODS FOLDER: first in the mod packs (replacements\<pack>\movies\, packs in name
+    // order; a pack whose name starts with '_' is off, as for the textures), then in replacements\movies\.
+    // Empty if there is none.
+    std::wstring findFilmIn(const wchar_t *serial, const std::wstring &file)
     {
-        const std::wstring rep = exeFolder() + L"\\textures\\" SOR_DISC_SERIAL "\\replacements\\"; // the disc's serial: pc/sor_indirizzi.h
+        const std::wstring rep = exeFolder() + L"\\textures\\" + serial + L"\\replacements\\";
         std::vector<std::wstring> packs;
         WIN32_FIND_DATAW fd;
         HANDLE h = FindFirstFileW((rep + L"*").c_str(), &fd);
@@ -148,6 +152,19 @@ namespace
         if (isFile(rep + L"movies\\" + file))
             return rep + L"movies\\" + file;
         return std::wstring();
+    }
+
+    // The film's file: the disc's own folder first (its serial: pc/sor_indirizzi.h), then the other disc's folder
+    // (same films on both discs, see the top of this file). Empty if there is none.
+#if defined(SOR_REGION_USA)
+    const wchar_t *const kOtherDisc = L"SLES-52950";
+#else
+    const wchar_t *const kOtherDisc = L"SLUS-20902";
+#endif
+    std::wstring findFilm(const std::wstring &file)
+    {
+        const std::wstring own = findFilmIn(L"" SOR_DISC_SERIAL, file);
+        return own.empty() ? findFilmIn(kOtherDisc, file) : own;
     }
 
     // ---- the window ------------------------------------------------------------------------------------------

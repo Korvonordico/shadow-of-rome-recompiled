@@ -61,7 +61,7 @@ namespace
     const Tasto kTasti[] = {
         {"su", 265}, {"giu", 264}, {"sx", 263}, {"dx", 262}, {"w", 87}, {"a", 65}, {"s", 83}, {"d", 68},
         {"i", 73}, {"j", 74}, {"k", 75}, {"l", 76}, {"x", 88}, {"spazio", 32}, {"c", 67}, {"esc", 256},
-        {"z", 90}, {"v", 86}, {"q", 81}, {"e", 69}, {"lshift", 340}, {"rshift", 344},
+        {"z", 90}, {"v", 86}, {"q", 81}, {"e", 69}, {"lshift", 340}, {"rshift", 344}, {"lctrl", 341}, {"rctrl", 345},
         {"invio", 257}, {"tab", 258}, {"f", 70}, {"o", 79},
         // the debug tools' keys (F4/F5 quick save, F7 wireframe, F8 free camera...), for testing them hidden
         {"f1", 290}, {"f2", 291}, {"f3", 292}, {"f4", 293}, {"f5", 294}, {"f6", 295}, {"f7", 296}, {"f8", 297},

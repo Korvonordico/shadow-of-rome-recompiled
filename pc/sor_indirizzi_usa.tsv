@@ -22,6 +22,7 @@
 00229890	00229430	start of set_mastervol
 00269450	00268fe0	start of move
 00281e30	002819c0	start of Dvd_iWakeupCmsThread
+002e4960	002e43f0	start of apply_effect
 002e5460	002e4ef0	start of move
 002f2520	002f1fb0	start of config_update
 002f7460	002f6f00	start of set_bgm_volume
@@ -35,16 +36,19 @@
 0032b7d0	0032b190	start of move_init
 00349270	00348920	start of trans
 00349390	00348a40	start of main
+004852b8	00484848	data area089_colosseum_info+0x28
 004bc400	004bb980	data Pad
 004bd2ec	004bc86c	data Pad+0xeec
 004be2da	004bd85a	data Global+0xda
 004be2e0	004bd860	data Global+0xe0
 004be2e8	004bd868	data Global+0xe8
 004be2f5	004bd875	data Global+0xf5
+004be304	004bd884	data Global+0x104
 004be564	004bdae4	data Global+0x364
 004c8b40	004c80c0	data Camera
 004d3930	004d2eb0	data Scene+0x320
 004e69e0	004e5f60	data Work_man
+004e8080	004e7600	data Act_atr
 004ea16c	004e96ec	data System+0x2c
 004ea170	004e96f0	data System+0x30
 004ff5c0	004feb40	data Audience+0xca0

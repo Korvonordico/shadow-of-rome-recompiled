@@ -270,6 +270,46 @@ void sorGsRiprendi()
     std::fflush(stdout);
 }
 
+// The video card's child window kept as big as the game window (17/11/2026, called every window turn by
+// sorTurnoFinestra in pc/sor_mouse.cpp). The black picture after a minimize (known problem of 2.9.3 and 2.9.4):
+// while the game window is minimized its client size is 0x0 and sor-gs.dll (SorGS.cpp ResizeIfNeeded) shrinks its
+// child window to 0x0; when the window comes back at the size it had before, ResizeIfNeeded sees no change and never
+// fits it again, so only the black game window was left (a maximize changed the size and brought the picture back).
+// sorGsRiprendi fitted it only when the focus came back. Here: whenever the game window is not minimized and the child
+// is not its size, it is fitted again, focus or not; sor-gs.dll then resizes its picture to the child, as for any
+// resize. Async: the child belongs to sor-gs.dll's own window thread.
+void sorGsAdatta()
+{
+    static HWND gs = nullptr;
+    static unsigned cerca = 0, scritte = 0;
+    HWND padre = static_cast<HWND>(GetWindowHandle());
+    if (!padre || IsIconic(padre) || g_sorPannello.load())
+        return;
+    if (!gs || !IsWindow(gs))
+    {
+        gs = nullptr;
+        if (cerca++ % 60) // looked for once a second: with graphics=cpu there is no child window
+            return;
+        gs = FindWindowExW(padre, nullptr, nullptr, kFinestraGs);
+        if (!gs)
+            return;
+    }
+    RECT p = {}, c = {};
+    GetClientRect(padre, &p);
+    GetClientRect(gs, &c);
+    if (p.right <= 0 || p.bottom <= 0 || (p.right == c.right && p.bottom == c.bottom))
+        return;
+    SetWindowPos(gs, nullptr, 0, 0, p.right, p.bottom, SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+    if ((c.right <= 0 || c.bottom <= 0) && scritte < 40)
+    {
+        ++scritte;
+        std::printf("[sor] window back from a minimize: video card window fitted again (%ldx%ld, it was %ldx%ld)\n",
+                    static_cast<long>(p.right), static_cast<long>(p.bottom), static_cast<long>(c.right),
+                    static_cast<long>(c.bottom));
+        std::fflush(stdout);
+    }
+}
+
 // The game window lost the focus (11/11/2026). A G-SYNC / FreeSync screen keeps its variable refresh in a window only
 // for the window in front, and a controller keeps playing without the focus: written down with what took it, so a
 // log tells when the screen went back to a fixed refresh because another window was in front.

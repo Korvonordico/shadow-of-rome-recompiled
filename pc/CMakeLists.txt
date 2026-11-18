@@ -67,16 +67,18 @@ add_executable(sor "${CMAKE_CURRENT_SOURCE_DIR}/main_sor.cpp" "${CMAKE_CURRENT_S
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_film_hd.cpp"  # HD replacement films from the mods folder (a mod: no film is shipped)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_trucchi.cpp"  # debug cheats, only with SOR_CHEATS (the launcher's hidden DEBUG page)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_salvarapido.cpp" # debug quick save F5/F4, only with quicksave.on
+    "${CMAKE_CURRENT_SOURCE_DIR}/sor_attori.cpp"   # debug actor list F10 -> attori.txt (always on, only reads memory)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_camera.cpp"   # debug free camera, only with SOR_FREECAM=1 (same page)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_vignetta.cpp"   # screen veil off, only with SOR_NO_VIGNETTE=1 (GRAPHICS page, VIGNETTE)
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_vu1.cpp"        # SOR_VU1: PCSX2's microVU from sor-vu.dll (loaded at run time), or both VU1s compared
     "${CMAKE_CURRENT_SOURCE_DIR}/sor_audio.cpp")     # smooth audio through SoundTouch (OPTIONS page, SMOOTH AUDIO; SOR_AUDIO_STRETCH=0 = off)
 # The black box (Iris Insight: a picture and a short report when the game freezes, crashes or slows down) is
-# in blackbox/ and is built in, as in the published package. With -DSOR_NO_BLACKBOX=ON, or without that
-# folder, sor_blackbox_off.cpp stands in and does nothing.
-option(SOR_NO_BLACKBOX "Build without the black box" OFF)
+# built only into my local test builds: its licence is not the GPL, so it is not in this repository. Without
+# it, or with -DSOR_NO_BLACKBOX=ON (the published package), sor_blackbox_off.cpp stands in and does nothing.
+option(SOR_NO_BLACKBOX "Build without the black box, as the published package" OFF)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/blackbox/blackbox.cpp" AND NOT SOR_NO_BLACKBOX)
-    target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_blackbox.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/blackbox/blackbox.cpp")
+    target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_blackbox.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/blackbox/blackbox.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/sor_scheletro.cpp") # skeleton rules (sor-cattivo), with the sentinel switch
     target_include_directories(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 else()
     target_sources(sor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sor_blackbox_off.cpp")
@@ -90,7 +92,7 @@ if(PS2X_ENABLE_DEBUG_UI AND TARGET rlImGui)
     target_link_libraries(sor PRIVATE rlImGui imgui)
     target_compile_definitions(sor PRIVATE PS2X_ENABLE_DEBUG_UI=1)
 endif()
-# The American disc (SLUS_209.02, built from its own translation; its build script is not in this repository yet): the port's
+# The American disc (SLUS_209.02; pc/compila_usa.sh builds it in its own folder from its own translation): the port's
 # code takes the American addresses (SA() in pc/sor_indirizzi.h, table pc/sor_indirizzi_usa.h made by
 # strumenti/rimappa_usa.py) and the program is sor-usa.exe. OFF: the European sor.exe, as before.
 option(SOR_REGION_USA "Build sor-usa.exe for the American executable SLUS_209.02" OFF)

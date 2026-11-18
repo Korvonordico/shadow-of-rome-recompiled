@@ -15,9 +15,10 @@
 // LOOK on; the click that takes it does nothing else) or, with MOUSE LOOK off, while the game window has the focus and
 // the pointer is over it; never while the engine panel (F12) is open. A wheel notch holds the action down for a moment.
 // No standard key is a mouse button.
-// Missing, unknown or refused entries keep the standard mapping (kAzioni), so with no variables the game is as the
-// launcher's RESET.
-// Refused keys (the launcher refuses them too): F1 F2 ReShade, F3 drawing dump, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel,
+// Missing, unknown or refused entries keep the game's own mapping (kAzioni, = the launcher's KeyDefaults). The
+// launcher's RESET (since 2.9.5) gives the author's starting keys instead (Launcher.cs KeyStart: circle F, triangle
+// Space, L1 E, R2 V, L3 Z), which it passes here in SOR_KEYS like any other changed key.
+// Refused keys (the launcher refuses them too): F1 F2 ReShade, F3 drawing dump, F4 F5 quick save, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F10 actor list, F11 full screen, F12 engine panel,
 // 1-9 free camera points, Alt (Alt+Enter is full screen), the Windows keys.
 //
 // How it adds up with the other CONTROLS options:
@@ -27,6 +28,10 @@
 //   are not remapped. The keyboard's camera keys are not inverted (as before).
 // - The keys of the D-pad (arrows by default) also push the left stick the same way, as before: the game's menus read
 //   only the D-pad, walking reads the stick.
+// - WALK (keyboard only, LEFT_SHIFT by default; the author, 16/11/2026: Octavius's stealth parts need walking): a key
+//   always pushes the left stick all the way, so the player always runs; while WALK is held the keyboard pushes it only
+//   part of the way (kPasso), so the player walks, in all 8 directions. A controller's own stick is never touched.
+//   SOR_WALK_STICK=0.xx (tests only, not in the launcher) changes how far it is pushed.
 // - The free camera (pc/sor_camera.cpp) keeps its own fixed keys; while it is detached the game sees a pad at rest.
 // - TOGGLE (SOR_TOGGLE=l1; the author, 9/11: to stay crouched without holding the key) makes one of the ten buttons
 //   cross ... r3 a toggle: one press holds it down, the next lets it go (pc/sor_interruttore.h). It works on the final
@@ -69,17 +74,25 @@ namespace
     constexpr uint16_t PAD_R2 = 0x0200u;
     constexpr uint16_t PAD_L2 = 0x0100u;
 
-    // The actions, in the launcher's order. The first 16 are the PS2's buttons (keyboard and controller); the last 8
-    // are the two sticks, keyboard only (the controller uses its own sticks).
+    // The actions, in the launcher's order. The first 16 are the PS2's buttons (keyboard and controller); the last 9
+    // are the two sticks and WALK, keyboard only (the controller uses its own sticks).
     enum
     {
         A_CROSS, A_CIRCLE, A_SQUARE, A_TRIANGLE, A_L1, A_R1, A_L2, A_R2, A_L3, A_R3, A_START, A_SELECT,
         A_UP, A_DOWN, A_LEFT, A_RIGHT,
-        A_MOVE_UP, A_MOVE_DOWN, A_MOVE_LEFT, A_MOVE_RIGHT,
+        A_MOVE_UP, A_MOVE_DOWN, A_MOVE_LEFT, A_MOVE_RIGHT, A_WALK,
         A_CAMERA_UP, A_CAMERA_DOWN, A_CAMERA_LEFT, A_CAMERA_RIGHT,
         A_COUNT
     };
     constexpr int kBottoni = 16;
+
+    // WALK: how far the keyboard pushes the left stick while the WALK key is held (1 = all the way, as without WALK).
+    // Measured on 16/11/2026 (LAVORO, «Tasto CAMMINA (sor-cammina)»): classPAD::analog_rad_dist_get (0x12CAD0) gives each
+    // axis a dead zone of 40 of 127, then makes the stick a distance 0..10 (player +0x6B0). Under ~2 the player stands
+    // still, up to ~9 he walks (always at the same speed), from there he runs. 0.62 gives 4.4-4.6 straight and 6.2-6.4 in
+    // a diagonal (both axes 0.62): the middle of the walking range both ways. 0.5 made a diagonal stand still once its
+    // axes were cut by 1/sqrt(2) (inside the dead zone), so the diagonal keeps 0.62 on both axes.
+    constexpr float kPasso = 0.62f;
 
     struct Azione
     {
@@ -95,7 +108,7 @@ namespace
         {"circle", PAD_CIRCLE, "E", "B"},
         {"square", PAD_SQUARE, "MOUSE_RIGHT", "X"},
         {"triangle", PAD_TRIANGLE, "F", "Y"},
-        {"l1", PAD_L1, "LEFT_SHIFT", "LB"},
+        {"l1", PAD_L1, "LEFT_CONTROL", "LB"}, // LEFT_SHIFT from 14/11 to 16/11/2026; Shift is WALK now
         {"r1", PAD_R1, "Q", "RB"},
         {"l2", PAD_L2, "C", "LT"},
         {"r2", PAD_R2, "SPACE", "RT"},
@@ -111,6 +124,7 @@ namespace
         {"move_down", 0, "S", nullptr},
         {"move_left", 0, "A", nullptr},
         {"move_right", 0, "D", nullptr},
+        {"walk", 0, "LEFT_SHIFT", nullptr},
         {"camera_up", 0, "I", nullptr},
         {"camera_down", 0, "K", nullptr},
         {"camera_left", 0, "J", nullptr},
@@ -184,9 +198,9 @@ namespace
         for (const Nome &t : kTasti)
             if (n == t.nome)
             {
-                if (t.codice == KEY_F1 || t.codice == KEY_F2 || t.codice == KEY_F3 || t.codice == KEY_F4 || t.codice == KEY_F5 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F11 || t.codice == KEY_F12)
+                if (t.codice == KEY_F1 || t.codice == KEY_F2 || t.codice == KEY_F3 || t.codice == KEY_F4 || t.codice == KEY_F5 || t.codice == KEY_F6 || t.codice == KEY_F7 || t.codice == KEY_F8 || t.codice == KEY_F9 || t.codice == KEY_F10 || t.codice == KEY_F11 || t.codice == KEY_F12)
                 {
-                    *perche = "kept for F1 F2 ReShade, F3 drawing dump, F4 F5 quick save, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F11 full screen, F12 engine panel";
+                    *perche = "kept for F1 F2 ReShade, F3 drawing dump, F4 F5 quick save, F6 VU1 exact check, F7 wireframe, F8 free camera, F9 black box, F10 actor list, F11 full screen, F12 engine panel";
                     return -1;
                 }
                 if (t.codice == KEY_LEFT_ALT || t.codice == KEY_RIGHT_ALT)
@@ -255,6 +269,7 @@ namespace
         float invX = 1.0f, invY = 1.0f;
         unsigned topo = 0;                   // bit i: mouse input i (kTopo) does an action
         uint16_t interruttore = 0;           // TOGGLE: the PS2 bit one press holds down (0: none)
+        float passo = kPasso;                // WALK: how far the keyboard pushes the left stick (SOR_WALK_STICK)
     };
 
     // "a,b,c" -> codes; false if empty or any name is unknown or refused (the entry is then ignored)
@@ -394,6 +409,16 @@ namespace
             }
         }
 
+        // WALK's push (tests only: SOR_WALK_STICK=0.xx, between 0.05 and 1)
+        if (const char *v = std::getenv("SOR_WALK_STICK"))
+        {
+            const float f = static_cast<float>(std::atof(v));
+            if (f >= 0.05f && f <= 1.0f)
+                m.passo = f;
+            std::printf("[sor] walk: SOR_WALK_STICK=%s -> the keyboard's left stick pushed %.2f of the way while walk is held\n",
+                        v, m.passo);
+        }
+
         // the mouse inputs some action uses (sor_mouse.cpp reads only these)
         std::string topo;
         for (int i = 0; i < A_COUNT; ++i)
@@ -522,15 +547,27 @@ void sorTastiLeggi(bool useGamepad, int gamepad, uint16_t &btns, uint8_t *data)
             btns &= static_cast<uint16_t>(~kAzioni[i].bit);
     }
     // the left stick: the move keys, and the D-pad keys too (the game walks with the stick; its menus read only the D-pad)
-    const auto levetta = [](bool meno, bool piu, uint8_t &asse)
+    const auto verso = [](bool meno, bool piu) { return meno == piu ? 0 : (meno ? -1 : 1); };
+    // one axis pushed `quanto` of the way (1: all the way, 0x00 or 0xFF exactly, as before WALK)
+    const auto asse = [](int v, float quanto) -> uint8_t
     {
-        if (meno != piu)
-            asse = meno ? 0x00u : 0xFFu;
+        if (quanto >= 1.0f)
+            return v < 0 ? 0x00u : 0xFFu;
+        return static_cast<uint8_t>(std::lround(128.0f + static_cast<float>(v) * quanto * 127.0f));
     };
-    levetta(giu[A_LEFT] || giu[A_MOVE_LEFT], giu[A_RIGHT] || giu[A_MOVE_RIGHT], data[6]);
-    levetta(giu[A_UP] || giu[A_MOVE_UP], giu[A_DOWN] || giu[A_MOVE_DOWN], data[7]);
-    levetta(giu[A_CAMERA_LEFT], giu[A_CAMERA_RIGHT], data[4]);
-    levetta(giu[A_CAMERA_UP], giu[A_CAMERA_DOWN], data[5]);
+    const int lx = verso(giu[A_LEFT] || giu[A_MOVE_LEFT], giu[A_RIGHT] || giu[A_MOVE_RIGHT]);
+    const int ly = verso(giu[A_UP] || giu[A_MOVE_UP], giu[A_DOWN] || giu[A_MOVE_DOWN]);
+    // WALK held: the stick only part of the way (kPasso), the same on both axes in a diagonal (see kPasso: the game's
+    // dead zone is per axis, and walking has one speed, so the diagonal only has to stay inside the walking range)
+    const float quanto = giu[A_WALK] ? m.passo : 1.0f;
+    if (lx)
+        data[6] = asse(lx, quanto);
+    if (ly)
+        data[7] = asse(ly, quanto);
+    if (const int v = verso(giu[A_CAMERA_LEFT], giu[A_CAMERA_RIGHT]))
+        data[4] = asse(v, 1.0f);
+    if (const int v = verso(giu[A_CAMERA_UP], giu[A_CAMERA_DOWN]))
+        data[5] = asse(v, 1.0f);
 
     // TOGGLE: on the final buttons (keyboard, mouse and controller together); one press holds, the next lets go
     static SorInterruttore interruttore;

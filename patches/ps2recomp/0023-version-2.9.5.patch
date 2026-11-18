@@ -1,0 +1,234 @@
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/Runtime.h b/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/Runtime.h
+index 6204325..ab472f4 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/Runtime.h
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/Runtime.h
+@@ -89,7 +89,7 @@ static uint32_t rpcAllocPacketAddr(uint8_t *rdram)
+         return 0;
+ 
+     uint32_t slot = g_rpc_packet_index++ % kRpcPacketPoolCount;
+-    uint32_t addr = kRpcPacketPoolBase + (slot * kRpcPacketSize);
++    uint32_t addr = g_rpcPoolBase + kRpcPacketPoolOffset + (slot * kRpcPacketSize);
+     rpcZeroRdram(rdram, addr, kRpcPacketSize);
+     return addr;
+ }
+@@ -99,8 +99,14 @@ static uint32_t rpcAllocServerAddr(uint8_t *rdram)
+     if (kRpcServerPoolCount == 0)
+         return 0;
+ 
++    if (g_rpc_server_index == kRpcServerPoolCount)
++    {
++        // sor: the pool is smaller than upstream's (64 slots, Shadow of Rome binds about 7 servers): say it if a
++        // descriptor ever gets reused, it would mix two servers.
++        std::cerr << "[sor] RPC server pool full (" << kRpcServerPoolCount << " slots): reusing slot 0" << std::endl;
++    }
+     uint32_t slot = g_rpc_server_index++ % kRpcServerPoolCount;
+-    uint32_t addr = kRpcServerPoolBase + (slot * kRpcServerStride);
++    uint32_t addr = g_rpcPoolBase + kRpcServerPoolOffset + (slot * kRpcServerStride);
+     rpcZeroRdram(rdram, addr, kRpcServerStride);
+     return addr;
+ }
+@@ -332,7 +338,7 @@ static uint32_t allocTlsAddr(uint8_t *rdram)
+ 
+     std::lock_guard<std::mutex> lock(g_tls_mutex);
+     uint32_t slot = g_tls_index++ % kTlsPoolCount;
+-    uint32_t addr = kTlsPoolBase + (slot * kTlsBlockSize);
++    uint32_t addr = g_rpcPoolBase + kTlsPoolOffset + (slot * kTlsBlockSize);
+     rpcZeroRdram(rdram, addr, kTlsBlockSize);
+     return addr;
+ }
+@@ -346,7 +352,7 @@ static uint32_t allocBootModeAddr(uint8_t *rdram, size_t bytes)
+     if (g_bootmode_pool_offset + aligned > kBootModePoolBytes)
+         return 0;
+ 
+-    uint32_t addr = kBootModePoolBase + g_bootmode_pool_offset;
++    uint32_t addr = g_rpcPoolBase + kBootModePoolOffset + g_bootmode_pool_offset;
+     g_bootmode_pool_offset += static_cast<uint32_t>(aligned);
+     rpcZeroRdram(rdram, addr, aligned);
+     return addr;
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/State.h b/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/State.h
+index d6b7549..d407ceb 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/State.h
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/Helpers/State.h
+@@ -242,22 +242,33 @@ inline std::filesystem::path g_host_cwd;
+ inline std::filesystem::path g_cdrom_cwd;
+ inline std::string g_ps2_cwd_device = "host0";
+ 
++// sor: the runtime's own guest-RAM pools (RPC packets, dummy RPC server descriptors, thread TLS, boot-mode table) used
++// to sit at fixed addresses 0x01F00000..0x01F30FFF. That is inside Shadow of Rome's own heap (classHEAP_init 0x12C7D0,
++// called by classINIT_TASK_task_init with base 0x1C12000 and size 0x3C9800, so up to 0x1FDB800; classHEAP_malloc hands
++// out the TOP of the heap first). SifCallRpc rewrites the server descriptor on every call (pkt_addr at +0x20 = 0), so
++// game data that ended up there was overwritten: in area 088 of the last chapter it was a drawing packet, and its zeroed
++// DMA tag at 0x01F10020 (slot 0 + 0x20) cut every other frame's drawing chain, so the HUD, text, fog and menus
++// flickered. The pools now live in one block of g_rpcPoolBytes at g_rpcPoolBase, which the port sets before the game
++// starts (pc/main_sor.cpp: 0x000F8000, PS2 kernel memory the game never uses; SOR_RPC_POOL=<hex> moves it, for tests).
++static constexpr uint32_t kRpcPoolBytes = 0x00008000;
++inline uint32_t g_rpcPoolBase = 0x01F00000;
+ static constexpr uint32_t kRpcPacketSize = 64;
+-static constexpr uint32_t kRpcPacketPoolBase = 0x01F00000;
+-static constexpr uint32_t kRpcPacketPoolBytes = 0x00010000;
++static constexpr uint32_t kRpcPacketPoolOffset = 0x00000000;
++static constexpr uint32_t kRpcPacketPoolBytes = 0x00001000;
+ static constexpr uint32_t kRpcPacketPoolCount = kRpcPacketPoolBytes / kRpcPacketSize;
+-static constexpr uint32_t kRpcServerPoolBase = 0x01F10000;
+-static constexpr uint32_t kRpcServerPoolBytes = 0x00010000;
++static constexpr uint32_t kRpcServerPoolOffset = 0x00001000;
++static constexpr uint32_t kRpcServerPoolBytes = 0x00002000;
+ static constexpr uint32_t kRpcServerStride = 0x80;
+ static constexpr uint32_t kRpcServerPoolCount = kRpcServerPoolBytes / kRpcServerStride;
+ 
+-static constexpr uint32_t kTlsPoolBase = 0x01F20000;
+-static constexpr uint32_t kTlsPoolBytes = 0x00010000;
++static constexpr uint32_t kTlsPoolOffset = 0x00003000;
++static constexpr uint32_t kTlsPoolBytes = 0x00004000;
+ static constexpr uint32_t kTlsBlockSize = 0x100;
+ static constexpr uint32_t kTlsPoolCount = kTlsPoolBytes / kTlsBlockSize;
+ 
+-static constexpr uint32_t kBootModePoolBase = 0x01F30000;
++static constexpr uint32_t kBootModePoolOffset = 0x00007000;
+ static constexpr uint32_t kBootModePoolBytes = 0x00001000;
++static_assert(kBootModePoolOffset + kBootModePoolBytes <= kRpcPoolBytes, "the runtime pools must fit their block");
+ 
+ static constexpr uint32_t kSifRpcModeNowait = 0x01;
+ static constexpr uint32_t kSifRpcModeNoWbDc = 0x02;
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
+index 07fcd29..de9e54f 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
+@@ -1006,3 +1006,10 @@ namespace ps2_syscalls
+         setReturnS32(ctx, static_cast<int32_t>(queuePtr));
+     }
+ }
++
++// sor: called by pc/main_sor.cpp before the game starts, to keep the runtime's pools out of the game's heap
++// (see g_rpcPoolBase in Helpers/State.h).
++void sorSetRuntimePoolBase(uint32_t base)
++{
++    g_rpcPoolBase = base;
++}
+diff --git a/ps2xRuntime/src/lib/gs/gs_bande.cpp b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+index ca25a94..cfe9077 100644
+--- a/ps2xRuntime/src/lib/gs/gs_bande.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_bande.cpp
+@@ -1094,13 +1094,16 @@ void GSBande::Reset()
+ }
+ 
+ void sorGsTuttiAdc(const GSPrimitiveBatch &batch) { tuttiPrimSeC(batch); } // sor: vertices the game sends with ADC set
++// sor (sor-sfarfallio, 16/11/2026): with the video card (sor-gs.dll draws) this renderer gets no primitives, so F3
++// saved only the ADC vertices: gs_frontend.cpp hands the drawn ones here while F3 records.
++void sorGsTuttiDisegno(const GSPrimitiveBatch &batch) { tuttiPrim(batch); }
+ 
+ // sor: F3 in the game window (the author, 10/11/2026: the water in chapter 4): the remote control's "gstutti" from the
+-// keyboard. It is written by this renderer only, so it works with GRAPHICS > PROCESSOR (SOR_GRAPHICS=cpu).
++// keyboard. With GRAPHICS > PROCESSOR from this renderer, with the video card from gs_frontend.cpp (16/11/2026).
+ void sorGsTuttiTasto()
+ {
+     g_sorGsTuttiChiesto.store(true);
+-    std::printf("[sor] F3: saving the drawing of the next 4 frames (only with GRAPHICS > PROCESSOR)\n");
++    std::printf("[sor] F3: saving the drawing of the next 4 frames\n");
+     std::fflush(stdout);
+ }
+ 
+diff --git a/ps2xRuntime/src/lib/gs/gs_frontend.cpp b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+index 60ccf57..0898972 100644
+--- a/ps2xRuntime/src/lib/gs/gs_frontend.cpp
++++ b/ps2xRuntime/src/lib/gs/gs_frontend.cpp
+@@ -1662,6 +1662,7 @@ void GS::writeRegisterUnlocked(uint8_t regAddr, uint64_t value)
+ 
+ extern std::atomic<bool> g_sorGsTuttiChiesto2; // gs_bande.cpp
+ void sorGsTuttiAdc(const GSPrimitiveBatch &batch);
++void sorGsTuttiDisegno(const GSPrimitiveBatch &batch); // gs_bande.cpp
+ 
+ void GS::vertexKick(bool drawing)
+ {
+@@ -1722,6 +1723,9 @@ void GS::vertexKick(bool drawing)
+             updatePreferredDisplaySource(m_ctx[m_prim.ctxt ? 1 : 0], m_prim, m_vtxQueue,
+                                          static_cast<uint32_t>(std::min(needed, 3)));
+             recordDrawDebugEventUnlocked(needed);
++            // sor (sor-sfarfallio, 16/11/2026): F3 also saves what is drawn, not only the ADC vertices
++            if (g_sorGsTuttiChiesto2.load(std::memory_order_relaxed))
++                sorGsTuttiDisegno(buildDrawBatch(needed));
+         }
+         else
+         {
+diff --git a/ps2xRuntime/src/lib/ps2_memory.cpp b/ps2xRuntime/src/lib/ps2_memory.cpp
+index aa6bb34..b3c25e7 100644
+--- a/ps2xRuntime/src/lib/ps2_memory.cpp
++++ b/ps2xRuntime/src/lib/ps2_memory.cpp
+@@ -1421,6 +1421,38 @@ void PS2Memory::sorVifVblank()
+     m_sorVifSveglia.notify_one();
+ }
+ 
++// sor (sor-sfarfallio, 16/11/2026): the game's drawing chain (VIF1, one per frame, through its ordering table) always
++// ends on the END tag of the table. In area 088, after area 081, every other chain stopped instead on a REFE tag in the
++// middle (16238 tags instead of 17550): everything after it (the rest of the shadows, the HUD, the fog, menus and text)
++// was never drawn on those frames, which is the flicker. A VIF1 chain that ends on a REFE is counted here (the black
++// box reads g_sorCateneTagliate) and reported at most every 5 s with the tags read just before it.
++std::atomic<uint64_t> g_sorCateneTagliate{0};
++std::atomic<uint64_t> g_sorCateneVif1{0};
++static void sorControllaCatena(uint32_t head, int tags, size_t bytes, uint32_t lastId, uint64_t lastHi,
++                               const uint32_t *addr, const uint64_t *tag)
++{
++    g_sorCateneVif1.fetch_add(1u, std::memory_order_relaxed);
++    if (lastId != 0u)
++        return;
++    const uint64_t cut = g_sorCateneTagliate.fetch_add(1u, std::memory_order_relaxed) + 1u;
++    static std::chrono::steady_clock::time_point s_last{};
++    static uint64_t s_chainsThen = 0u, s_cutThen = 0u;
++    const auto now = std::chrono::steady_clock::now();
++    if (s_cutThen != 0u && now - s_last < std::chrono::seconds(5))
++        return;
++    const uint64_t chains = g_sorCateneVif1.load(std::memory_order_relaxed);
++    std::printf("[sor-catena] VIF1 drawing chain cut short: %llu of the last %llu chains (%llu in all); this one from %x, %d tags, "
++                "%zu bytes, stopped on a REFE tag at %x (%016llx %016llx); tags before it: %x %016llx, %x %016llx, %x %016llx\n",
++                static_cast<unsigned long long>(cut - s_cutThen), static_cast<unsigned long long>(chains - s_chainsThen),
++                static_cast<unsigned long long>(cut), head, tags, bytes, addr[0], static_cast<unsigned long long>(tag[0]),
++                static_cast<unsigned long long>(lastHi), addr[1], static_cast<unsigned long long>(tag[1]), addr[2],
++                static_cast<unsigned long long>(tag[2]), addr[3], static_cast<unsigned long long>(tag[3]));
++    std::fflush(stdout);
++    s_last = now;
++    s_chainsThen = chains;
++    s_cutThen = cut;
++}
++
+ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+ {
+     if (!sorRegistroLibero(address))
+@@ -1707,6 +1739,11 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                     uint32_t lastTagUpper = (chcr >> 16) & 0xFFFFu;
+                     uint32_t sorUltimoId = 99u, sorPrimoTag = tagAddr; // sor: F3 report of the chains (14/11/2026)
+                     bool sorUltimoIrq = false;
++                    // sor (sor-sfarfallio, 16/11/2026): the last tags read (newest first) and the upper half of the
++                    // last one, for the report of a drawing chain cut short (sorCatenaTagliata).
++                    uint32_t sorPrecAddr[4] = {0u, 0u, 0u, 0u};
++                    uint64_t sorPrecTag[4] = {0u, 0u, 0u, 0u};
++                    uint64_t sorUltimoHi = 0u;
+ 
+                     while (tagsProcessed < kMaxChainTags)
+                     {
+@@ -1746,6 +1783,16 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                         ++tagsProcessed;
+                         sorUltimoId = id;
+                         sorUltimoIrq = irq;
++                        sorPrecAddr[3] = sorPrecAddr[2];
++                        sorPrecAddr[2] = sorPrecAddr[1];
++                        sorPrecAddr[1] = sorPrecAddr[0];
++                        sorPrecAddr[0] = tagAddr;
++                        sorPrecTag[3] = sorPrecTag[2];
++                        sorPrecTag[2] = sorPrecTag[1];
++                        sorPrecTag[1] = sorPrecTag[0];
++                        sorPrecTag[0] = tag;
++                        if (id == 0u)
++                            sorUltimoHi = loadScalar<uint64_t>(tp, 8, 16, "dma chain tag", tagAddr);
+                         // sor: SOR_DMADUMP=<n> stampa <n> tag DMA dopo SOR_GIFDUMP_DA secondi dall'avvio.
+                         {
+                             static const long s_n = std::getenv("SOR_DMADUMP") ? std::atol(std::getenv("SOR_DMADUMP")) : 0;
+@@ -1841,6 +1888,9 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
+                             break;
+                     }
+ 
++                    if (channelBase == 0x10009000u)
++                        sorControllaCatena(sorPrimoTag, tagsProcessed, chainBuf.size(), sorUltimoId, sorUltimoHi,
++                                           sorPrecAddr, sorPrecTag);
+                     {
+                         // sor: while F3 records (the flicker in area 105, 14/11/2026): every chain, how it ended
+                         extern std::atomic<bool> g_sorGsTuttiChiesto2;

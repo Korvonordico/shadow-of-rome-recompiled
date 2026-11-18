@@ -1,4 +1,4 @@
-add_library(sor-gs SHARED SorGS.cpp)
+add_library(sor-gs SHARED SorGS.cpp sor_reshade.cpp)
 
 target_include_directories(sor-gs PRIVATE
 	"${CMAKE_BINARY_DIR}/common/include"
