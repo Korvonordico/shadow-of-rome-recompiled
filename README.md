@@ -71,8 +71,7 @@ If someone is already working on a port of this game, or is further ahead, pleas
 - **New starting settings for a new install:** 6x, full screen, ReShade on, POST EFFECTS on CLEAN and new standard keys (○ on F, △ on Space, L1 on E, R2 on V, L3 on Z: see [Keys](#keys)). The package no longer contains `launcher.ini`, so unpacking it over an older folder keeps your own settings.
 - **CONTROLS > KEYBOARD: RESET gives the new standard keys.** A `launcher.ini` from an older version keeps its own keys until you press RESET and then APPLY.
 - **CONTROLS > CONTROLLER now finds PlayStation, Switch and other controllers, not only Xbox ones.** Before, with a PlayStation controller the page said NO CONTROLLER FOUND and a new button could be chosen only with ‹ ›; now you press it, and the page names the controller it found. (The game itself already read these controllers.)
-- **A second Russian translation works too** (its disc image is named NORG): see [Supported discs](#supported-discs).
-- **Tested by hand:** the forest and the river of Chapter 1 with CLEAN, a fade between scenes, the HD opening movie and RESET with the American disc, the second Russian translation, played for a while, and seven controller buttons changed with a PS4 controller, saved and working in the game.
+- **Tested by hand:** the forest and the river of Chapter 1 with CLEAN, a fade between scenes, the HD opening movie and RESET with the American disc, the Russian version with this version's changes (it works), and seven controller buttons changed with a PS4 controller, saved and working in the game.
 - **Known problem:** with UPSCALE FIX on NORMAL or PCSX2'S OLD FIX, thin dotted light lines can show along the edges of the rocks at 6x and 8x. The default, SPECIAL + NATIVE, shows the fewest of them.
 
 <details>
@@ -295,7 +294,7 @@ You need your own copy of the game, as an `.iso` file. These discs work:
 | Europe (Russia): the European disc with a fan translation into Russian | SLES-52950 | `sor.exe` | `disco`, textures in `textures\SLES-52950\replacements` |
 | American (NTSC) | SLUS-20902 | `sor-usa.exe` | `disco-usa`, textures in `textures\SLUS-20902\replacements` |
 
-The Russian version is the European disc with a fan translation. Two translations have been tested by hand and both work. One keeps the game's program file exactly as it is; the other (its disc image is named NORG) changes 133 bytes of it, in a small table that looks like the sizes of the translated texts. Both have the same code (SLES-52950) and use the same program.
+The Russian version is the European disc with a fan translation: same code, same program. It has worked since 2.8 and was tested again with 2.9.5.
 
 You don't have to choose: press Play in the launcher, pick your `.iso`, and the launcher reads the disc's code
 (from the `SYSTEM.CNF` file on the disc) and starts the right program. Any other disc (for example the
