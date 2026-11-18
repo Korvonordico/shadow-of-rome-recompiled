@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="docs/logo.png" width="60%" alt="Shadow of Rome Recompiled">
-</p>
+<p align="center"><img src="docs/look/hero.jpg" width="100%" alt="Shadow of Rome Recompiled"></p>
 
 <h1 align="center">Shadow of Rome Recompiled</h1>
 
@@ -17,9 +15,21 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
-<p align="center">Version 2.9.4 · <a href="CHANGELOG.md">What changed</a></p>
+<p align="center">Version 2.9.5 · <a href="CHANGELOG.md">What changed</a></p>
 
 <p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"> <img src="docs/flags/us.svg" alt="United States" title="United States: the American disc"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too. The American disc (in English only) works too: see [Supported discs](#supported-discs).</p>
+
+<p align="center">
+  <a href="../../releases/latest"><b>⬇ Download</b></a> &nbsp;·&nbsp; <a href="#how-to-get-it-running">🎮 How to play</a> &nbsp;·&nbsp; <a href="#keys">⌨ Keys</a> &nbsp;·&nbsp; <a href="#whats-new-in-295">✨ What's new</a> &nbsp;·&nbsp; <a href="#status">✅ Tested</a> &nbsp;·&nbsp; <a href="#credits-and-thanks">🙏 Thanks</a> &nbsp;·&nbsp; <a href="../../issues/new/choose">🐞 Report a problem</a>
+</p>
+
+<table>
+<tr>
+<td align="center" width="33%"><img src="docs/look/f-sharp.png" width="110" alt=""><br><b>SHARPER</b><br><sub>Up to 8 times the PS2 resolution, CLEAN picture without blur and grain</sub></td>
+<td align="center" width="33%"><img src="docs/look/f-smooth.png" width="110" alt=""><br><b>SMOOTH</b><br><sub>60 frames per second, drawn by your video card</sub></td>
+<td align="center" width="33%"><img src="docs/look/f-wide.png" width="110" alt=""><br><b>WIDE</b><br><sub>16:9 and 21:9, a wider view, played to the end</sub></td>
+</tr>
+</table>
 
 > [!IMPORTANT]
 > **The whole game has been played by hand to the end credits** (European disc), but it is still a fan port tested on one PC. You may find graphics glitches, crashes or parts that do not work: keep a separate save, and save often.
@@ -28,7 +38,7 @@
 > **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), of its Russian translation, or of the American disc (SLUS-20902), as an .iso file. Please don't ask for, or share, game files or disc images.
 
 <p align="center">
-  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.9.3: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, the sound and ash switches at the bottom left, Rome in the background and the version number">
+  <img src="docs/launcher.png" width="70%" alt="The launcher of 2.9.5: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, the sound and ash switches at the bottom left, Rome in the background and the version number">
 </p>
 <p align="center"><sub>The launcher. It starts the game and holds every setting.</sub></p>
 
@@ -51,31 +61,22 @@ If someone is already working on a port of this game, or is further ahead, pleas
 </p>
 <p align="center">The same first arena, played twice: the original PlayStation 2 game on the left, the PC port on the right. Click the picture to watch it on YouTube.</p>
 
-## Screenshots
+<p align="center"><img src="docs/look/sec-new.jpg" width="100%" alt="What's new"></p>
 
-<p align="center">
-  <img src="docs/compare-resolution.svg" width="100%" alt="The same moment in the streets of Rome, on the left at the PS2's resolution, on the right drawn by the video card at 4 times that">
-</p>
-<p align="center"><sub>The same moment of the game, real pictures from this port: on the left at the PS2's resolution, on the right drawn by the video card at 4x. The line moves by itself.</sub></p>
+## What's new in 2.9.5
 
-New pictures from 2.9.3, drawn by the video card at 4x in 16:9, with VIGNETTE off and UPSCALE FIX on SPECIAL + NATIVE:
+- **New: GRAPHICS > POST EFFECTS, on CLEAN by default.** CLEAN no longer draws the game's full-screen filters (blur, depth of field, glow, the pale fog, grain): a sharper, clearer picture. The water, the fades between scenes and the dim fog of forests, rivers and caves stay (without that fog those places turn almost black). NO GRAIN is the old VIGNETTE OFF, ORIGINAL is the game as on the PS2. Thanks to [@Gabominated](https://github.com/Gabominated) for the idea, from the "Disable Post-Processing Effects" patch for PCSX2, and for the permission to use it ([Gabominated/PCSX2#36](https://github.com/Gabominated/PCSX2/issues/36)).
+- **Fixed: the window stayed black after minimizing.** The picture now comes back when you restore it (tested by hand with DirectX 12; DirectX 11 and Vulkan checked by a test script).
+- **The HD opening movie works with the American disc too.** It is the second file of this version (`ShadowOfRome-2.9.5-hd-opening-film.zip`, also on Nexus Mods), not part of the game package, because it is made from the game's own movie. The movie is the same on both discs, so one file serves both games.
+- **New starting settings for a new install:** 6x, full screen, ReShade on, POST EFFECTS on CLEAN and new standard keys (○ on F, △ on Space, L1 on E, R2 on V, L3 on Z: see [Keys](#keys)). The package no longer contains `launcher.ini`, so unpacking it over an older folder keeps your own settings.
+- **CONTROLS > KEYBOARD: RESET gives the new standard keys.** A `launcher.ini` from an older version keeps its own keys until you press RESET and then APPLY.
+- **CONTROLS > CONTROLLER now finds PlayStation, Switch and other controllers, not only Xbox ones.** Before, with a PlayStation controller the page said NO CONTROLLER FOUND and a new button could be chosen only with ‹ ›; now you press it, and the page names the controller it found. (The game itself already read these controllers.)
+- **A second Russian translation works too** (its disc image is named NORG): see [Supported discs](#supported-discs).
+- **Tested by hand:** the forest and the river of Chapter 1 with CLEAN, a fade between scenes, the HD opening movie and RESET with the American disc, the second Russian translation, played for a while, and seven controller buttons changed with a PS4 controller, saved and working in the game.
+- **Known problem:** with UPSCALE FIX on NORMAL or PCSX2'S OLD FIX, thin dotted light lines can show along the edges of the rocks at 6x and 8x. The default, SPECIAL + NATIVE, shows the fewest of them.
 
-<p align="center">
-  <img src="docs/shot-1.jpg" width="49%" alt="The title screen">
-  <img src="docs/shot-2.jpg" width="49%" alt="Playing in the streets of Rome">
-</p>
-<p align="center">
-  <img src="docs/shot-3.jpg" width="49%" alt="A fight in the high arena">
-  <img src="docs/shot-4.jpg" width="49%" alt="Inside the Roman camp">
-</p>
-<p align="center">
-  <img src="docs/shot-5.jpg" width="49%" alt="The wooden fort">
-  <img src="docs/shot-6.jpg" width="49%" alt="By the river">
-</p>
-<p align="center">
-  <img src="docs/shot-7.jpg" width="49%" alt="In a cave, by a torch">
-  <img src="docs/shot-8.jpg" width="49%" alt="The Germanian Forest at night">
-</p>
+<details>
+<summary><b>Older versions: 2.9.4, 2.9.3, 2.9.2, 2.9.1, 2.9, 2.8, 2.7, 2.6</b></summary>
 
 ## What's new in 2.9.4
 
@@ -148,37 +149,294 @@ Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666), thanks! Everyt
 
 All the details: [CHANGELOG](CHANGELOG.md).
 
+</details>
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/look/compare-1x-8x.svg" width="100%" alt="The same moment in a square of Rome, on the left as on the PS2 (1x), on the right drawn by the video card at 8x in 2.9.5">
+</p>
+<p align="center"><sub>The same moment of the game, real pictures from this port: on the left as on the PS2 (1x), on the right drawn by the video card at 8x in 2.9.5. The line moves by itself.</sub></p>
+
+New pictures from 2.9.5, drawn by the video card at 8x in 21:9:
+
+<p align="center">
+  <img src="docs/look/g-1.jpg" width="100%" alt="A temple in Rome, two legionaries on its steps">
+</p>
+<p align="center">
+  <img src="docs/look/g-2.jpg" width="49%" alt="A street shop in Rome">
+  <img src="docs/look/g-3.jpg" width="49%" alt="A room with bread on the shelves">
+</p>
+<p align="center">
+  <img src="docs/look/g-4.jpg" width="49%" alt="People talking in a street of Rome">
+  <img src="docs/look/g-5.jpg" width="49%" alt="A legionary on guard by a door">
+</p>
+<p align="center">
+  <img src="docs/look/g-6.jpg" width="100%" alt="A hall with a statue and paintings">
+</p>
+
+<p align="center"><img src="docs/look/sec-play.jpg" width="100%" alt="How to play"></p>
+
+<table>
+<tr>
+<td align="center" width="33%"><img src="docs/look/step-1.jpg" width="100%" alt="Step 1: unzip the package"></td>
+<td align="center" width="33%"><img src="docs/look/step-2.jpg" width="100%" alt="Step 2: open ShadowOfRome.exe"></td>
+<td align="center" width="33%"><img src="docs/look/step-3.jpg" width="100%" alt="Step 3: PLAY and pick your own disc"></td>
+</tr>
+</table>
+
+## How to get it running
+
+### The easy way: the ready-made package
+
+1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), or NTSC, SLUS-20902 (the American disc), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
+2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
+3. Download `ShadowOfRome-2.9.5-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
+4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
+5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
+6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 6x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
+
+Saves (the `mc0` and `mc1` folders) and the files read from your disc stay in that folder. **Updating:** unpack the new version into a new folder and copy `mc0` and `mc1` from the old one to keep your progress. Close the game with the X of its window.
+
+### Building it yourself
+
+You build the game once, on your PC, from your own disc image. It takes some setting up, then one command does the rest. All of this was tested on one PC, with Windows 11 and Ubuntu 26.04.
+
+#### What you need
+
+- Your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
+- Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009). A processor with 6 cores or more is best: the game needs them to run at full speed.
+- About 2 GB of free disk space, and an internet connection during the build (it downloads some code it needs, for example for the movies).
+- WSL with Ubuntu: a Linux system inside Windows, made by Microsoft. The build runs there; the game then runs in Windows.
+
+#### Step 1: install the tools (once)
+
+1. Open PowerShell as administrator (right-click the Start button and choose "Terminal (Admin)", or "Windows PowerShell (Admin)" on Windows 10) and run:
+
+   ```
+   wsl --install
+   ```
+
+   Restart the PC when it asks. Then open **Ubuntu** from the Start menu and choose a user name and a password. More help: [Microsoft's guide](https://learn.microsoft.com/windows/wsl/install).
+
+2. In the Ubuntu window, install Git, CMake, a C++ compiler and Python (it asks for the password you just chose):
+
+   ```bash
+   sudo apt update
+   sudo apt install build-essential cmake git python3 wget
+   ```
+
+3. Still in Ubuntu, download [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases), the compiler that makes the Windows program, and unpack it into a folder called `llvm-mingw` in your home folder. These are the commands for the version I use (20261020, clang 23.1.4):
+
+   ```bash
+   cd ~
+   wget https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
+   tar -xf llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
+   mv llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64 llvm-mingw
+   ```
+
+   If you keep it somewhere else, set the `LLVM_MINGW` variable to its folder.
+
+#### Step 2: download and build the game
+
+Run these in the Ubuntu window.
+
+1. Go to your Windows user folder, so that Windows can start the game from there, and download the project. In Ubuntu, `C:\Users\YOUR_NAME` is written `/mnt/c/Users/YOUR_NAME`:
+
+   ```bash
+   cd /mnt/c/Users/YOUR_NAME
+   git clone --recurse-submodules https://github.com/Korvonordico/shadow-of-rome-recompiled.git
+   cd shadow-of-rome-recompiled
+   ```
+
+2. Build everything from your disc image. If it is `C:\Games\game.iso`, write:
+
+   ```bash
+   scripts/setup.sh "/mnt/c/Games/game.iso"
+   ```
+
+   It took about 13 and 15 minutes in the two timed builds, on 1 and 4 November, on a 6-core PC; a full build from a clean copy of this repository has not been tried again since then. It reads the game's program from your image, translates it, builds `_build/sor.exe` (the game) and `_build/ShadowOfRome.exe` (the launcher). If the build fails, the reason is at the end of `_build.log`.
+
+Nothing it creates is uploaded anywhere or committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, `_tools/` and `_build/` stay on your PC. The game's large files are not copied: they are read from your image while you play, so keep the image where it is.
+
+<details>
+<summary>What the build does, step by step</summary>
+
+`scripts/setup.sh` patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++, downloads and builds the part of FFmpeg the movies need (in `~/.cache/shadow-of-rome-ffmpeg`), builds `_build/sor.exe`, and finally builds the launcher with the C# compiler that comes with Windows (`launcher/build.bat`).
+
+</details>
+
+#### Step 3: play
+
+- **With the launcher:** open the folder `C:\Users\YOUR_NAME\shadow-of-rome-recompiled\_build` and double-click `ShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is, and remembers it in `_build/launcher.ini`. Arrows and Enter, or the mouse. If the launcher was not built, double-click `launcher\build.bat` once.
+- **Or drag your `.iso` file onto `run.bat`.**
+- **Or from the Ubuntu window:** `scripts/run.sh "/mnt/c/Games/game.iso"`
+
+Close the game with the X of its window.
+
+#### Step 4: the video card part
+
+`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor. `sor-vu.dll` (PCSX2's VU1, faster) comes from the same package, or is built with `pc/sorvu/build.bat` against the same PCSX2 checkout; without it the game uses its own, slower VU1. For MODS > RESHADE, copy `ReShade64.dll` from the package (or from [reshade.me](https://reshade.me)) and the files in [reshade/](reshade/README.md) next to `sor.exe`.
+
+### From the start to the first arena
+
+1. Press Start (Esc on the keyboard), then ✕ (the left mouse button) to choose the language, then ✕ on Start Game. The first click in the window only catches the mouse pointer: click again.
+2. The first time, with an empty memory card, the game offers to create a save file: press the left arrow to choose Yes, then X. If you choose No, it asks "Begin game anyway?": left arrow, then X.
+3. After the CAPCOM logo the opening movie starts: Start skips it (Esc on the keyboard; every movie can be skipped). Then press Start at the title screen.
+4. Choose New Game and a difficulty. The briefing pages move on with ✕. The game asks for the left stick to walk: with a controller that is the stick, and on the keyboard W A S D. Talk to the man with the mace (○, which is F on the keyboard) to enter the arena.
+
+## Supported discs
+
+You need your own copy of the game, as an `.iso` file. These discs work:
+
+| Disc | Code | Program | Its files |
+|---|---|---|---|
+| European (PAL) | SLES-52950 | `sor.exe` | `disco`, textures in `textures\SLES-52950\replacements` |
+| Europe (Russia): the European disc with a fan translation into Russian | SLES-52950 | `sor.exe` | `disco`, textures in `textures\SLES-52950\replacements` |
+| American (NTSC) | SLUS-20902 | `sor-usa.exe` | `disco-usa`, textures in `textures\SLUS-20902\replacements` |
+
+The Russian version is the European disc with a fan translation. Two translations have been tested by hand and both work. One keeps the game's program file exactly as it is; the other (its disc image is named NORG) changes 133 bytes of it, in a small table that looks like the sizes of the translated texts. Both have the same code (SLES-52950) and use the same program.
+
+You don't have to choose: press Play in the launcher, pick your `.iso`, and the launcher reads the disc's code
+(from the `SYSTEM.CNF` file on the disc) and starts the right program. Any other disc (for example the
+Japanese one) gets a clear message and does not start.
+
+The two games are not the same program: the American one was built a little differently by Capcom (its code
+sits at slightly different addresses), so this project translates it separately and moves every fix of the
+port (widescreen, 60 FPS, camera, cheats, HD movies, vignette) to the American addresses with a
+tool (`strumenti/rimappa_usa.py`). A fix that would point to an address that has no American match does not
+build, instead of doing something wrong.
+
+Differences you may notice:
+- The American game is in English only: it has no language screen. Its title says "CAPCOM U.S.A.".
+- The American game runs at 60 frames per second only: the launcher's 50 setting is ignored by `sor-usa.exe`.
+- Saves: each game keeps its own memory card, in its own folder (`disco` or `disco-usa`).
+- Texture packs are looked for in the folder of the disc you play (`textures\SLUS-20902\replacements` for the
+  American disc). Some textures have the same name on both discs (48 of the 129 the American menus used in a
+  test), so part of a pack made for the European disc works when copied there: the HD title picture is one of them.
+- HD movies are looked for in the folder of the disc you play, then (since 2.9.5) in the other disc's folder: the
+  opening movie is the same on both discs, so one `movie-0.mp4` serves both games (the HD opening movie file puts
+  it in `textures\SLES-52950\replacements\hd-films\movies`).
+
+### What was tested on the American disc
+
+Every test was made the same way on the European game too, to compare.
+
+| Feature | American disc | How it was tested |
+|---|---|---|
+| Start to the first arena (memory card created, warning, Capcom logo, opening movie, title, New Game, arena movie, "First Match") | tested: works | automatic run, pictures |
+| Widescreen 16:9 and 21:9 (video card, 2x, DirectX 11) | tested: works, HUD in place | pictures, same as the European game |
+| 60 FPS and frame pacing | tested: steady 60, no late frames in the report | pacing report on a 180 Hz screen |
+| Sound | tested: the sound is made in real time (about 98%) | sound report, same as the European game; not listened to |
+| Field of view and vignette off | tested: works | pictures |
+| Free camera (F8) | tested: works | pictures |
+| Cheats and the DEBUG page | tested by hand: works | played |
+| Mouse look | tested by hand: works | played |
+| Launcher picking the program from the disc | tested by hand: works | played |
+| HD opening movie for the American disc (2.9.5) | the game finds the HD movie in the European disc's folder and plays it to the end (5411 pictures, as the European game); with 2.9.4 and the movie in the American folder the HD picture showed on screen (log); tested by hand with 2.9.5: works | automatic runs (log), a 2.9.4 game's log |
+| Texture packs for the American disc | the HD title picture and TrippyPit's pack load (pictures sharper than without); by hand: not yet tested, in testing | automatic runs, pictures |
+| The whole game to the end | not yet tested, in testing (not on the European disc either) | |
+
+<p align="center"><img src="docs/look/sec-keys.jpg" width="100%" alt="Keys and settings"></p>
+
+## Keys
+
+The keyboard and the mouse always work, with or without a controller connected. These are the standard keys; every one can be changed in the launcher (CONTROLS, KEYBOARD), with a key, a mouse button or the wheel:
+
+| PS2 | Keyboard and mouse |
+|---|---|
+| D-pad | 1 / 2 / 3 / 4 on the top row (up, down, left, right), or the arrow keys |
+| Left stick | W A S D |
+| Right stick (the camera) | The mouse, or I J K L |
+| L3 / R3 (pressing the sticks) | Z / X |
+| ✕ | Left mouse button |
+| ○ | F |
+| ▢ | Right mouse button |
+| △ | Space |
+| L1 / R1 | E / Q |
+| L2 / R2 | C / V |
+| Start | Esc |
+| Select | Tab |
+
+While you play:
+
+| Key | What it does |
+|---|---|
+| Click in the window | The mouse turns the camera (MOUSE LOOK on) |
+| Alt | Frees the mouse pointer |
+| Left Shift (hold) | Walk instead of run, with the keyboard (WALK in CONTROLS, KEYBOARD) |
+| F11, or Alt+Enter | Full screen on and off |
+| F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it (only while the free camera is on: otherwise 1 to 9 are free for your own keys) |
+| F1 | ReShade's menu, when RESHADE is on in MODS |
+| F2 | ReShade's effects off and on again |
+| F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
+| F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
+| F10 | A test tool, if ACTOR LIST is on in DEBUG: writes the list of the people, enemies, weapons and objects in the area, with their places, to `attori.txt` in the game folder (a copy of each list goes to the `actor-lists` folder) |
+| F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
+| F7 | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
+| F12 | The engine panel, if it is on in DEBUG |
+
+In the KEYBOARD page Delete leaves an action with no key and Backspace cancels. On the controller every button can be changed too (CONTROLS, CONTROLLER): choose a row and press the new button, on an Xbox, PlayStation, Switch or another controller, or change it with ‹ ›.
+
+In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
+
+To move, use W A S D, and hold Left Shift to walk instead of running: according to the game's list of commands, the D-pad (the arrow keys) drops your helmet and weapons. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
+
 ## The launcher
 
 `ShadowOfRome.exe` starts the game. **Play** starts it: the first time, it asks where your `.iso` file is, reads from it the files the game needs (a few seconds, into the `disco` folder next to the launcher) and remembers it. If the image is not the European disc, Play says so and starts nothing. Arrows and Enter, or the mouse.
 
-- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD, VIGNETTE and FIELD OF VIEW (the playing camera wider: +10%, +20% or +30%).
+- **GRAPHICS:** RENDERER (the video card with DirectX 11, DirectX 12 or Vulkan, or the processor, as in 0.0.7), RESOLUTION (1x, 2x, 3x, 4x, 6x or 8x the PS2's; 6x and 8x are the smoothest edges and need a strong video card), SHARPNESS (off, low, high), ANTIALIASING (off or FXAA), SCREEN (4:3, 16:9, 21:9), FRAME RATE (60 or 50), VSYNC, OSD, POST EFFECTS (CLEAN: the game's full-screen filters, such as blur, glow, bloom, grain and the pale fog, are not drawn, while the water, the fades and the dim fog of forests, rivers and caves stay; NO GRAIN: as on the PS2 without the grain and the haze; ORIGINAL: as on the PS2) and FIELD OF VIEW (the playing camera wider: +10%, +20% or +30%).
 - **At the bottom left**, next to the author's name: the speaker turns the launcher's sounds on and off, the flame its falling ash and embers.
 - **OPTIONS:** the game in a window or in full screen (F11 switches while you play), BGM VOLUME and SE VOLUME, SMOOTH AUDIO (when the game slows down, the sound stretches a little instead of crackling), UPDATES, DEBUG and SPEED TESTS (the VU1 engine, TIMINGS for the log, and UPSCALE FIX, PCSX2's other fixes for the edges of the picture; leave TIMINGS off to play).
 - **CONTROLS:** for the controller, swap ✕ and ○ and invert the camera; for the mouse, MOUSE LOOK, MOUSE SPEED and MOUSE Y; TOGGLE, to hold one button down with one press and let it go with the next; and the KEYBOARD and CONTROLLER pages, to change every key and button (see [Keys](#keys)).
 - **MODS:** texture packs on or off, RESHADE on or off (colours and filters; in the game F1 opens its menu and F2 turns its effects on and off), and a button that opens the texture packs folder.
 - **DEBUG** (in OPTIONS), for testing: see [Keys](#keys). Use a separate save.
 
-The first time, the launcher starts with the author's settings: DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, VIGNETTE off, FIELD OF VIEW +30%, UPSCALE FIX on SPECIAL + NATIVE, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), full screen, texture packs on, ReShade off, and the mouse turning the camera. If the game is slow on your PC, lower RESOLUTION and SHARPNESS first.
+The first time, the launcher starts with the author's settings: DirectX 12, 6x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, POST EFFECTS on CLEAN, FIELD OF VIEW +30%, UPSCALE FIX on SPECIAL + NATIVE, SMOOTH AUDIO on, TOGGLE on L2 (one press crouches, the next stands up), full screen, texture packs on, ReShade on, the mouse turning the camera, and the author's keys (Circle on F, Triangle on Space, L1 on E, R2 on V, L3 on Z). If the game is slow on your PC, lower RESOLUTION (6x and 8x need a strong video card) and SHARPNESS first.
 
 Each page saves only with **APPLY**; BACK leaves without saving.
 
 <p align="center">
-  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page with the first-time choices: DirectX 12, 4x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, VIGNETTE off, FIELD OF VIEW +30%">
+  <img src="docs/launcher-graphics.png" width="70%" alt="The launcher's GRAPHICS page with the first-time choices: DirectX 12, 6x, sharpness high, FXAA, 16:9, 60 frames per second, VSYNC on, OSD on, POST EFFECTS CLEAN, FIELD OF VIEW +30%">
 </p>
 <p align="center">
   <img src="docs/launcher-keyboard.png" width="49%" alt="The KEYBOARD page: each action of the PS2 pad with its key or mouse button, RESET, APPLY and BACK">
-  <img src="docs/launcher-debug.png" width="49%" alt="The DEBUG page: invincible, weapons, one hit, money, unlock all, no films, free camera, wireframe and engine panel, all off, with the warning to use a separate save">
+  <img src="docs/launcher-debug.png" width="49%" alt="The DEBUG page: invincible, weapons, one hit, money, unlock all, no films, free camera, wireframe, engine panel and actor list, all off, with the warning to use a separate save">
 </p>
 <p align="center">
   <img src="docs/launcher-options.png" width="32%" alt="The launcher's OPTIONS page: full screen, music and effects volume, smooth audio, updates, debug and speed tests">
-  <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: the keyboard and controller pages, swap cross and circle, invert the camera, and the mouse camera with its speed">
-  <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, ReShade on or off, and the texture packs folder">
+  <img src="docs/launcher-controls.png" width="32%" alt="The launcher's CONTROLS page: the keyboard and controller pages, swap cross and circle, invert the camera, the mouse camera with its speed, and TOGGLE on L2">
+  <img src="docs/launcher-mods.png" width="32%" alt="The launcher's MODS page: texture packs on or off, ReShade on or off, saving textures for mod makers, and the mods folder">
 </p>
+
+## Settings
+
+The port keeps one setting of its own, in `_build/settings.ini`, next to `sor.exe`:
+
+```
+video=60
+bgm=5
+se=5
+```
+
+- `video=60` starts the game in its 60 Hz mode, `video=50` in its 50 Hz mode (PAL, the original speed of this version).
+- The game writes this file by itself when you choose a mode in Change video mode and press Start Game. You don't need to edit it.
+- With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
+- `bgm` and `se` are the music and effects volume, 0 to 10, the same values as in the game's own options and in the launcher's OPTIONS.
+- To go back to the original behaviour, delete the file.
+- The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
+
+The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Deleting it brings back the starting settings above at the next start. The package has no `launcher.ini` (since 2.9.5): unpacking a new version over an old folder keeps yours. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements` (`textures\SLUS-20902\replacements` with the American disc).
+
+<p align="center"><img src="docs/look/sec-tests.jpg" width="100%" alt="Tested"></p>
 
 ## Status
 
 **In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played the whole game by hand, all four chapters, to the end credits (European disc, 16 November 2026). The American and Russian discs have not been played to the end.
+
+<details>
+<summary><b>Open every test table (chapters, options, discs)</b></summary>
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
 
@@ -314,7 +572,6 @@ With the video card I have played by hand through the Germanian Forest on to Oct
 
 ### What does not work yet
 
-- **Minimizing the window:** when you bring it back, the picture can stay black while the game still runs. Maximize the window to get it back.
 - **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
 - **Short pauses:** a picture can still come late at the start of a scene (when the video card gets new textures), while the game loads, and rarely in play. In my tests with 2.6, 98 to 99% of the pictures came on time.
 - **FRAME RATE 50** in the launcher does nothing when the game's own `settings.ini` says `video=60` (see [Settings](#settings)).
@@ -384,216 +641,9 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 
 </details>
 
-## Supported discs
-
-You need your own copy of the game, as an `.iso` file. These discs work:
-
-| Disc | Code | Program | Its files |
-|---|---|---|---|
-| European (PAL) | SLES-52950 | `sor.exe` | `disco`, textures in `textures\SLES-52950\replacements` |
-| Europe (Russia): the European disc with a fan translation into Russian | SLES-52950 | `sor.exe` | `disco`, textures in `textures\SLES-52950\replacements` |
-| American (NTSC) | SLUS-20902 | `sor-usa.exe` | `disco-usa`, textures in `textures\SLUS-20902\replacements` |
-
-The Russian version is the European disc modified with a translation: it keeps the same code (SLES-52950) and the same program, and it has been tested.
-
-You don't have to choose: press Play in the launcher, pick your `.iso`, and the launcher reads the disc's code
-(from the `SYSTEM.CNF` file on the disc) and starts the right program. Any other disc (for example the
-Japanese one) gets a clear message and does not start.
-
-The two games are not the same program: the American one was built a little differently by Capcom (its code
-sits at slightly different addresses), so this project translates it separately and moves every fix of the
-port (widescreen, 60 FPS, camera, cheats, HD movies, vignette) to the American addresses with a
-tool (`strumenti/rimappa_usa.py`). A fix that would point to an address that has no American match does not
-build, instead of doing something wrong.
-
-Differences you may notice:
-- The American game is in English only: it has no language screen. Its title says "CAPCOM U.S.A.".
-- The American game runs at 60 frames per second only: the launcher's 50 setting is ignored by `sor-usa.exe`.
-- Saves: each game keeps its own memory card, in its own folder (`disco` or `disco-usa`).
-- Texture packs and HD movies are looked for in the folder of the disc you play
-  (`textures\SLUS-20902\...` for the American disc). A pack made for the European disc can be copied there,
-  but it was not tried.
-
-### What was tested on the American disc
-
-Every test was made the same way on the European game too, to compare.
-
-| Feature | American disc | How it was tested |
-|---|---|---|
-| Start to the first arena (memory card created, warning, Capcom logo, opening movie, title, New Game, arena movie, "First Match") | tested: works | automatic run, pictures |
-| Widescreen 16:9 and 21:9 (video card, 2x, DirectX 11) | tested: works, HUD in place | pictures, same as the European game |
-| 60 FPS and frame pacing | tested: steady 60, no late frames in the report | pacing report on a 180 Hz screen |
-| Sound | tested: the sound is made in real time (about 98%) | sound report, same as the European game; not listened to |
-| Field of view and vignette off | tested: works | pictures |
-| Free camera (F8) | tested: works | pictures |
-| Cheats and the DEBUG page | tested by hand: works | played |
-| Mouse look | tested by hand: works | played |
-| Launcher picking the program from the disc | tested by hand: works | played |
-| HD movies for the American disc (`textures\SLUS-20902`) | the program looks in that folder; not tried with a movie there | not yet tested, in testing |
-| Texture packs for the American disc | not yet tested, in testing | |
-| The whole game to the end | not yet tested, in testing (not on the European disc either) | |
-
-## How to get it running
-
-### The easy way: the ready-made package
-
-1. You need your own image of the disc: Shadow of Rome, PAL, SLES-52950 (the European disc, or its Russian translation), or NTSC, SLUS-20902 (the American disc), as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
-2. You need Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009), and a video card with DirectX 11 or newer. The video card part needs the [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist) (x64), which most PCs already have. With the processor drawing, a processor with 6 cores or more is best.
-3. Download `ShadowOfRome-2.9.4-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
-4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
-5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
-6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 4x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
-
-Saves (the `mc0` and `mc1` folders) and the files read from your disc stay in that folder. **Updating:** unpack the new version into a new folder and copy `mc0` and `mc1` from the old one to keep your progress. Close the game with the X of its window.
-
-### Building it yourself
-
-You build the game once, on your PC, from your own disc image. It takes some setting up, then one command does the rest. All of this was tested on one PC, with Windows 11 and Ubuntu 26.04.
-
-#### What you need
-
-- Your own image of the disc: Shadow of Rome, PAL, SLES-52950, as an `.iso` file. If you have only the disc, copy it to an `.iso` file first, with a disc copying program on a PC with a DVD drive.
-- Windows 10 or 11, 64-bit, with a processor that has SSE4.1 (nearly every PC since about 2009). A processor with 6 cores or more is best: the game needs them to run at full speed.
-- About 2 GB of free disk space, and an internet connection during the build (it downloads some code it needs, for example for the movies).
-- WSL with Ubuntu: a Linux system inside Windows, made by Microsoft. The build runs there; the game then runs in Windows.
-
-#### Step 1: install the tools (once)
-
-1. Open PowerShell as administrator (right-click the Start button and choose "Terminal (Admin)", or "Windows PowerShell (Admin)" on Windows 10) and run:
-
-   ```
-   wsl --install
-   ```
-
-   Restart the PC when it asks. Then open **Ubuntu** from the Start menu and choose a user name and a password. More help: [Microsoft's guide](https://learn.microsoft.com/windows/wsl/install).
-
-2. In the Ubuntu window, install Git, CMake, a C++ compiler and Python (it asks for the password you just chose):
-
-   ```bash
-   sudo apt update
-   sudo apt install build-essential cmake git python3 wget
-   ```
-
-3. Still in Ubuntu, download [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases), the compiler that makes the Windows program, and unpack it into a folder called `llvm-mingw` in your home folder. These are the commands for the version I use (20261020, clang 23.1.4):
-
-   ```bash
-   cd ~
-   wget https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
-   tar -xf llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
-   mv llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64 llvm-mingw
-   ```
-
-   If you keep it somewhere else, set the `LLVM_MINGW` variable to its folder.
-
-#### Step 2: download and build the game
-
-Run these in the Ubuntu window.
-
-1. Go to your Windows user folder, so that Windows can start the game from there, and download the project. In Ubuntu, `C:\Users\YOUR_NAME` is written `/mnt/c/Users/YOUR_NAME`:
-
-   ```bash
-   cd /mnt/c/Users/YOUR_NAME
-   git clone --recurse-submodules https://github.com/Korvonordico/shadow-of-rome-recompiled.git
-   cd shadow-of-rome-recompiled
-   ```
-
-2. Build everything from your disc image. If it is `C:\Games\game.iso`, write:
-
-   ```bash
-   scripts/setup.sh "/mnt/c/Games/game.iso"
-   ```
-
-   It took about 13 and 15 minutes in the two timed builds, on 1 and 4 November, on a 6-core PC; a full build from a clean copy of this repository has not been tried again since then. It reads the game's program from your image, translates it, builds `_build/sor.exe` (the game) and `_build/ShadowOfRome.exe` (the launcher). If the build fails, the reason is at the end of `_build.log`.
-
-Nothing it creates is uploaded anywhere or committed to Git: `disco/`, `mappa/`, `analisi/`, `gen/`, `_tools/` and `_build/` stay on your PC. The game's large files are not copied: they are read from your image while you play, so keep the image where it is.
-
-<details>
-<summary>What the build does, step by step</summary>
-
-`scripts/setup.sh` patches PS2Recomp and builds its tools, reads the executable and the IOP modules from your image, makes the function map from the executable's own debug information, translates the game to C++, downloads and builds the part of FFmpeg the movies need (in `~/.cache/shadow-of-rome-ffmpeg`), builds `_build/sor.exe`, and finally builds the launcher with the C# compiler that comes with Windows (`launcher/build.bat`).
-
 </details>
 
-#### Step 3: play
-
-- **With the launcher:** open the folder `C:\Users\YOUR_NAME\shadow-of-rome-recompiled\_build` and double-click `ShadowOfRome.exe`. Choose **Play**: the first time it asks where your `.iso` file is, and remembers it in `_build/launcher.ini`. Arrows and Enter, or the mouse. If the launcher was not built, double-click `launcher\build.bat` once.
-- **Or drag your `.iso` file onto `run.bat`.**
-- **Or from the Ubuntu window:** `scripts/run.sh "/mnt/c/Games/game.iso"`
-
-Close the game with the X of its window.
-
-#### Step 4: the video card part
-
-`scripts/setup.sh` builds the game, not the video card part. Copy `sor-gs.dll`, the other DLLs and the `resources` folder from the ready-made package into `_build`, next to `sor.exe`. To build them yourself, with Visual Studio, see [sor-gs/README.md](sor-gs/README.md). Without them the game draws on the processor. `sor-vu.dll` (PCSX2's VU1, faster) comes from the same package, or is built with `pc/sorvu/build.bat` against the same PCSX2 checkout; without it the game uses its own, slower VU1. For MODS > RESHADE, copy `ReShade64.dll` from the package (or from [reshade.me](https://reshade.me)) and the files in [reshade/](reshade/README.md) next to `sor.exe`.
-
-### From the start to the first arena
-
-1. Press Start (Esc on the keyboard), then ✕ (the left mouse button) to choose the language, then ✕ on Start Game. The first click in the window only catches the mouse pointer: click again.
-2. The first time, with an empty memory card, the game offers to create a save file: press the left arrow to choose Yes, then X. If you choose No, it asks "Begin game anyway?": left arrow, then X.
-3. After the CAPCOM logo the opening movie starts: Start skips it (Esc on the keyboard; every movie can be skipped). Then press Start at the title screen.
-4. Choose New Game and a difficulty. The briefing pages move on with ✕. The game asks for the left stick to walk: with a controller that is the stick, and on the keyboard W A S D. Talk to the man with the mace (○, which is E on the keyboard) to enter the arena.
-
-## Keys
-
-The keyboard and the mouse always work, with or without a controller connected. These are the standard keys; every one can be changed in the launcher (CONTROLS, KEYBOARD), with a key, a mouse button or the wheel:
-
-| PS2 | Keyboard and mouse |
-|---|---|
-| D-pad | 1 / 2 / 3 / 4 on the top row (up, down, left, right), or the arrow keys |
-| Left stick | W A S D |
-| Right stick (the camera) | The mouse, or I J K L |
-| L3 / R3 (pressing the sticks) | V / X |
-| ✕ | Left mouse button |
-| ○ | E |
-| ▢ | Right mouse button |
-| △ | F |
-| L1 / R1 | Left Ctrl / Q |
-| L2 / R2 | C / Space |
-| Start | Esc |
-| Select | Tab |
-
-While you play:
-
-| Key | What it does |
-|---|---|
-| Click in the window | The mouse turns the camera (MOUSE LOOK on) |
-| Alt | Frees the mouse pointer |
-| Left Shift (hold) | Walk instead of run, with the keyboard (WALK in CONTROLS, KEYBOARD) |
-| F11, or Alt+Enter | Full screen on and off |
-| F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it (only while the free camera is on: otherwise 1 to 9 are free for your own keys) |
-| F1 | ReShade's menu, when RESHADE is on in MODS |
-| F2 | ReShade's effects off and on again |
-| F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
-| F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
-| F10 | A test tool, if ACTOR LIST is on in DEBUG: writes the list of the people, enemies, weapons and objects in the area, with their places, to `attori.txt` in the game folder (a copy of each list goes to the `actor-lists` folder) |
-| F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
-| F7 | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
-| F12 | The engine panel, if it is on in DEBUG |
-
-In the KEYBOARD page Delete leaves an action with no key and Backspace cancels. On the controller every button can be changed too (CONTROLS, CONTROLLER).
-
-In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
-
-To move, use W A S D, and hold Left Shift to walk instead of running: according to the game's list of commands, the D-pad (the arrow keys) drops your helmet and weapons. This has not been seen happening in a test yet. R3 centres the camera behind Agrippa.
-
-## Settings
-
-The port keeps one setting of its own, in `_build/settings.ini`, next to `sor.exe`:
-
-```
-video=60
-bgm=5
-se=5
-```
-
-- `video=60` starts the game in its 60 Hz mode, `video=50` in its 50 Hz mode (PAL, the original speed of this version).
-- The game writes this file by itself when you choose a mode in Change video mode and press Start Game. You don't need to edit it.
-- With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
-- `bgm` and `se` are the music and effects volume, 0 to 10, the same values as in the game's own options and in the launcher's OPTIONS.
-- To go back to the original behaviour, delete the file.
-- The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
-
-The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Deleting it brings back the launcher's own built-in settings (for example a window instead of full screen, and the OSD off), not the ones of the package: to have those again, copy `launcher.ini` from the zip. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements`.
+<p align="center"><img src="docs/look/sec-how.jpg" width="100%" alt="How it is made"></p>
 
 ## Made with AI
 
@@ -705,6 +755,8 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 
 **Thanks to [@n0l4n666](https://github.com/n0l4n666)**, the first player to send reports: the movie sound drifting at 60 frames per second ([#3](../../issues/3)), and in [#4](../../discussions/4) antialiasing, skippable movies, more frames per second and quick saves. The first three are in 2.5; his report on running in a diagonal with a controller is fixed in 2.6.
 
+**Thanks to [Gabominated](https://github.com/Gabominated)**, whose PCSX2 patch "Disable Post-Processing Effects" gave the idea for CLEAN in POST EFFECTS, and who allowed this port to use it ([Gabominated/PCSX2#36](https://github.com/Gabominated/PCSX2/issues/36)).
+
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
@@ -716,6 +768,7 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 - [Dear ImGui](https://github.com/ocornut/imgui) and [rlImGui](https://github.com/raylib-extras/rlImGui), for the engine panel (F12).
 - [pcsx2_cheats_collection](https://github.com/xs1l3n7x/pcsx2_cheats_collection) by xs1l3n7x: its codes for the American disc showed where to look for MONEY, UNLOCK ALL and NO FILMS in the European one.
 - [pcsx2_patches](https://github.com/PCSX2/pcsx2_patches): the widescreen patch for this disc by sergx12, whose values the wide camera uses, and the No-Interlacing patch.
+- Disable Post-Processing Effects patch idea by [Gabominated](https://github.com/Gabominated/PCSX2), used with permission ([Gabominated/PCSX2#36](https://github.com/Gabominated/PCSX2/issues/36)): GRAPHICS > POST EFFECTS on CLEAN does what that PCSX2 patch does, but keeps the water, the fades and the dim fog of forests, rivers and caves (without it they turn almost black).
 - The libraries in the ready-made package, each under its own licence (in its `licenses` folder): SDL3, FreeType, libpng, zlib, Zstandard, LZ4, libwebp, libjpeg-turbo, PlutoSVG and PlutoVG, rapidyaml, the DirectX Shader Compiler, shaderc, and raylib and SoundTouch in `sor.exe`.
 
 Shadow of Rome belongs to Capcom. The logo is the official Capcom logo, from the copy uploaded to [SteamGridDB](https://www.steamgriddb.com/logo/17719) by [DARTH-HMD](https://www.steamgriddb.com/profile/76561198842967508), with "Recompiled" added. If Capcom asks, it will be removed. The icon of the launcher and of the game window is a gold aureus of the emperor Nerva: photo by the [American Numismatic Society](http://numismatics.org/collection/1958.214.7), released as public domain (CC0) on [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Gold_Aureus_of_Nerva_(MANTIS).jpg), cut round. This project is not connected to Capcom or Sony.
