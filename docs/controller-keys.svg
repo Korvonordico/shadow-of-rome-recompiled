@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="Georgia, 'Times New Roman', serif">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3d58a"/><stop offset="1" stop-color="#b8892f"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2620"/><stop offset="1" stop-color="#14120f"/>
+    </linearGradient>
+    <style>
+      .t{fill:#e8d7a8;font-size:17px}
+      .k{fill:#f3d58a;font-size:18px;font-weight:bold}
+      .s{fill:#9c8c66;font-size:13px}
+      .ln{stroke:#b8892f;stroke-width:1.4;fill:none;opacity:.8}
+      .dot{fill:#f3d58a}
+    </style>
+  </defs>
+  <rect width="1000" height="600" rx="18" fill="#0d0c0a"/>
+  <rect x="6" y="6" width="988" height="588" rx="14" fill="none" stroke="url(#gold)" stroke-width="2" opacity=".6"/>
+  <text x="500" y="44" text-anchor="middle" fill="url(#gold)" font-size="26" letter-spacing="4">PS2 CONTROLLER  ·  KEYBOARD AND MOUSE</text>
+
+  <!-- shoulder buttons -->
+  <rect x="320" y="150" width="90" height="22" rx="8" fill="#1d1a15" stroke="url(#gold)" stroke-width="1.5"/>
+  <rect x="320" y="176" width="90" height="20" rx="7" fill="#1d1a15" stroke="url(#gold)" stroke-width="1.5"/>
+  <rect x="590" y="150" width="90" height="22" rx="8" fill="#1d1a15" stroke="url(#gold)" stroke-width="1.5"/>
+  <rect x="590" y="176" width="90" height="20" rx="7" fill="#1d1a15" stroke="url(#gold)" stroke-width="1.5"/>
+  <text x="365" y="166" text-anchor="middle" class="s">L2</text><text x="365" y="191" text-anchor="middle" class="s">L1</text>
+  <text x="635" y="166" text-anchor="middle" class="s">R2</text><text x="635" y="191" text-anchor="middle" class="s">R1</text>
+
+  <!-- body -->
+  <path d="M330 200 H670 C735 200 770 240 785 300 L825 440 C840 495 800 525 760 500 L690 430 C670 410 650 405 630 405 H370 C350 405 330 410 310 430 L240 500 C200 525 160 495 175 440 L215 300 C230 240 265 200 330 200 Z"
+        fill="url(#body)" stroke="url(#gold)" stroke-width="2.5"/>
+
+  <!-- d-pad -->
+  <g fill="#1d1a15" stroke="url(#gold)" stroke-width="1.5">
+    <rect x="288" y="248" width="28" height="30" rx="4"/><rect x="288" y="310" width="28" height="30" rx="4"/>
+    <rect x="254" y="280" width="32" height="28" rx="4"/><rect x="318" y="280" width="32" height="28" rx="4"/>
+  </g>
+  <!-- face buttons -->
+  <g stroke="url(#gold)" stroke-width="1.5" fill="#1d1a15">
+    <circle cx="712" cy="262" r="17"/><circle cx="746" cy="294" r="17"/><circle cx="712" cy="326" r="17"/><circle cx="678" cy="294" r="17"/>
+  </g>
+  <path d="M712 252 L721 269 H703 Z" fill="none" stroke="#7fc8a9" stroke-width="2"/>
+  <circle cx="746" cy="294" r="8" fill="none" stroke="#e0787a" stroke-width="2"/>
+  <path d="M705 319 L719 333 M719 319 L705 333" stroke="#8fb0e8" stroke-width="2"/>
+  <rect x="671" y="287" width="14" height="14" fill="none" stroke="#d99bd0" stroke-width="2"/>
+  <!-- select / start -->
+  <rect x="440" y="290" width="34" height="12" rx="6" fill="#1d1a15" stroke="url(#gold)"/>
+  <path d="M528 288 L548 296 L528 304 Z" fill="#1d1a15" stroke="url(#gold)"/>
+  <!-- sticks -->
+  <circle cx="390" cy="370" r="30" fill="#1d1a15" stroke="url(#gold)" stroke-width="2"/><circle cx="390" cy="370" r="18" fill="#26221b"/>
+  <circle cx="610" cy="370" r="30" fill="#1d1a15" stroke="url(#gold)" stroke-width="2"/><circle cx="610" cy="370" r="18" fill="#26221b"/>
+
+  <!-- left labels -->
+  <path class="ln" d="M320 161 H170"/><circle class="dot" cx="320" cy="161" r="3"/>
+  <text x="40" y="157" class="t">L2</text><text x="40" y="177" class="k">C</text>
+  <path class="ln" d="M320 186 L250 210 H170"/><circle class="dot" cx="320" cy="186" r="3"/>
+  <text x="40" y="207" class="t">L1</text><text x="40" y="227" class="k">E</text>
+  <path class="ln" d="M254 294 H170"/><circle class="dot" cx="254" cy="294" r="3"/>
+  <text x="40" y="276" class="t">D-pad</text><text x="40" y="298" class="k">1 2 3 4</text><text x="40" y="318" class="s">or the arrow keys</text>
+  <path class="ln" d="M360 380 L240 410 H170"/><circle class="dot" cx="360" cy="380" r="3"/>
+  <text x="40" y="396" class="t">Left stick</text><text x="40" y="418" class="k">W A S D</text>
+  <path class="ln" d="M390 400 L340 480 H170"/><circle class="dot" cx="390" cy="400" r="3"/>
+  <text x="40" y="474" class="t">L3 (press)</text><text x="40" y="496" class="k">Z</text>
+  <path class="ln" d="M457 302 V545 H170"/><circle class="dot" cx="457" cy="302" r="3"/>
+  <text x="40" y="541" class="t">Select</text><text x="40" y="563" class="k">Tab</text>
+
+  <!-- right labels -->
+  <path class="ln" d="M680 161 H765"/><circle class="dot" cx="680" cy="161" r="3"/>
+  <text x="960" y="157" text-anchor="end" class="t">R2</text><text x="960" y="177" text-anchor="end" class="k">V</text>
+  <path class="ln" d="M680 186 L740 210 H765"/><circle class="dot" cx="680" cy="186" r="3"/>
+  <text x="960" y="207" text-anchor="end" class="t">R1</text><text x="960" y="227" text-anchor="end" class="k">Q</text>
+  <path class="ln" d="M729 262 H765"/><circle class="dot" cx="729" cy="262" r="3"/>
+  <text x="960" y="258" text-anchor="end" class="t">△</text><text x="960" y="278" text-anchor="end" class="k">Space</text>
+  <path class="ln" d="M763 294 L765 306"/><circle class="dot" cx="763" cy="294" r="3"/>
+  <text x="960" y="302" text-anchor="end" class="t">○</text><text x="960" y="322" text-anchor="end" class="k">F</text>
+  <path class="ln" d="M712 343 L760 352 H765"/><circle class="dot" cx="712" cy="343" r="3"/>
+  <text x="960" y="348" text-anchor="end" class="t">✕</text><text x="960" y="368" text-anchor="end" class="k">Left mouse button</text>
+  <path class="ln" d="M678 311 L700 396 H765"/><circle class="dot" cx="678" cy="311" r="3"/>
+  <text x="960" y="392" text-anchor="end" class="t">▢</text><text x="960" y="412" text-anchor="end" class="k">Right mouse button</text>
+  <path class="ln" d="M640 380 L680 452 H765"/><circle class="dot" cx="640" cy="380" r="3"/>
+  <text x="960" y="448" text-anchor="end" class="t">Right stick (camera)</text><text x="960" y="470" text-anchor="end" class="k">Mouse, or I J K L</text>
+  <path class="ln" d="M610 400 L650 506 H765"/><circle class="dot" cx="610" cy="400" r="3"/>
+  <text x="960" y="502" text-anchor="end" class="t">R3 (press)</text><text x="960" y="522" text-anchor="end" class="k">X</text>
+  <path class="ln" d="M538 304 V552 H765"/><circle class="dot" cx="538" cy="304" r="3"/>
+  <text x="960" y="548" text-anchor="end" class="t">Start</text><text x="960" y="568" text-anchor="end" class="k">Esc</text>
+</svg>

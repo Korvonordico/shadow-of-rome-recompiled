@@ -6,18 +6,25 @@
 
 <p align="center">
   <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Korvonordico/shadow-of-rome-recompiled?label=release&color=e05d44" alt="release"></a>
+  <a href="../../releases"><img src="https://img.shields.io/github/downloads/Korvonordico/shadow-of-rome-recompiled/total?label=downloads&color=e3a33a" alt="downloads"></a>
+  <a href="../../stargazers"><img src="https://img.shields.io/github/stars/Korvonordico/shadow-of-rome-recompiled?style=flat&color=e3c27a" alt="stars"></a>
+  <a href="../../commits"><img src="https://img.shields.io/github/last-commit/Korvonordico/shadow-of-rome-recompiled?label=last%20commit" alt="last commit"></a>
+  <a href="../../issues"><img src="https://img.shields.io/github/issues/Korvonordico/shadow-of-rome-recompiled?label=issues" alt="open issues"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D6" alt="Windows 10 | 11 x64">
   <img src="https://img.shields.io/badge/DirectX-12%20%7C%2011-5C2D91" alt="DirectX 12 | 11">
   <img src="https://img.shields.io/badge/Vulkan-yes-AC162C" alt="Vulkan">
   <img src="https://img.shields.io/badge/discs-SLES--52950%20(PAL%3A%20EU%20%2B%20RU)%20%7C%20SLUS--20902%20(NTSC%3A%20US)-555555" alt="discs SLES-52950 (PAL: EU + RU) | SLUS-20902 (NTSC: US)">
   <img src="https://img.shields.io/badge/languages-EN%20(UK%20%2B%20US)%20%7C%20FR%20%7C%20DE%20%7C%20IT%20%7C%20ES%20%7C%20RU-2E8B57" alt="languages EN (UK + US) FR DE IT ES RU">
   <img src="https://img.shields.io/badge/status-beta%20%C2%B7%20completable-yellowgreen" alt="status: beta, completable">
+  <a href="https://github.com/ran-j/PS2Recomp"><img src="https://img.shields.io/badge/based%20on-PS2Recomp-8A2BE2" alt="based on PS2Recomp"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white" alt="C++ 20">
+  <img src="https://img.shields.io/badge/build-CMake%20%2B%20Clang-064F8C?logo=cmake&logoColor=white" alt="build CMake + Clang">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
 </p>
 
 <p align="center">Version 2.9.5 · <a href="CHANGELOG.md">What changed</a></p>
 
-<p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"> <img src="docs/flags/us.svg" alt="United States" title="United States: the American disc"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too. The American disc (in English only) works too: see [Supported discs](#supported-discs).</p>
+<p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"> <img src="docs/flags/us.svg" alt="United States" title="United States: the American disc"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too. The American disc (in English only) works too: see <a href="#supported-discs">Supported discs</a>.</p>
 
 <p align="center">
   <a href="../../releases/latest"><b>⬇ Download</b></a> &nbsp;·&nbsp; <a href="#how-to-get-it-running">🎮 How to play</a> &nbsp;·&nbsp; <a href="#keys">⌨ Keys</a> &nbsp;·&nbsp; <a href="#whats-new-in-295">✨ What's new</a> &nbsp;·&nbsp; <a href="#status">✅ Tested</a> &nbsp;·&nbsp; <a href="#credits-and-thanks">🙏 Thanks</a> &nbsp;·&nbsp; <a href="../../issues/new/choose">🐞 Report a problem</a>
@@ -32,10 +39,11 @@
 </table>
 
 > [!IMPORTANT]
+> **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), of its Russian translation, or of the American disc (SLUS-20902), as an .iso file. Please don't ask for, or share, game files or disc images.
+
+> [!WARNING]
 > **The whole game has been played by hand to the end credits** (European disc), but it is still a fan port tested on one PC. You may find graphics glitches, crashes or parts that do not work: keep a separate save, and save often.
 > Found a problem? [Tell me here](../../issues/new/choose): every report is read and fixed as soon as possible.
->
-> **Shadow of Rome Recompiled is an unofficial fan project.** It is not affiliated with, endorsed or sponsored by Capcom. **No game files are included or distributed:** to play, you need your own copy of the European disc (SLES-52950), of its Russian translation, or of the American disc (SLUS-20902), as an .iso file. Please don't ask for, or share, game files or disc images.
 
 <p align="center">
   <img src="docs/launcher.png" width="70%" alt="The launcher of 2.9.5: Play, Options, Graphics, Controls, Mods and Quit, with a Latin word under each, the sound and ash switches at the bottom left, Rome in the background and the version number">
@@ -52,7 +60,8 @@ This project makes it run on a Windows PC as a normal program. It is not an emul
 
 This is an experiment. The whole game has been played by hand from start to the end credits; problems found on other PCs will still have to be fixed. I can't promise I'll finish it, for personal reasons: I work on it with limited time and resources, so there are no deadlines.
 
-If someone is already working on a port of this game, or is further ahead, please let me know as soon as possible by opening an [issue](../../issues), so I don't do useless work and can spend my time on something that hasn't been done yet. If you find a mistake here, even a small one, an issue is welcome too.
+> [!NOTE]
+> **Want to help?** Anyone is free to work on this port: fork it, fix something, add something, make a mod. You don't need to ask first. If you find a mistake here, even a small one, an [issue](../../issues) is welcome too.
 
 ## Video: the PS2 original next to the PC port
 
@@ -195,9 +204,15 @@ New pictures from 2.9.5, drawn by the video card at 8x in 21:9:
 3. Download `ShadowOfRome-2.9.5-windows.zip` from the [Releases](../../releases) page and unpack it into a folder of its own (right-click the file, "Extract all").
 4. Open the folder and double-click `ShadowOfRome.exe`. Windows may warn that the program is not known: choose "More info", then "Run anyway".
 5. Choose **Play** and pick your `.iso` file. The first time it reads the game's files from it, in a few seconds, then the game starts. Keep the image where it is: the game reads its large files from it while you play.
-6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 6x is the default; if the game is slow, lower RESOLUTION and SHARPNESS.
+6. If you like, change the picture in **GRAPHICS** first: the video card with DirectX 12 at 6x is the default.
 
-Saves (the `mc0` and `mc1` folders) and the files read from your disc stay in that folder. **Updating:** unpack the new version into a new folder and copy `mc0` and `mc1` from the old one to keep your progress. Close the game with the X of its window.
+> [!TIP]
+> If the game is slow on your PC, lower RESOLUTION first (6x and 8x need a strong video card), then SHARPNESS.
+
+Close the game with the X of its window.
+
+> [!NOTE]
+> Saves (the `mc0` and `mc1` folders) and the files read from your disc stay in that folder. **Updating:** unpack the new version into a new folder and copy `mc0` and `mc1` from the old one to keep your progress.
 
 ### Building it yourself
 
@@ -298,9 +313,10 @@ You need your own copy of the game, as an `.iso` file. These discs work:
 
 The Russian version is the European disc with a fan translation: same code, same program. It has worked since 2.8 and was tested again with 2.9.5.
 
-You don't have to choose: press Play in the launcher, pick your `.iso`, and the launcher reads the disc's code
-(from the `SYSTEM.CNF` file on the disc) and starts the right program. Any other disc (for example the
-Japanese one) gets a clear message and does not start.
+> [!NOTE]
+> You don't have to choose: press Play in the launcher, pick your `.iso`, and the launcher reads the disc's code
+> (from the `SYSTEM.CNF` file on the disc) and starts the right program. Any other disc (for example the
+> Japanese one) gets a clear message and does not start.
 
 The two games are not the same program: the American one was built a little differently by Capcom (its code
 sits at slightly different addresses), so this project translates it separately and moves every fix of the
@@ -323,20 +339,22 @@ Differences you may notice:
 
 Every test was made the same way on the European game too, to compare.
 
-| Feature | American disc | How it was tested |
-|---|---|---|
-| Start to the first arena (memory card created, warning, Capcom logo, opening movie, title, New Game, arena movie, "First Match") | tested: works | automatic run, pictures |
-| Widescreen 16:9 and 21:9 (video card, 2x, DirectX 11) | tested: works, HUD in place | pictures, same as the European game |
-| 60 FPS and frame pacing | tested: steady 60, no late frames in the report | pacing report on a 180 Hz screen |
-| Sound | tested: the sound is made in real time (about 98%) | sound report, same as the European game; not listened to |
-| Field of view and vignette off | tested: works | pictures |
-| Free camera (F8) | tested: works | pictures |
-| Cheats and the DEBUG page | tested by hand: works | played |
-| Mouse look | tested by hand: works | played |
-| Launcher picking the program from the disc | tested by hand: works | played |
-| HD opening movie for the American disc (2.9.5) | the game finds the HD movie in the European disc's folder and plays it to the end (5411 pictures, as the European game); with 2.9.4 and the movie in the American folder the HD picture showed on screen (log); tested by hand with 2.9.5: works | automatic runs (log), a 2.9.4 game's log |
-| Texture packs for the American disc | the HD title picture and TrippyPit's pack load (pictures sharper than without); by hand: not yet tested, in testing | automatic runs, pictures |
-| The whole game to the end | not yet tested, in testing (not on the European disc either) | |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| Start to the first arena (memory card created, warning, Capcom logo, opening movie, title, New Game, arena movie, "First Match") | ✅ | ✅ |
+| Fighting in the first arena | ✅ | |
+| Widescreen 16:9 and 21:9 (video card, 2x, DirectX 11), HUD in place | | ✅ |
+| 60 FPS and frame pacing: steady 60, no late frames in the report (180 Hz screen) | | ✅ |
+| Sound: made in real time (about 98%), as in the European game; listened to by hand: fine | ✅ | ✅ |
+| Field of view and vignette off | | ✅ |
+| Free camera (F8) | ✅ | ✅ |
+| Cheats and the DEBUG page | ✅ | |
+| Mouse look | ✅ | |
+| Launcher picking the program from the disc | ✅ | |
+| HD opening movie (2.9.5): the game finds it in the European disc's folder and plays it to the end (5411 pictures, as the European game) | ✅ | ✅ |
+| Texture packs: the HD title picture and TrippyPit's pack load, sharper than without | ✅ | ✅ |
+
+The American disc has not been played to the end yet: see [Still to test](#still-to-test).
 
 <p align="center"><img src="docs/look/sec-keys.jpg" width="100%" alt="Keys and settings"></p>
 
@@ -344,40 +362,57 @@ Every test was made the same way on the European game too, to compare.
 
 The keyboard and the mouse always work, with or without a controller connected. These are the standard keys; every one can be changed in the launcher (CONTROLS, KEYBOARD), with a key, a mouse button or the wheel:
 
+<p align="center"><img src="docs/controller-keys.svg" width="90%" alt="The PS2 controller with the keyboard and mouse key for each button"></p>
+
+<details>
+<summary>The same as a table</summary>
+
 | PS2 | Keyboard and mouse |
 |---|---|
-| D-pad | 1 / 2 / 3 / 4 on the top row (up, down, left, right), or the arrow keys |
-| Left stick | W A S D |
-| Right stick (the camera) | The mouse, or I J K L |
-| L3 / R3 (pressing the sticks) | Z / X |
-| ✕ | Left mouse button |
-| ○ | F |
-| ▢ | Right mouse button |
-| △ | Space |
-| L1 / R1 | E / Q |
-| L2 / R2 | C / V |
-| Start | Esc |
-| Select | Tab |
+| <img src="docs/ps2/dpad.svg" height="28" alt="D-pad"> D-pad | <img src="docs/keys/1.svg" height="24" alt="1"> <img src="docs/keys/2.svg" height="24" alt="2"> <img src="docs/keys/3.svg" height="24" alt="3"> <img src="docs/keys/4.svg" height="24" alt="4"> on the top row (up, down, left, right), or the arrow keys <img src="docs/keys/up.svg" height="24" alt="↑"> <img src="docs/keys/down.svg" height="24" alt="↓"> <img src="docs/keys/left.svg" height="24" alt="←"> <img src="docs/keys/right.svg" height="24" alt="→"> |
+| <img src="docs/ps2/lstick.svg" height="28" alt="Left stick"> Left stick | <img src="docs/keys/w.svg" height="24" alt="W"> <img src="docs/keys/a.svg" height="24" alt="A"> <img src="docs/keys/s.svg" height="24" alt="S"> <img src="docs/keys/d.svg" height="24" alt="D"> |
+| <img src="docs/ps2/rstick.svg" height="28" alt="Right stick"> Right stick (the camera) | The mouse, or <img src="docs/keys/i.svg" height="24" alt="I"> <img src="docs/keys/j.svg" height="24" alt="J"> <img src="docs/keys/k.svg" height="24" alt="K"> <img src="docs/keys/l.svg" height="24" alt="L"> |
+| <img src="docs/ps2/l3.svg" height="28" alt="L3"> <img src="docs/ps2/r3.svg" height="28" alt="R3"> (pressing the sticks) | <img src="docs/keys/z.svg" height="24" alt="Z"> / <img src="docs/keys/x.svg" height="24" alt="X"> |
+| <img src="docs/ps2/cross.svg" height="28" alt="Cross"> | <img src="docs/keys/left-mouse-button.svg" height="24" alt="Left mouse button"> |
+| <img src="docs/ps2/circle.svg" height="28" alt="Circle"> | <img src="docs/keys/f.svg" height="24" alt="F"> |
+| <img src="docs/ps2/square.svg" height="28" alt="Square"> | <img src="docs/keys/right-mouse-button.svg" height="24" alt="Right mouse button"> |
+| <img src="docs/ps2/triangle.svg" height="28" alt="Triangle"> | <img src="docs/keys/space.svg" height="24" alt="Space"> |
+| <img src="docs/ps2/l1.svg" height="28" alt="L1"> <img src="docs/ps2/r1.svg" height="28" alt="R1"> | <img src="docs/keys/e.svg" height="24" alt="E"> / <img src="docs/keys/q.svg" height="24" alt="Q"> |
+| <img src="docs/ps2/l2.svg" height="28" alt="L2"> <img src="docs/ps2/r2.svg" height="28" alt="R2"> | <img src="docs/keys/c.svg" height="24" alt="C"> / <img src="docs/keys/v.svg" height="24" alt="V"> |
+| <img src="docs/ps2/start.svg" height="28" alt="Start"> | <img src="docs/keys/esc.svg" height="24" alt="Esc"> |
+| <img src="docs/ps2/select.svg" height="28" alt="Select"> | <img src="docs/keys/tab.svg" height="24" alt="Tab"> |
+
+</details>
 
 While you play:
+
+<p align="center"><img src="docs/keyboard-keys.svg" width="90%" alt="The keyboard and mouse: every key the game uses and what it does"></p>
+
+<details>
+<summary>The same as a table (with the mouse and the free camera keys)</summary>
 
 | Key | What it does |
 |---|---|
 | Click in the window | The mouse turns the camera (MOUSE LOOK on) |
-| Alt | Frees the mouse pointer |
-| Left Shift (hold) | Walk instead of run, with the keyboard (WALK in CONTROLS, KEYBOARD) |
-| F11, or Alt+Enter | Full screen on and off |
-| F8 | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it (only while the free camera is on: otherwise 1 to 9 are free for your own keys) |
-| F1 | ReShade's menu, when RESHADE is on in MODS |
-| F2 | ReShade's effects off and on again |
-| F3 | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
-| F9 | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
-| F10 | A test tool, if ACTOR LIST is on in DEBUG: writes the list of the people, enemies, weapons and objects in the area, with their places, to `attori.txt` in the game folder (a copy of each list goes to the `actor-lists` folder) |
-| F6 | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
-| F7 | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
-| F12 | The engine panel, if it is on in DEBUG |
+| <img src="docs/keys/alt.svg" height="24" alt="Alt"> | Frees the mouse pointer |
+| <img src="docs/keys/left-shift.svg" height="24" alt="Left Shift"> (hold) | Walk instead of run, with the keyboard (WALK in CONTROLS, KEYBOARD) |
+| <img src="docs/keys/f11.svg" height="24" alt="F11">, or <img src="docs/keys/alt.svg" height="24" alt="Alt">+<img src="docs/keys/enter.svg" height="24" alt="Enter"> | Full screen on and off |
+| <img src="docs/keys/f8.svg" height="24" alt="F8"> | Free camera, if it is on in DEBUG: the game stops and you fly around with the mouse and W A S D, Q / E, Shift faster. Ctrl+1 to 9 saves a place, 1 to 9 goes back to it (only while the free camera is on: otherwise 1 to 9 are free for your own keys) |
+| <img src="docs/keys/f1.svg" height="24" alt="F1"> | ReShade's menu, when RESHADE is on in MODS |
+| <img src="docs/keys/f2.svg" height="24" alt="F2"> | ReShade's effects off and on again |
+| <img src="docs/keys/f3.svg" height="24" alt="F3"> | A test tool: what the game draws in the next 4 frames is saved in a text file in the game folder (only with GRAPHICS set to PROCESSOR) |
+| <img src="docs/keys/f9.svg" height="24" alt="F9"> | The black box: saves the last pictures and a short report in the `blackbox` folder, to attach to a bug report |
+| <img src="docs/keys/f10.svg" height="24" alt="F10"> | A test tool, if ACTOR LIST is on in DEBUG: writes the list of the people, enemies, weapons and objects in the area, with their places, to `attori.txt` in the game folder (a copy of each list goes to the `actor-lists` folder) |
+| <img src="docs/keys/f6.svg" height="24" alt="F6"> | A test tool: one part of the game runs in its exact, much slower version, to compare pictures. Press F6 again to go back |
+| <img src="docs/keys/f7.svg" height="24" alt="F7"> | The polygons drawn as wires, on and off, if WIREFRAME is on in DEBUG (DirectX 11 only) |
+| <img src="docs/keys/f12.svg" height="24" alt="F12"> | The engine panel, if it is on in DEBUG |
 
-In the KEYBOARD page Delete leaves an action with no key and Backspace cancels. On the controller every button can be changed too (CONTROLS, CONTROLLER): choose a row and press the new button, on an Xbox, PlayStation, Switch or another controller, or change it with ‹ ›.
+</details>
+
+> [!TIP]
+> In the KEYBOARD page Delete leaves an action with no key and Backspace cancels.
+
+On the controller every button can be changed too (CONTROLS, CONTROLLER): choose a row and press the new button, on an Xbox, PlayStation, Switch or another controller, or change it with ‹ ›.
 
 In most menus ✕ confirms and △ goes back. Some menus read only the D-pad, so use the arrow keys there.
 
@@ -426,7 +461,9 @@ se=5
 - With no file, nothing changes: the game starts at 50 Hz as the original does, and no file is created unless you choose 60 Hz.
 - `bgm` and `se` are the music and effects volume, 0 to 10, the same values as in the game's own options and in the launcher's OPTIONS.
 - To go back to the original behaviour, delete the file.
-- The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
+
+> [!CAUTION]
+> The launcher's FRAME RATE starts the game at 60 or 50, but when this file says `video=60` the game uses 60: choose 50 Hz in the game's Change video mode once, or delete the file.
 
 The launcher keeps its own choices (your disc image, its pages, your keys and the DEBUG options) in `launcher.ini`, next to it. Deleting it brings back the starting settings above at the next start. The package has no `launcher.ini` (since 2.9.5): unpacking a new version over an old folder keeps yours. Each game writes a log in the `logs` folder (the last 5 games), with your Windows user name taken out: if you report a problem, attach the newest one, `run-1.txt`. The video card part writes its log and its caches into `gpu-data`, and reads texture packs from `textures\SLES-52950\replacements` (`textures\SLUS-20902\replacements` with the American disc).
 
@@ -434,90 +471,137 @@ The launcher keeps its own choices (your disc image, its pages, your keys and th
 
 ## Status
 
+<p align="center"><img src="docs/status-map.svg" width="100%" alt="Status map: the four chapters of the European disc played to the end; the American disc tested to the first arena; the parts of the PS2 rebuilt on PC, with sound and controllers not fully checked"></p>
+
 **In short:** the game starts, every menu works, the movies play, and with the video card it runs at 60 frames per second. I have played the whole game by hand, all four chapters, to the end credits (European disc, 16 November 2026). The American and Russian discs have not been played to the end.
 
+✅ done · 🟡 partly: it works with problems, or only part of it was done · ⬜ not tested yet. **By hand** means I played and looked; **script** means a test program checked it, or I only looked at a picture of it.
+
+### Still to test
+
+Everything that has not been tested yet is in this table. When one of these is tested, it moves to the table of the version that tested it.
+
+| What | Not tested yet |
+|---|:---:|
+| A processor without AVX2 (the game then uses its own, slower VU1) | ⬜ |
+| Another PC: I have tested it on one PC only (some players have run it on theirs: see the [issues](../../issues?q=is%3Aissue) and [discussions](../../discussions)) | ⬜ |
+| An Xbox or Switch controller, in the game and in CONTROLS > CONTROLLER (mine is a PS4 controller) | ⬜ |
+| The American disc, played to the end | ⬜ |
+| The Russian version played to the end, and other Russian translations | ⬜ |
+
 <details>
-<summary><b>Open every test table (chapters, options, discs)</b></summary>
+<summary><b>Open every test table (versions, chapters, how far the game goes)</b></summary>
 
 Most checks below were done by **test scripts**: small programs that press the keys, read the game's memory and take screenshots. Where I played **by hand**, it says so. Some tests **forced** the game forward by writing to its memory (for example, to win a round without fighting it): those are marked too.
 
+### What was tested in 2.9.5
+
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| POST EFFECTS on CLEAN in the forest and on the river of Chapter 1: the water and the dim fog stay | ✅ | ✅ |
+| A fade between two scenes, with CLEAN | ✅ | |
+| The HD opening movie with the American disc | ✅ | ✅ |
+| CONTROLS > KEYBOARD: RESET gives the starting keys (American disc) | ✅ | |
+| The Russian version with this version's changes | ✅ | |
+| CONTROLS > CONTROLLER with a PS4 controller: seven buttons changed, saved, and used by the game | ✅ | |
+| The picture comes back after minimizing, with DirectX 12 | ✅ | ✅ |
+| The picture comes back after minimizing, with DirectX 11 and Vulkan | | ✅ |
+| The first start in an empty folder: the launcher writes the starting settings | | ✅ |
+| DirectX 11, about 5 minutes with RESHADE on and 5 off: smooth, no problems | ✅ | |
+| A screen without G-SYNC (turned off in the NVIDIA panel): smooth, no problems | ✅ | |
+| 50 frames per second with the video card, chosen in the game's Change video mode (and back to 60) | ✅ | |
+| FRAME RATE 50 in the launcher: the game stays at 60 when it has saved 60 (see [What does not work yet](#what-does-not-work-yet)) | 🟡 | |
+
+### What was tested in 2.9.4
+
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| The whole game, all four chapters, to the end credits (European disc) | ✅ | |
+| Every area of the story, visited by a test script | | ✅ |
+| Hours of play, saving and loading in a row and fast key presses, in hidden test copies: about 5.7 hours, no crash, 95 saves and 97 loads, none wrong | | ✅ |
+| F11, Alt+Tab and resizing the window during films and menus | ✅ | |
+
+### What was tested in 2.9.3
+
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| Chapters 1 and 2 to the end, no problems seen | ✅ | |
+| The water in the Germanian Forest, now as on the PS2 | ✅ | ✅ |
+| The American disc: the first arena and its fights, the mouse, the DEBUG page and its cheats, the free camera | ✅ | ✅ |
+| UPSCALE FIX on SPECIAL + NATIVE: no double outline far away, the torches' glow in its place | ✅ | |
+| Sharper water with UPSCALE FIX on | ✅ | |
+| The OSD stays sharp with ReShade on | ✅ | |
+
 ### What was tested in 2.9
 
-| What | By hand | Script or picture only | Not tested yet |
-|---|---|---|---|
-| 2.9.2: the published package unpacked into an empty folder: the launcher says 2.9.2; DirectX 12 with RESHADE off, F1 does nothing; RESHADE on, F1 opens ReShade's menu and F2 turns its effects off and on | ✅ | | |
-| 2.9.2: Vulkan with RESHADE off and on, in the author's own game folder (same launcher as the package): the game starts; ReShade does not appear, as expected with Vulkan | ✅ | | |
-| 2.9.2: Vulkan with a ReShade installed for Vulkan games (added by hand as ReShade's setup does): RESHADE off, ReShade does not start (with 2.9.1 it did); on, it starts | | ✅ | |
-| 2.9.1: FULL SCREEN saved in OPTIONS, the game starts in full screen (Russian disc, Vulkan) | | ✅ | |
-| The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ | |
-| The same package with the Russian disc: the game starts in Russian | | ✅ | |
-| RESHADE on changes the picture, off leaves it as the game draws it, no `dxgi.dll` made | | ✅ | |
-| F1 and F2 for ReShade: F2 turns the effects off and on | ✅ | | |
-| The black box: 25 real pictures with DirectX 12, DirectX 11 and Vulkan | | ✅ | |
-| Texture packs on the menus: sizes and transparency | ✅ | | |
-| A film replaced by an MP4 | ✅ | | |
-| G-SYNC on a 180 Hz screen (RTX 3070 Ti, 2.9.1, full screen): variable refresh on, each picture shown about 1 ms after the game makes it; lost when another program came in front (the log says which) and back on when the game came in front again | | ✅ | |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| 2.9.2: the published package unpacked into an empty folder: the launcher says 2.9.2; DirectX 12 with RESHADE off, F1 does nothing; RESHADE on, F1 opens ReShade's menu and F2 turns its effects off and on | ✅ | |
+| 2.9.2: Vulkan with RESHADE off and on, in the author's own game folder (same launcher as the package): the game starts; ReShade does not appear, as expected with Vulkan | ✅ | |
+| 2.9.2: Vulkan with a ReShade installed for Vulkan games (added by hand as ReShade's setup does): RESHADE off, ReShade does not start (with 2.9.1 it did); on, it starts | | ✅ |
+| 2.9.1: FULL SCREEN saved in OPTIONS, the game starts in full screen (Russian disc, Vulkan) | | ✅ |
+| The 2.9 package unpacked into an empty folder, European disc: the game starts, OSD off the first time | | ✅ |
+| The same package with the Russian disc: the game starts in Russian | | ✅ |
+| RESHADE on changes the picture, off leaves it as the game draws it, no `dxgi.dll` made | | ✅ |
+| F1 and F2 for ReShade: F2 turns the effects off and on | ✅ | |
+| The black box: 25 real pictures with DirectX 12, DirectX 11 and Vulkan | | ✅ |
+| Texture packs on the menus: sizes and transparency | ✅ | |
+| A film replaced by an MP4 | ✅ | |
+| G-SYNC on a 180 Hz screen (RTX 3070 Ti, 2.9.1, full screen): variable refresh on, each picture shown about 1 ms after the game makes it; lost when another program came in front (the log says which) and back on when the game came in front again | | ✅ |
 
 ### What was tested in 2.8
 
-| What | By hand | Script or picture only | Not tested yet |
-|---|---|---|---|
-| The launcher reads the Russian disc, the European disc, and refuses another game | | ✅ | |
-| The Russian disc: the game in Russian, played for a while | ✅ | | |
-| Other Russian translations, the rest of the game in Russian | | | ⬜ |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| The launcher reads the Russian disc, the European disc, and refuses another game | | ✅ |
+| The Russian disc: the game in Russian, played for a while | ✅ | |
 
 ### What was tested in 2.7
 
-| What | By hand | Script or picture only | Not tested yet |
-|---|---|---|---|
-| ReShade on with DirectX 12: F1 opens its menu, the effects change the picture, the game stays smooth, a preset saved and loaded | ✅ | | |
-| The smaller writing in the launcher's pages | ✅ | | |
-| ReShade with DirectX 11, the final 2.7 package unpacked into an empty folder | | | ⬜ |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| ReShade on with DirectX 12: F1 opens its menu, the effects change the picture, the game stays smooth, a preset saved and loaded | ✅ | |
+| The smaller writing in the launcher's pages | ✅ | |
 
 ### What was tested in 2.6
 
-| What | By hand | Script or picture only | Not tested yet |
-|---|---|---|---|
-| PCSX2's VU1 against the old one, program by program (389,737 programs, no difference) | | ✅ | |
-| 60 frames per second with VSYNC, DirectX 12 at 8x, FreeSync screen (180 Hz): 98 to 99% of the pictures on time, read from the log | ✅ | | |
-| The effects made at the start: none made in the middle of play | ✅ | | |
-| FIELD OF VIEW at +30% | ✅ | | |
-| SMOOTH AUDIO, and the sound in the pause menu | ✅ | | |
-| Running in a diagonal with a controller (better; my own controller is not reliable) | ✅ | | |
-| Crouching (L2): the mouse turns the view in every direction | ✅ | | |
-| UPSCALE FIX "special" at 4x and 8x: no double outline on the characters and on far trees | ✅ | | |
-| The whole game in 2.6, chapter by chapter (see below) | 🟡 | | |
-| A processor without AVX2 (the old VU1 by itself), a G-SYNC screen, a screen without G-SYNC or FreeSync, DirectX 11 and Vulkan in 2.6 | | | ⬜ |
-| The final 2.6 package, unpacked into an empty folder | ✅ | | |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| PCSX2's VU1 against the old one, program by program (389,737 programs, no difference) | | ✅ |
+| 60 frames per second with VSYNC, DirectX 12 at 8x, FreeSync screen (180 Hz): 98 to 99% of the pictures on time, read from the log | ✅ | |
+| The effects made at the start: none made in the middle of play | ✅ | |
+| FIELD OF VIEW at +30% | ✅ | |
+| SMOOTH AUDIO, and the sound in the pause menu | ✅ | |
+| Running in a diagonal with a controller (better; my own controller is not reliable) | ✅ | |
+| Crouching (L2): the mouse turns the view in every direction | ✅ | |
+| UPSCALE FIX "special" at 4x and 8x: no double outline on the characters and on far trees | ✅ | |
+| Chapter 1 to the end, with the DEBUG cheats and the highest settings (the whole game: see [The chapters](#the-chapters)) | ✅ | |
+| The final 2.6 package, unpacked into an empty folder | ✅ | |
 
 ### What was tested in 2.5
 
-✅ = done, ⬜ = not yet. "By hand" means I played and looked; "script" means a test program checked it, or I only looked at a picture of it.
-
-| What | By hand | Script or picture only | Not tested yet |
-|---|:---:|:---:|:---:|
-| Changing keys and controller buttons, Delete and Backspace, swapping two keys | ✅ | | |
-| Mouse buttons and the wheel as keys | ✅ | | |
-| TOGGLE: one press holds a button, the next lets it go | ✅ | | |
-| The mouse turning the camera (MOUSE LOOK, SPEED, Y), Alt frees the pointer | ✅ | | |
-| Alt+Tab: the picture comes back by itself | ✅ | | |
-| Movies in time with their sound at 60 frames per second (long movie, 180 Hz screen) | ✅ | | |
-| Start skips every movie | ✅ | | |
-| 16:9 and 21:9: menus and scenes stretched, only the movies 4:3 | ✅ | | |
-| VIGNETTE off | ✅ | | |
-| ANTIALIASING (FXAA) | ✅ | | |
-| RESOLUTION 6x and 8x | ✅ | | |
-| BGM VOLUME and SE VOLUME | ✅ | | |
-| UPDATES, error messages, the new look and icon | ✅ | | |
-| DEBUG: invincible, weapons, one hit, money, unlock all, no films | ✅ | | |
-| DEBUG: free camera (F8), wireframe (F7), engine panel (F12) | ✅ | | |
-| The test package, unpacked into an empty folder | ✅ | | |
-| First-time settings (no `launcher.ini`) | | ✅ | |
-| The log in `logs` | ✅ | | |
-| 50 frames per second, texture packs, DirectX 11 and Vulkan in 2.5 | | | ⬜ |
-| The final 2.5 package, unpacked into an empty folder | ✅ | | |
-| Another PC, another controller | | | ⬜ |
-| The whole game, chapter by chapter (see below) | ✅ | | |
+| What | By hand | Script or picture only |
+|---|:---:|:---:|
+| Changing keys and controller buttons, Delete and Backspace, swapping two keys | ✅ | |
+| Mouse buttons and the wheel as keys | ✅ | |
+| TOGGLE: one press holds a button, the next lets it go | ✅ | |
+| The mouse turning the camera (MOUSE LOOK, SPEED, Y), Alt frees the pointer | ✅ | |
+| Alt+Tab: the picture comes back by itself | ✅ | |
+| Movies in time with their sound at 60 frames per second (long movie, 180 Hz screen) | ✅ | |
+| Start skips every movie | ✅ | |
+| 16:9 and 21:9: menus and scenes stretched, only the movies 4:3 | ✅ | |
+| VIGNETTE off | ✅ | |
+| ANTIALIASING (FXAA) | ✅ | |
+| RESOLUTION 6x and 8x | ✅ | |
+| BGM VOLUME and SE VOLUME | ✅ | |
+| UPDATES, error messages, the new look and icon | ✅ | |
+| DEBUG: invincible, weapons, one hit, money, unlock all, no films | ✅ | |
+| DEBUG: free camera (F8), wireframe (F7), engine panel (F12) | ✅ | |
+| The test package, unpacked into an empty folder | ✅ | |
+| First-time settings (no `launcher.ini`) | | ✅ |
+| The log in `logs` | ✅ | |
+| The final 2.5 package, unpacked into an empty folder | ✅ | |
+| Chapter 1 up to the Germanian Forest (the whole game: see [The chapters](#the-chapters)) | ✅ | |
 
 ### The chapters
 
@@ -533,45 +617,46 @@ The game has four chapters. All four have been played by hand to the end.
 
 ### How far the game goes
 
-With the video card I have played by hand through the Germanian Forest on to Octavianus in front of the procession (6 November), and in 2.6 the whole of Chapter 1, with no freeze. The table says how each part was checked.
+This table shows how each part of the game was first reached, before I played the whole game by hand (16 November 2026). Since then every part of the story has been played by hand too.
 
-| Part of the game | State | How it was checked |
-|---|---|---|
-| Start: language, video mode, memory card, warnings, CAPCOM logo, opening movie, title screen | Works | Script, on screenshots. By hand too, on an older build that skipped the movies |
-| Every menu: New Game, Load Game, Secrets of Rome, Options | Works | Script, on screenshots |
-| The first arena (the First Match) | Works, at full speed (50 frames per second, like the European original) | By hand for a few minutes. A script played it to its end, with help (see below) |
-| Saving and loading | Works | Script: saved after the First Match and after City Arena Round I (that win was forced), closed the game, loaded both |
-| The movies after the first arena, and the "City Arena" title card | Work | By hand, from my own save |
-| Chapter 1: the Roman camp in a forest | Can be finished | Script, with help |
-| The Forum in Rome (Octavianus), then a street | Reached by walking | Script |
-| The Germanian Forest (Agrippa) | Played to its end, with no freeze. In a scripted test it froze once, after about 95 minutes; two later runs, of 46 and 108 minutes, did not freeze | By hand, with the video card (6 November). Script before |
-| The next areas: the fort key, the inside of the fort (053) | Played: the enemies die, and the game goes by itself to the next area (054) | Script, starting from a forced jump |
-| The fort wall (054) | Loads and runs. The enemies on the ground die, but the big door does not open: two archers on the wall are left, and the script cannot reach them | Script |
-| The two areas after it (055, 056) | Load and run | Script, each one reached by a forced jump |
-| City Arena Rounds II and III, the first Octavianus stage | Load and run | Script, with each win forced |
-| On to Octavianus in front of the procession | Reached by playing | By hand, with the video card (6 November) |
-| The rest of the story | Not played. Of 31 later stages tried, 30 load and run | Script, each one reached by a forced ending |
+| Part of the game | By hand | Script or picture only |
+|---|:---:|:---:|
+| Start: language, video mode, memory card, warnings, CAPCOM logo, opening movie, title screen | ✅ | ✅ |
+| Every menu: New Game, Load Game, Secrets of Rome, Options | | ✅ |
+| The first arena (the First Match), at full speed. A script played it to its end, with help (see below) | ✅ | ✅ |
+| Saving and loading. A script saved after the First Match and after City Arena Round I (that win was forced), closed the game and loaded both | ✅ | ✅ |
+| The movies after the first arena, and the "City Arena" title card | ✅ | |
+| Chapter 1: the Roman camp in a forest | ✅ | ✅ |
+| The Forum in Rome (Octavianus), then a street | ✅ | ✅ |
+| The Germanian Forest (Agrippa). In a scripted test it froze once, after about 95 minutes; two later runs, of 46 and 108 minutes, did not, and it never froze by hand | ✅ | ✅ |
+| The fort: its key, the inside (053), the wall (054) and the two areas after it (055, 056). On the wall a script could not open the big door: two archers were left that it could not reach | ✅ | ✅ |
+| City Arena Rounds II and III, the first Octavianus stage (by script, with each win forced) | ✅ | ✅ |
+| On to Octavianus in front of the procession | ✅ | |
+| The rest of the story, to the end credits. By script: 30 of 31 later stages loaded and ran, each reached by a forced ending | ✅ | ✅ |
 
 ### Tested by hand
 
+Up to 2.6. From 2.7 on, the tests by hand are in the table of each version, above.
+
 | When, which build | What I did | Result |
 |---|---|---|
-| 31 October 2026, before the speed work | From the desktop shortcut: menu, New Game, into the first arena | Works, but extremely slow |
-| 31 October 2026, after the speed work | About three minutes in the first arena with a PS4 controller: walking and fighting ([one minute of it, MP4](docs/first-arena-by-hand.mp4), 9 MB, no sound, recorded before the camera fix and with the processor drawing) | Works |
-| 2 November 2026, with patch `0016` | From my own save, past the "City Arena" title card, watched the movie and played on | Works. Seen, not fixed: glitches on the floor, and the speed is not steady (short slowdowns) |
-| 0.0.6 | Not tested by hand yet | |
-| 0.0.7 | The game started from the ready-made package | Works |
-| 6 November 2026, the video card at 3x, from the launcher | Played on through the Germanian Forest up to Octavianus in front of the procession | Works, no freeze |
-| 6 November 2026, the shadows fix | The room where long dark stripes joined the characters | Fixed: the shadows look right |
-| 6 November 2026, 1.9 | 60 frames per second with VSYNC on DirectX 12 (180 Hz screen), SHARPNESS low and high, full screen | Works: smooth, sharp |
-| 6 November 2026, 1.9 in 16:9 | Played with movies and talks, before and after the sound fix | Works: the voices are now in time with the lips. The talks were shown 4:3: changed after this test, so that they stay wide |
-| 1.9 | Not tested by hand yet: 21:9, the talks shown wide, CONTROLS, texture packs, DirectX 11 and Vulkan in 1.9, 50 frames per second | Checked by script only, or not at all |
-| 9 November 2026, 2.5 | Long movies at 60 frames per second to the end (180 Hz screen), Start on story movies; changing keys, buttons and mouse buttons; the mouse camera and the free camera; every DEBUG option; VIGNETTE off; menus and movies in 16:9 and 21:9; BGM and SE VOLUME; Alt+Tab | Works |
-| 10 November 2026, 2.5 | TOGGLE; the final package unpacked into an empty folder; Chapter 1 up to the Germanian Forest | Works. In the Germanian Forest the water shows a blurred, slightly magnified copy of the screen instead of the forest's reflection (see Known problems) |
-| 2.5 | Not tested by hand yet: the first start on another PC with the new default settings | |
-| 10 November 2026, 2.6 | PCSX2's VU1, 60 frames per second on a FreeSync screen, FIELD OF VIEW +30%, SMOOTH AUDIO, UPSCALE FIX "special", the mouse while crouching, the final package unpacked into an empty folder; Chapter 1 to the end, with the DEBUG cheats and the highest settings: DirectX 12 at 8x, 21:9, sharpness high, FXAA, VSYNC, FIELD OF VIEW +30% | Works; the water in the Germanian Forest is still wrong |
+| 31 October 2026, before the speed work | From the desktop shortcut: menu, New Game, into the first arena | 🟡 Works, but extremely slow |
+| 31 October 2026, after the speed work | About three minutes in the first arena with a PS4 controller: walking and fighting ([one minute of it, MP4](docs/first-arena-by-hand.mp4), 9 MB, no sound, recorded before the camera fix and with the processor drawing) | ✅ Works |
+| 2 November 2026, with patch `0016` | From my own save, past the "City Arena" title card, watched the movie and played on | 🟡 Works. Seen, not fixed then: glitches on the floor, and the speed is not steady (short slowdowns) |
+| 0.0.7 | The game started from the ready-made package | ✅ Works |
+| 6 November 2026, the video card at 3x, from the launcher | Played on through the Germanian Forest up to Octavianus in front of the procession | ✅ Works, no freeze |
+| 6 November 2026, the shadows fix | The room where long dark stripes joined the characters | ✅ Fixed: the shadows look right |
+| 6 November 2026, 1.9 | 60 frames per second with VSYNC on DirectX 12 (180 Hz screen), SHARPNESS low and high, full screen | ✅ Works: smooth, sharp |
+| 6 November 2026, 1.9 in 16:9 | Played with movies and talks, before and after the sound fix | ✅ Works: the voices are now in time with the lips. The talks were shown 4:3: changed after this test, so that they stay wide |
+| 9 November 2026, 2.5 | Long movies at 60 frames per second to the end (180 Hz screen), Start on story movies; changing keys, buttons and mouse buttons; the mouse camera and the free camera; every DEBUG option; VIGNETTE off; menus and movies in 16:9 and 21:9; BGM and SE VOLUME; Alt+Tab | ✅ Works |
+| 10 November 2026, 2.5 | TOGGLE; the final package unpacked into an empty folder; Chapter 1 up to the Germanian Forest | 🟡 Works. In the Germanian Forest the water shows a blurred, slightly magnified copy of the screen instead of the forest's reflection (fixed in 2.9.3) |
+| 10 November 2026, 2.6 | PCSX2's VU1, 60 frames per second on a FreeSync screen, FIELD OF VIEW +30%, SMOOTH AUDIO, UPSCALE FIX "special", the mouse while crouching, the final package unpacked into an empty folder; Chapter 1 to the end, with the DEBUG cheats and the highest settings: DirectX 12 at 8x, 21:9, sharpness high, FXAA, VSYNC, FIELD OF VIEW +30% | 🟡 Works; the water in the Germanian Forest is still wrong (fixed in 2.9.3) |
 
 ### What does not work yet
+
+> ⚠️ **Warning**
+>
+> These are the known problems. If you meet one of them, or something not on this list, please [report it](../../issues/new/choose).
 
 - **A freeze in the Germanian Forest,** seen once in a scripted test, after about 95 minutes of play: the picture stopped and the game's logic stopped. Something wrote drawing data over most of the game's memory, and the cause is not known. It has not happened again, in longer scripted tests or when I played the stage by hand.
 - **Short pauses:** a picture can still come late at the start of a scene (when the video card gets new textures), while the game loads, and rarely in play. In my tests with 2.6, 98 to 99% of the pictures came on time.
@@ -595,14 +680,14 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 - Every menu, opened and closed, checked on pictures:
 
 | Menu | Works | Notes |
-|---|---|---|
-| New Game | Yes, up to the first arena | See below |
-| Load Game | Yes | It finds a game saved after City Arena Round I and loads it. With no game saved it says "No data present": the file made at startup is not a game in progress |
-| Secrets of Rome | Yes | Cheats and the Salvo Master List with its pages open and close. The other 6 entries are locked, as on a new game |
-| Options: Subtitles / Tutorial, Sound, Controller, Violence | Yes | Each value changed and put back |
-| Options: Screen | Yes | Brightness and Screen Position pages |
-| Options: Control Explanation | Yes | All 3 pages |
-| Options: Default, OK | Yes | Default puts the changed values back |
+|---|:---:|---|
+| New Game | ✅ Up to the first arena | See below |
+| Load Game | ✅ | It finds a game saved after City Arena Round I and loads it. With no game saved it says "No data present": the file made at startup is not a game in progress |
+| Secrets of Rome | ✅ | Cheats and the Salvo Master List with its pages open and close. The other 6 entries are locked, as on a new game |
+| Options: Subtitles / Tutorial, Sound, Controller, Violence | ✅ | Each value changed and put back |
+| Options: Screen | ✅ | Brightness and Screen Position pages |
+| Options: Control Explanation | ✅ | All 3 pages |
+| Options: Default, OK | ✅ | Default puts the changed values back |
 
 - **The first arena, in 3D:** after New Game and the difficulty choice come the trainer's briefing, the "First Match" map, the controls page, then Agrippa at the gate of the City Arena. Checked on pictures, with scripted keys.
 - **Saving and loading:** the game saves after the First Match ("First Battle - Fini", see below) and offers to save after City Arena Round I. Tested on City Arena Round I: "Save Successful", the game closed and opened again, Load Game finds "City Arena Round I", "Load Successful", and the game goes on from City Arena Round II. **The win was forced by writing to the game's memory in the test:** nobody has won that round by playing yet. Starting from an empty memory card also works, both when you create the save file at the start and when you skip it and save later (that second way was followed up to the last confirmation). The saves are in the `mc0` folder, next to `sor.exe`.
@@ -610,13 +695,13 @@ The details below were written up to 0.0.7, when the processor drew the picture.
 - The keyboard, with real key presses sent to the window by a script (Enter, the down, left and right arrows, Space, X, V). The arrow keys and W A S D move the left stick, and with them Agrippa walks in the first arena (checked with keys injected inside the program, not on a real keyboard).
 - **Speed at 50 Hz, the game's PAL mode (the European version):** full speed from the menu to the fight, in a window, on the test PC with nothing else running. Measured in vblanks per second, which here means frames per second: 50 is full speed. The earlier build is on the same PC:
 
-| Part | Earlier build | Now | Lowest second now |
-|---|---|---|---|
-| Menu | 50 | 50 | 49.9 |
-| Trainer's briefing | 43 | 50 | 42.6 (one second, once) |
-| First room | 41.8 | 50 | 49.7 |
-| Arena | 36.9 | 49.9 | 49.8 |
-| Fight | 37 | 50 | 49.9 |
+| Part | Earlier build | Now | Lowest second now | Full speed now |
+|---|---|---|---|:---:|
+| Menu | 50 | 50 | 49.9 | ✅ |
+| Trainer's briefing | 43 | 50 | 42.6 (one second, once) | ✅ |
+| First room | 41.8 | 50 | 49.7 | ✅ |
+| Arena | 36.9 | 49.9 | 49.8 | ✅ |
+| Fight | 37 | 50 | 49.9 | ✅ |
 
 - **The sound:** I listened to it by hand on an older build: it sounds fairly good. The sound mix has changed since (see the reverb below) and has not been listened to again.
 - **The music:** the title screen, the menu and the arena have their music. Checked as numbers on a recording of the output, not by ear: the level goes from silence to about 3000-4000 RMS on the title screen and in the menu, with no clipping. In 30 seconds of title music, the short holes of exact silence went from 155 to 0.
@@ -735,6 +820,8 @@ Another example: at 60 frames per second there were short pauses. A first cause,
 </details>
 
 ## How it works
+
+<p align="center"><img src="docs/how-it-works.svg" width="100%" alt="How it works: the game's program from your disc is translated once by PS2Recomp into C++, built for Windows with CMake and Clang into sor.exe; the launcher starts it, it reads your .iso while you play, draws with PCSX2's graphics chip and runs the game's own IOP modules"></p>
 
 [PS2Recomp](https://github.com/ran-j/PS2Recomp) rewrites each instruction of the PS2 executable as C++. That C++ is then built for Windows together with a runtime that plays the part of the rest of the console: memory, operating system, disc reader, graphics, sound and I/O processor. The game's original code runs, translated; it is not rewritten by hand.
 
