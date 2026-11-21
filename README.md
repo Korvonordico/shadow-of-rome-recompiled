@@ -162,7 +162,9 @@ All the details: [CHANGELOG](CHANGELOG.md).
 ## Roadmap
 
 > [!NOTE]
-> **The next version will take a while, for personal reasons.** I keep working on it when I can, so there are no dates. This list shows what is already done on my PC, what I am fixing now and what I would like to try. Nothing here is a promise until it is in a release.
+> **The next version will take a while, for personal reasons.** I keep working on it when I can, so there are no dates. This list shows what is already done on my PC, what I am fixing now and what I would like to try. Everything here is an experiment: I may not manage all of it, and nothing is a promise until it is in a release.
+>
+> **The aim is not to change the game.** It is to keep it as faithful as possible to the PS2 original while making it feel at home on a modern PC. If something looks less faithful than the original, or simply not to your taste, please [tell me](../../issues/new/choose): criticism is welcome, taste included.
 
 ✅ done on my PC, tried by hand &nbsp;·&nbsp; 🟡 being fixed, or tried by hand only in part &nbsp;·&nbsp; ⬜ an idea to try
 
@@ -178,6 +180,26 @@ All the details: [CHANGELOG](CHANGELOG.md).
 | ✅ | **Fixed:** START / SKIP showed twice in the movies | ✅ |
 | ✅ | **The Russian translation:** its own menu texts in high quality, and the Russian flag in place of the British one | ✅ |
 | ✅ | **The American disc gets the same changes.** I played it through Chapter 1 | ✅ |
+
+### Before and after
+
+The same moments, American disc, 21:9, taken in the game: version 2.9.5 on the left, the next version on my PC on the right. Click a picture to see it full size.
+
+<table>
+<tr><th width="50%">2.9.5, out now</th><th width="50%">Next version, on my PC</th></tr>
+<tr><td><img src="docs/look/roadmap/1-title-295.jpg" alt="Version 2.9.5: the title menu, stretched to 21:9"></td><td><img src="docs/look/roadmap/1-title-new.jpg" alt="The next version: the title menu, in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>The title menu:</b> stretched across the whole screen in 2.9.5; now 4:3 in the middle, the picture behind it widened with soft sides and the menu words redrawn.</sub></td></tr>
+<tr><td><img src="docs/look/roadmap/2-options-295.jpg" alt="Version 2.9.5: the Options page, stretched to 21:9"></td><td><img src="docs/look/roadmap/2-options-new.jpg" alt="The next version: the Options page, in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>Options:</b> 4:3 in the middle instead of stretched, the parchment cleaned up; its sides are still plain (being fixed).</sub></td></tr>
+<tr><td><img src="docs/look/roadmap/3-talk-295.jpg" alt="Version 2.9.5: the first talk in the arena, «I'll explain today's event», stretched to 21:9"></td><td><img src="docs/look/roadmap/3-talk-new.jpg" alt="The next version: the first talk in the arena, «I'll explain today's event», in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>A talk:</b> the life bar and its frame keep their shape at the top left, and the parchment with the text keeps the original proportions in the middle.</sub></td></tr>
+<tr><td><img src="docs/look/roadmap/4-briefing-295.jpg" alt="Version 2.9.5: the First Match briefing page, stretched to 21:9"></td><td><img src="docs/look/roadmap/4-briefing-new.jpg" alt="The next version: the First Match briefing page, in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>The arena briefing:</b> the map of the arena and its parchment in 4:3, the picture behind widened with soft sides.</sub></td></tr>
+<tr><td><img src="docs/look/roadmap/5-fight-295.jpg" alt="Version 2.9.5: the first fight, with the Shoulder Ram tutorial box, stretched to 21:9"></td><td><img src="docs/look/roadmap/5-fight-new.jpg" alt="The next version: the first fight, with the Shoulder Ram tutorial box, in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>A fight with a tutorial box:</b> the HUD and the tutorial box keep their shape on the wide screen.</sub></td></tr>
+<tr><td><img src="docs/look/roadmap/6-pause-295.jpg" alt="Version 2.9.5: the pause menu, stretched to 21:9"></td><td><img src="docs/look/roadmap/6-pause-new.jpg" alt="The next version: the pause menu, in its original proportions"></td></tr>
+<tr><td colspan="2" align="center"><sub><b>The pause menu:</b> 4:3 in the middle instead of stretched, with its pages redrawn.</sub></td></tr>
+</table>
 
 ### Being fixed
 
