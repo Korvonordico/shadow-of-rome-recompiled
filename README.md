@@ -210,6 +210,25 @@ The same moments, American disc, 21:9, taken in the game: version 2.9.5 on the l
 <tr><td colspan="2" align="center"><sub><b>The pause menu:</b> 4:3 in the middle instead of stretched, with its pages redrawn.</sub></td></tr>
 </table>
 
+### Mods (experimental)
+
+The next version should let anyone change how the game looks, without programming. Every picture the game draws (the HUD, the menus, the weapons, the characters, the world) is a file that can be replaced.
+
+**The goal is to make this step as simple as it can be, so that anyone can change the game and make their own version of it, the way they like.**
+
+1. In the launcher, **MODS > CUSTOM KIT** makes a folder with the game's pictures 4 times bigger, sorted by kind: HUD, weapons, characters, world, effects, menus.
+2. Open a picture in a drawing program, change it and save it with the same name.
+3. Press **PLAY**: the game draws your picture in place of the original.
+
+Here is the first test. I redrew the frame of the life bar in Paint, badly on purpose, with plain rectangles, and pressed PLAY: the game drew it straight away. It is ugly by choice, to show how simple the swap is and how much can be changed.
+
+<p align="center"><img src="docs/look/roadmap/mod-life-bar-paint.jpg" width="80%" alt="The life bar redrawn in Paint with plain orange, green and red rectangles and a yellow line, shown in the game"></p>
+
+Paint is enough for a picture without see-through parts; for the others use a program that keeps transparency, such as Paint.NET, GIMP, Krita or Photoshop. The best mods people send could go in a list on this page (see the ideas below).
+
+> [!WARNING]
+> **This is still an experiment.** The kit in the launcher was tried once and it worked (the picture above), but the steps may change, and I may not manage all of it.
+
 ### Being fixed
 
 | | What |
@@ -218,7 +237,7 @@ The same moments, American disc, 21:9, taken in the game: version 2.9.5 on the l
 | 🟡 | **Smaller leftovers:** the button symbols in Octavianus' tutorial book, the arrow and the bar of the menu when you search a body, NOW LOADING on some loading screens, some tutorial boxes in Chapter 2, and the HUD moving in Octavianus' levels when the guards are on alert |
 | 🟡 | **The HUD and the combo words (3 CHAIN!, HIT FURY, SALVOS!) in high quality:** the life bar and its frame are done; a few small parts are left, and the letters the game has not shown me yet |
 | 🟡 | **Soft sides** for Options, the Salvo list and the pause pages (Profile, Status, Memo) |
-| 🟡 | **A mod kit inside the launcher** (MODS > CUSTOM KIT): it gives you the game's pictures 4 times bigger, sorted into folders (HUD, weapons, characters, world, effects, menus). You redraw them with any program that keeps transparency (Paint.NET, GIMP, Krita, Photoshop) and the game uses them at the next PLAY. It is ready, still to be tried in the game, and it will get a guide on this page |
+| 🟡 | **A mod kit inside the launcher** (MODS > CUSTOM KIT): it gives you the game's pictures 4 times bigger, sorted into folders (HUD, weapons, characters, world, effects, menus). You redraw them with any program that keeps transparency (Paint.NET, GIMP, Krita, Photoshop) and the game uses them at the next PLAY. It is ready and worked in a first test (see Mods above); a full guide on this page will follow |
 
 ### Ideas to try
 
