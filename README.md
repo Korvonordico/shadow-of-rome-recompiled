@@ -166,7 +166,7 @@ All the details: [CHANGELOG](CHANGELOG.md).
 >
 > **The aim is not to change the game.** It is to keep it as faithful as possible to the PS2 original while making it feel at home on a modern PC. If something looks less faithful than the original, or simply not to your taste, please [tell me](../../issues/new/choose): criticism is welcome, taste included.
 
-✅ done on my PC, tried by hand &nbsp;·&nbsp; 🟡 being fixed, or tried by hand only in part &nbsp;·&nbsp; ⬜ an idea to try
+✅ done on my PC, tried by hand &nbsp;·&nbsp; 🟡 being fixed, or tried by hand only in part &nbsp;·&nbsp; ⬜ an idea to try, or not tried by hand yet
 
 ### Done on my PC
 
@@ -180,6 +180,15 @@ All the details: [CHANGELOG](CHANGELOG.md).
 | ✅ | **Fixed:** START / SKIP showed twice in the movies | ✅ |
 | ✅ | **The Russian translation:** its own menu texts in high quality, and the Russian flag in place of the British one | ✅ |
 | ✅ | **The American disc gets the same changes.** I played it through Chapter 1 | ✅ |
+| ✅ | **Vibration:** CONTROLS > VIBRATION, with Xbox controllers and with a PS4 controller on a cable (tried by hand with the PS4 one) | 🟡 |
+| ✅ | **Saves:** OPTIONS > SAVES keeps a copy at every PLAY, puts an older one back, and takes your saves from an older folder or from PCSX2 | ✅ |
+| ✅ | **OPTIONS > REPORT A PROBLEM** packs the logs into one zip to attach to an issue | ✅ |
+| ✅ | **The game runs from folders with any letters in their names** (Cyrillic, Japanese and so on) | ✅ |
+| ✅ | **Fixed:** FRAME RATE 50 in the launcher | ✅ |
+| ✅ | **F12 takes a photo of the game** at the game's own resolution | ⬜ |
+| ✅ | **The launcher in English, Italian, French, German, Spanish and Russian**, following the language of Windows | ⬜ |
+| ✅ | **A bigger launcher** with a help box that explains the row under the mouse | ⬜ |
+| ✅ | **Fixed:** with Vulkan, the picture after minimizing the window | ⬜ |
 
 ### Before and after
 
@@ -209,6 +218,7 @@ The same moments, American disc, 21:9, taken in the game: version 2.9.5 on the l
 | 🟡 | **Smaller leftovers:** the button symbols in Octavianus' tutorial book, the arrow and the bar of the menu when you search a body, NOW LOADING on some loading screens, some tutorial boxes in Chapter 2, and the HUD moving in Octavianus' levels when the guards are on alert |
 | 🟡 | **The HUD and the combo words (3 CHAIN!, HIT FURY, SALVOS!) in high quality:** the life bar and its frame are done; a few small parts are left, and the letters the game has not shown me yet |
 | 🟡 | **Soft sides** for Options, the Salvo list and the pause pages (Profile, Status, Memo) |
+| 🟡 | **A mod kit inside the launcher** (MODS > CUSTOM KIT): it gives you the game's pictures 4 times bigger, sorted into folders (HUD, weapons, characters, world, effects, menus). You redraw them with any program that keeps transparency (Paint.NET, GIMP, Krita, Photoshop) and the game uses them at the next PLAY. It is ready, still to be tried in the game, and it will get a guide on this page |
 
 ### Ideas to try
 
@@ -217,6 +227,8 @@ The same moments, American disc, 21:9, taken in the game: version 2.9.5 on the l
 | ⬜ | **A clearer hit feeling, each part as an option you can turn off:** a small dot in place of the lock-on mark, a sound and a short flash of the mark on every hit, and the mark turning red when the enemy dies |
 | ⬜ | **Hit-stop:** a very short freeze of the picture on every hit, for a stronger impact. Only if you choose it, since not everyone likes it |
 | ⬜ | **The movies remade for 16:9 and 21:9**, with the framing following the scene |
+| ⬜ | **Community mods:** a button in the launcher and a list on this page with the best mods people send |
+| ⬜ | **Vibration over Bluetooth** with a PS4 controller (today it needs a cable, or Steam or DS4Windows) |
 
 ## Screenshots
 
