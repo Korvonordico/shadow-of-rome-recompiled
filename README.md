@@ -27,7 +27,7 @@
 <p align="center"><img src="docs/flags/en.svg" alt="English" title="English"> <img src="docs/flags/fr.svg" alt="Français" title="Français"> <img src="docs/flags/de.svg" alt="Deutsch" title="Deutsch"> <img src="docs/flags/it.svg" alt="Italiano" title="Italiano"> <img src="docs/flags/es.svg" alt="Español" title="Español"> <img src="docs/flags/ru.svg" alt="Русский" title="Русский"> <img src="docs/flags/us.svg" alt="United States" title="United States: the American disc"><br>The European disc has the game's texts in five languages: you choose one on the game's first screen. Since 2.8 the Russian translation of the same disc works too. The American disc (in English only) works too: see <a href="#supported-discs">Supported discs</a>.</p>
 
 <p align="center">
-  <a href="../../releases/latest"><b>⬇ Download</b></a> &nbsp;·&nbsp; <a href="#how-to-get-it-running">🎮 How to play</a> &nbsp;·&nbsp; <a href="#keys">⌨ Keys</a> &nbsp;·&nbsp; <a href="#whats-new-in-295">✨ What's new</a> &nbsp;·&nbsp; <a href="#status">✅ Tested</a> &nbsp;·&nbsp; <a href="#credits-and-thanks">🙏 Thanks</a> &nbsp;·&nbsp; <a href="../../issues/new/choose">🐞 Report a problem</a>
+  <a href="../../releases/latest"><b>⬇ Download</b></a> &nbsp;·&nbsp; <a href="#how-to-get-it-running">🎮 How to play</a> &nbsp;·&nbsp; <a href="#keys">⌨ Keys</a> &nbsp;·&nbsp; <a href="#whats-new-in-295">✨ What's new</a> &nbsp;·&nbsp; <a href="#status">✅ Tested</a> &nbsp;·&nbsp; <a href="#roadmap">🗺 Roadmap</a> &nbsp;·&nbsp; <a href="#credits-and-thanks">🙏 Thanks</a> &nbsp;·&nbsp; <a href="../../issues/new/choose">🐞 Report a problem</a>
 </p>
 
 <table>
@@ -158,6 +158,43 @@ Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666), thanks! Everyt
 All the details: [CHANGELOG](CHANGELOG.md).
 
 </details>
+
+## Roadmap
+
+> [!NOTE]
+> **The next version will take a while, for personal reasons.** I keep working on it when I can, so there are no dates. This list shows what is already done on my PC, what I am fixing now and what I would like to try. Nothing here is a promise until it is in a release.
+
+✅ done on my PC, tried by hand &nbsp;·&nbsp; 🟡 being fixed, or tried by hand only in part &nbsp;·&nbsp; ⬜ an idea to try
+
+### Done on my PC
+
+| | What | By hand |
+|:---:|---|:---:|
+| ✅ | **Menus in 4:3 in the middle of a wide screen, no longer stretched:** the title screen, Options, Load and Save, the Salvo list, Secrets of Rome (art gallery, mini games, cheats), the pause menu and its pages, the arena briefing. Behind the title screen and Secrets of Rome the picture is widened to fill 16:9 or 21:9, soft at the sides | ✅ |
+| ✅ | **Menus redrawn in high quality:** the menu words, the language names and flags, the Load and Save pages, the pause pages, the CAPCOM logo | ✅ |
+| ✅ | **The map (Select) in 4:3** with the markers in their places, and the map of the first area redrawn sharp from its original lines (the other areas will follow) | 🟡 |
+| ✅ | **The HUD no longer stretched in 16:9 and 21:9:** the life bar, its frame and the icons keep their shape, each held to its side of the screen | ✅ |
+| ✅ | **Talks:** the parchment and its text stay in the middle, not stretched, and the life bar no longer widens while someone talks | ✅ |
+| ✅ | **Fixed:** START / SKIP showed twice in the movies | ✅ |
+| ✅ | **The Russian translation:** its own menu texts in high quality, and the Russian flag in place of the British one | ✅ |
+| ✅ | **The American disc gets the same changes.** I played it through Chapter 1 | ✅ |
+
+### Being fixed
+
+| | What |
+|:---:|---|
+| 🟡 | **Still stretched on a wide screen:** the story parchment before each mission, the question at the end of each level (with its Yes / No highlight) and the map of Rome where you choose where to go. They will get the same 4:3 treatment, soft sides and sharper pictures |
+| 🟡 | **Smaller leftovers:** the button symbols in Octavianus' tutorial book, the arrow and the bar of the menu when you search a body, NOW LOADING on some loading screens, some tutorial boxes in Chapter 2, and the HUD moving in Octavianus' levels when the guards are on alert |
+| 🟡 | **The HUD and the combo words (3 CHAIN!, HIT FURY, SALVOS!) in high quality:** the life bar and its frame are done; a few small parts are left, and the letters the game has not shown me yet |
+| 🟡 | **Soft sides** for Options, the Salvo list and the pause pages (Profile, Status, Memo) |
+
+### Ideas to try
+
+| | What |
+|:---:|---|
+| ⬜ | **A clearer hit feeling, each part as an option you can turn off:** a small dot in place of the lock-on mark, a sound and a short flash of the mark on every hit, and the mark turning red when the enemy dies |
+| ⬜ | **Hit-stop:** a very short freeze of the picture on every hit, for a stronger impact. Only if you choose it, since not everyone likes it |
+| ⬜ | **The movies remade for 16:9 and 21:9**, with the framing following the scene |
 
 ## Screenshots
 
