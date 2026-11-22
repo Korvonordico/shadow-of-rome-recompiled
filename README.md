@@ -178,7 +178,7 @@ All the details: [CHANGELOG](CHANGELOG.md).
 | ✅ | **The HUD no longer stretched in 16:9 and 21:9:** the life bar, its frame and the icons keep their shape, each held to its side of the screen | ✅ |
 | ✅ | **Talks:** the parchment and its text stay in the middle, not stretched, and the life bar no longer widens while someone talks | ✅ |
 | ✅ | **Fixed:** START / SKIP showed twice in the movies | ✅ |
-| ✅ | **The Russian translation:** its own menu texts in high quality, and the Russian flag in place of the British one | ✅ |
+| ✅ | **The Russian translation:** its own menu texts in high quality, and the Russian flag in place of the British one. Thanks to [@Luger-git](https://github.com/Luger-git), who told me about the Russian version ([#5](../../issues/5)) | ✅ |
 | ✅ | **The American disc gets the same changes.** I played it through Chapter 1 | ✅ |
 | ✅ | **Vibration:** CONTROLS > VIBRATION, with Xbox controllers and with a PS4 controller on a cable (tried by hand with the PS4 one) | 🟡 |
 | ✅ | **Saves:** OPTIONS > SAVES keeps a copy at every PLAY, puts an older one back, and takes your saves from an older folder or from PCSX2 | ✅ |

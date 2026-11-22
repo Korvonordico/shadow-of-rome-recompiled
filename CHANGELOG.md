@@ -60,7 +60,7 @@ Fixes from the tests of [@n0l4n666](https://github.com/n0l4n666) (thanks!).
 
 ## 2.8 (10 November 2026)
 
-- **The Russian translation of the European disc is accepted.** Compared byte by byte, its `SLES_529.50` differs from the European one in 917 bytes, all in `Sector0_list` (where each file sits in `IMAGE0.IMG`, rebuilt with the Russian texts); the code is the same, and `IMAGE1.IMG` and `IMAGE2.IMG` too. The game reads those lists from the ELF at run time, so `sor.exe` works with them. The launcher now accepts an ELF whose SHA-1, with `Sector0_list` to `Sector2_list` (0x45B1A0-0x45C7B0) zeroed, matches the European one. Checked: the Russian and the European disc read, another game refused; the Russian disc played by hand for a while. Asked for in #5.
+- **The Russian translation of the European disc is accepted.** Compared byte by byte, its `SLES_529.50` differs from the European one in 917 bytes, all in `Sector0_list` (where each file sits in `IMAGE0.IMG`, rebuilt with the Russian texts); the code is the same, and `IMAGE1.IMG` and `IMAGE2.IMG` too. The game reads those lists from the ELF at run time, so `sor.exe` works with them. The launcher now accepts an ELF whose SHA-1, with `Sector0_list` to `Sector2_list` (0x45B1A0-0x45C7B0) zeroed, matches the European one. Checked: the Russian and the European disc read, another game refused; the Russian disc played by hand for a while. Asked for by [@Luger-git](https://github.com/Luger-git) in #5.
 
 ## 2.7 (10 November 2026)
 
