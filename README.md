@@ -936,9 +936,9 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 
 **Thanks to [Gabominated](https://github.com/Gabominated)**, whose PCSX2 patch "Disable Post-Processing Effects" gave the idea for CLEAN in POST EFFECTS, and who allowed this port to use it ([Gabominated/PCSX2#36](https://github.com/Gabominated/PCSX2/issues/36)).
 
-**Thanks to [PlayPorted](https://playported.com/ports/1643-shadow-of-rome/)** for listing this port: very kind of you, many thanks.
+**Thanks to [@Luger-git](https://github.com/Luger-git)**, who told me about the Russian version of the game ([#5](../../issues/5)) and reported that FULL SCREEN in OPTIONS never stuck.
 
-<a href="https://playported.com/ports/1643-shadow-of-rome/"><img src="https://playported.com/badge.svg" alt="Listed on PlayPorted"></a> &nbsp; Their site: <a href="https://playported.com/">playported.com</a>
+**Thanks to [PlayPorted](https://playported.com/)**, which lists this port on [its page](https://playported.com/ports/1643-shadow-of-rome/): very kind of you, many thanks.
 
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
