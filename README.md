@@ -938,6 +938,8 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 
 **Thanks to [PlayPorted](https://playported.com/ports/1643-shadow-of-rome/)** for listing this port: very kind of you, many thanks.
 
+<a href="https://playported.com/ports/1643-shadow-of-rome/"><img src="https://playported.com/badge.svg" alt="Listed on PlayPorted"></a> &nbsp; Their site: <a href="https://playported.com/">playported.com</a>
+
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
 - [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) by Martin Storsjö, the compiler used to build for Windows.
