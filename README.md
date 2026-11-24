@@ -20,6 +20,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white" alt="C++ 20">
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Clang-064F8C?logo=cmake&logoColor=white" alt="build CMake + Clang">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
+  <a href="https://playported.com/ports/1643-shadow-of-rome/"><img src="https://playported.com/badge.svg" alt="Listed on PlayPorted"></a>
 </p>
 
 <p align="center">Version 2.9.5 · <a href="CHANGELOG.md">What changed</a></p>
@@ -934,6 +935,8 @@ GPL-3.0, the same as PS2Recomp and PCSX2, which the built program uses. See [LIC
 **Thanks to [@n0l4n666](https://github.com/n0l4n666)**, the first player to send reports: the movie sound drifting at 60 frames per second ([#3](../../issues/3)), and in [#4](../../discussions/4) antialiasing, skippable movies, more frames per second and quick saves. The first three are in 2.5; his report on running in a diagonal with a controller is fixed in 2.6.
 
 **Thanks to [Gabominated](https://github.com/Gabominated)**, whose PCSX2 patch "Disable Post-Processing Effects" gave the idea for CLEAN in POST EFFECTS, and who allowed this port to use it ([Gabominated/PCSX2#36](https://github.com/Gabominated/PCSX2/issues/36)).
+
+**Thanks to [PlayPorted](https://playported.com/ports/1643-shadow-of-rome/)** for listing this port: very kind of you, many thanks.
 
 - [ran-j/PS2Recomp](https://github.com/ran-j/PS2Recomp), the recompiler and runtime this port is built on. We use upstream commit `e5636981` directly, with our patches, and no fork of it.
 - [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp), used as a reference for how to organize the project and for how to use PS2Recomp. It is built on [Sinan Karakaya's fork](https://github.com/Sinan-Karakaya/PS2Recomp) of PS2Recomp.
