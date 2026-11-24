@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white" alt="C++ 20">
   <img src="https://img.shields.io/badge/build-CMake%20%2B%20Clang-064F8C?logo=cmake&logoColor=white" alt="build CMake + Clang">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-GPL--3.0-blue" alt="licence GPL-3.0"></a>
-  <a href="https://playported.com/ports/1643-shadow-of-rome/"><img src="https://playported.com/badge.svg" alt="Listed on PlayPorted"></a>
+  <a href="https://playported.com/ports/1643-shadow-of-rome/"><img src="https://playported.com/badge.svg" alt="Listed on PlayPorted" height="20"></a>
 </p>
 
 <p align="center">Version 2.9.5 · <a href="CHANGELOG.md">What changed</a></p>
