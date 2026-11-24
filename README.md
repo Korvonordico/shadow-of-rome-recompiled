@@ -833,7 +833,7 @@ It is not a one-off prompt. Claude runs inside [Hermes](https://github.com/NousR
 - [Iris Insight](https://github.com/Korvonordico/iris-insight), my own tool that lets the agent see what the game was doing when something went wrong: when the picture freezes, turns black or slows down, it saves the last seconds as one small picture and a short report. Since 2.5 it is in this repository (`pc/blackbox/`, under this repository's licence, the GPL-3.0; its own repository has a noncommercial licence) and in the ready-made package (F9 in the game). It caught the freeze in the Germanian Forest by itself;
 - written handoff notes after every session, so each one starts from where the last one stopped.
 
-Quotient and Iris Insight are modules of [F-AGI](https://github.com/Korvonordico/f-agi), the set of tools I am building (under construction).
+Quotient and Iris Insight are modules of [Fake AGI](https://github.com/Korvonordico/fake-agi), the set of tools I am building (under construction).
 
 <details>
 <summary><b>The tools made for each step, and examples of the debugging</b></summary>
